@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { CodeBuilder, IClassModel, IObjectModel, pascalCase, safeIdentifier, shouldEmitModifier } from './CodeGenerator';
+import { CodeBuilder, collectInheritedMembers, IClassModel, IObjectModel, IOperationModel, IParameterModel, opSignatureKey, pascalCase, safeIdentifier, shouldEmitModifier } from './CodeGenerator';
 
 
 export class JavaBuilder extends CodeBuilder {
@@ -56,7 +56,7 @@ export class JavaBuilder extends CodeBuilder {
                 const vis = a.visibility || 'private';
                 const emit = shouldEmitModifier(a.modifier);
                 const modText = emit ? (a.modifier + ' ') : '';
-                attrbutes.push(`  ${vis} ${modText}${t} ${prop};`);
+                attrbutes.push(`\t${vis} ${modText}${t} ${prop};`);
             }
         }
         attrbutes.push('');
@@ -64,13 +64,19 @@ export class JavaBuilder extends CodeBuilder {
     }
     protected generateConstructor(cls: IClassModel): string[] {
         const constructorExp: string[] = [];
+        if (cls.isInterface) {
+            return constructorExp;
+        }
         const name = pascalCase(cls.name || 'Unnamed');
-        constructorExp.push(`  public ${name}() { }`);
+        constructorExp.push(`\tpublic ${name}() { }`);
         constructorExp.push('');
         return constructorExp;
     }
     protected generateOperations(cls: IClassModel): string[] {
         const operations: string[] = [];
+
+        const inherited = collectInheritedMembers(cls, this.ObjectModel, this.ClassMaps);
+        const implementedSigs = new Set<string>((cls.operations || []).map((o: IOperationModel) => opSignatureKey(o)));
         if (Array.isArray(cls.operations)) {
             for (const o of cls.operations) {
                 if (this.isVirtualMember(o)) {
@@ -89,18 +95,47 @@ export class JavaBuilder extends CodeBuilder {
                 const modText = emit ? (o.modifier + ' ') : '';
                 const params = (Array.isArray(o.parameters) ? o.parameters.map((p: any) => `${this.TypeModel.mapTypeForLang(p.type || 'Object', 'java').name} ${safeIdentifier(p.name || 'p')}`).join(', ') : '');
                 if (o.modifier === 'abstract' && cls.isAbstract) {
-                    operations.push(`  ${vis} abstract ${ret} ${methodName}(${params});`);
+                    operations.push(`\t${vis} abstract ${ret} ${methodName}(${params});`);
                 } else {
-                    operations.push(`  ${vis} ${modText}${ret} ${methodName}(${params}) {`);
+                    operations.push(`\t${vis} ${modText}${ret} ${methodName}(${params}) {`);
                     if (ret !== 'void') {
-                        operations.push('    throw new UnsupportedOperationException("Not implemented");');
+                        operations.push('\t\tthrow new UnsupportedOperationException("Not implemented");');
                     }
                     else {
-                        operations.push('    // TODO');
+                        operations.push('\t\t// TODO');
                     }
-                    operations.push('  }');
+                    operations.push('\t}');
                 }
             }
+        }
+        for (const [sig, info] of inherited.operations.entries()) {
+            const k = sig;
+            const inheritedOp = info.op;
+            const originClass = info.originClass;
+            const isAbstract = ((inheritedOp.modifier || '').toLowerCase().includes('abstract')) || (originClass && originClass.isInterface);
+            if (!isAbstract) continue;
+            if (implementedSigs.has(k)) continue; // implemented in subclass
+
+            const ret = this.TypeModel.mapTypeForLang(inheritedOp.returnType || 'void', 'csharp').name;
+            const method = pascalCase(inheritedOp.name || 'Method');
+            const paramsStr = (Array.isArray(inheritedOp.parameters) ? inheritedOp.parameters.map((p: IParameterModel) => `${this.TypeModel.mapTypeForLang(p.type || 'object', 'csharp').name} ${safeIdentifier(p.name || 'param')}`).join(', ') : '');
+
+            if (inheritedOp.visibility === 'private') {
+                console.warn(`Warning: inherited method ${method} is private and cannot be overridden; skipping.`);
+                continue;
+            }
+            const vis = inheritedOp.visibility || 'protected';
+            operations.push('');
+            operations.push('\t@Override');
+            operations.push(`\t${vis} ${ret} ${method}(${paramsStr})`);
+            operations.push('\t{');
+            if (ret !== 'void') {
+                operations.push('\t\tthrow new NotImplementedException();');
+            }
+            else {
+                operations.push('\t\t// TODO');
+            }
+            operations.push('\t}');
         }
         return operations;
     }
