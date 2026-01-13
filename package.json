@@ -1,7 +1,7 @@
 {
   "name": "class-diagram-generator",
   "displayName": "Class Diagram Generator",
-  "description": "Simple class diagram editor and C# code generator (WebView)",
+  "description": "Simple class diagram editor",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.107.0"
