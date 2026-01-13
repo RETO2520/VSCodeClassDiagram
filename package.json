@@ -1,0 +1,41 @@
+{
+  "name": "class-diagram-generator",
+  "displayName": "Class Diagram Generator",
+  "description": "Simple class diagram editor and C# code generator (WebView)",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.107.0"
+  },
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "packaging": "npx vsce package",
+    "build": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test:js": "node src/test/js/main.test.js",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/vscode": "^1.107.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.7.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "classDiagram.open",
+        "title": "Open Class Diagram Editor"
+      }
+    ]
+  },
+  "keywords": [],
+  "author": "shunichi",
+  "license": "ISC",
+  "type": "commonjs",
+  "publisher": "reto"
+}

@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    %CSP%
+    <title>Class Diagram Editor</title>
+    <link rel="stylesheet" href="%STYLE_CSS%">
+</head>
+
+<body>
+    <div class="toolbar">
+        <select id="langSelect">
+            <option value="csharp">C#</option>
+            <option value="typescript">TypeScript</option>
+            <option value="java">Java</option>
+            <option value="cpp">C++</option>
+            <option value="rust">Rust</option>
+        </select>
+        <button id="addClass">Add Class</button>
+        <button id="saveJson">Save JSON</button>
+        <button id="loadJson">Load JSON</button>
+        <button id="generate">Generate</button>
+    </div>
+
+    <div id="container">
+        <svg id="relationSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div id="canvas" class="canvasLayer"></div>
+    </div>
+
+    <script src="%MAIN_JS%"></script>
+</body>
+
+</html>
