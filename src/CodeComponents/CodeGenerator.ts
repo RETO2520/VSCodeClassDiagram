@@ -123,7 +123,6 @@ export function collectInheritedMembers(cls: IClassModel, model: IObjectModel, o
         if (visited.has(marker)) return;
         visited.add(marker);
 
-        // handle base class first (so higher-level parents are processed earlier)
         let base: IClassModel | null = null;
 
 
@@ -134,7 +133,7 @@ export function collectInheritedMembers(cls: IClassModel, model: IObjectModel, o
         if (base) {
 
             visit(base);
-            // merge base's own members (base's inherited already merged by recursion)
+
             for (const a of (base.attributes || [])) {
                 if (!inheritedAttrs.has(a.name)) inheritedAttrs.set(a.name, a);
             }
@@ -144,7 +143,7 @@ export function collectInheritedMembers(cls: IClassModel, model: IObjectModel, o
             }
         }
 
-        // interfaces of c: treat as abstract operations to implement
+
         if (Array.isArray(c.interfaces)) {
             for (const ifaceRef of c.interfaces) {
                 // ifaceRef may be name or id; try both maps
@@ -164,16 +163,14 @@ export function collectInheritedMembers(cls: IClassModel, model: IObjectModel, o
         }
     }
 
-    // start from cls's parent(s) — we don't want to include cls's own members as inherited
+    // clsの親から開始します。cls自身のメンバーを継承として含めたくないからです。
     let startParent: IClassModel | null = null;
-    //if (cls.baseClass) startParent = nameToClass[cls.baseClass] || null;
-    //else if (cls.baseClassId && idToClass[cls.baseClassId]) startParent = idToClass[cls.baseClassId];
 
     if (cls.baseClassId && idToClass[cls.baseClassId]) startParent = idToClass[cls.baseClassId];
     if (startParent) {
         visit(startParent);
     }
-    // Also include interfaces implemented directly by cls (they are treated as inherited abstract ops)
+    // また、cls によって直接実装されたインターフェースも含めます (継承された抽象オペレーションとして扱われます)
     if (Array.isArray(cls.interfaces)) {
         for (const ifaceRef of cls.interfaces) {
             const iface = nameToClass[ifaceRef] || idToClass[ifaceRef] || null;
@@ -223,7 +220,7 @@ export abstract class CodeBuilder implements ICodeBuilder {
             sb.push(this.getClassClosing());  // 言語固有: クラス閉じ（例: '}'）
 
             const text = sb.join('\n');
-            //const fileUri = vscode.Uri.joinPath(outputFolder, `${name}${this.getFileExtension()}`);  // 言語固有: 拡張子
+
             const fileUri = vscode.Uri.joinPath(outputFolder, `${this.getFileName(cls)}${this.getFileExtension()}`);  // 言語固有: 拡張子
             await vscode.workspace.fs.writeFile(fileUri, Buffer.from(text, 'utf8'));
         }
@@ -249,7 +246,7 @@ export abstract class CodeBuilder implements ICodeBuilder {
     protected findClassById(id: string): IClassModel | undefined {
         return this.ObjectModel.classes.find(x => x.id === id);
     }
-    ///
+
     protected findBaseClass(cls: IClassModel): IClassModel | null {
         if ('baseClassId' in cls && cls.baseClassId) {
             const l = this.ObjectModel.classes.find(x => x.id === cls.baseClassId);
@@ -260,13 +257,12 @@ export abstract class CodeBuilder implements ICodeBuilder {
             const byName = this.ClassMaps.nameToClass[cls.baseClass];
             if (byName) return byName;
         }
-        //return baseName;
+
         return null;
     }
 
     protected makeParamName(base: string, used: Set<string>) {
         let s = safeIdentifier(base || 'param');
-        // lower-case first char for params
         s = s.charAt(0).toLowerCase() + s.slice(1);
         if (!/^[a-zA-Z_]/.test(s)) s = '_' + s;
         let out = s;
@@ -420,11 +416,8 @@ export class CodeGenerator {
 
     async generate(outputFolder: vscode.Uri, model: IObjectModel) {
         if (!this._builder) {
-            //throw new Error("No code builder specified");
             return null;
         }
-
-        //await this._builder.BuildCode(outputFolder, model);
         await this._builder.Build(outputFolder, model);
     }
 

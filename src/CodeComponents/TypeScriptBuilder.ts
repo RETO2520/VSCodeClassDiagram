@@ -8,8 +8,6 @@ export class TypeScriptBuilder extends CodeBuilder {
         const importsValue = new Set<string>(); // needs normal import (value)
         const importsTypeOnly = new Set<string>(); // can be import type
 
-        // 1) baseClass (if any) - in our modelForExport baseClass is name; but in extension we may have internal baseClassId; adjust accordingly.
-        // We expect generateTypeScript receives modelForExport (names). If not, handle both cases.
         const bc = this.findBaseClass(cls);
         if (bc) {
 
@@ -19,9 +17,7 @@ export class TypeScriptBuilder extends CodeBuilder {
         }
 
 
-        // 2) interfaces (implements) - these are type-only (interfaces), can be imported as 'import type'
         if (Array.isArray(cls.interfaces)) {
-            // interfaces might be ids (internal) or names (export). Try resolve to names.
             for (const interfaceId of cls.interfaces) {
                 const resultInterface = this.findClassById(interfaceId);
                 if (resultInterface) {
@@ -30,7 +26,6 @@ export class TypeScriptBuilder extends CodeBuilder {
             }
         }
 
-        // 3) attributes types
         if (Array.isArray(cls.attributes)) {
             for (const a of cls.attributes) {
                 const refs = this.referencedClassNamesFromType(a.type);
@@ -42,7 +37,6 @@ export class TypeScriptBuilder extends CodeBuilder {
             }
         }
 
-        // 4) operations: return types + parameters
         if (Array.isArray(cls.operations)) {
             for (const op of cls.operations) {
                 const refsRet = this.referencedClassNamesFromType(op.returnType);
@@ -56,28 +50,21 @@ export class TypeScriptBuilder extends CodeBuilder {
             }
         }
 
-        // If any type was marked both type-only and value import, prefer normal import
         for (const v of Array.from(importsValue)) importsTypeOnly.delete(v);
-        // Remove builtin / primitives
 
         this.filterOutBuiltins(importsValue, this.TypeModel);
         this.filterOutBuiltins(importsTypeOnly, this.TypeModel);
 
-        // Now build import strings
         const imports: string[] = [];
-        // value imports first
         const valueList = Array.from(importsValue).sort();
         for (const n of valueList) {
-            // file name based on safeIdentifier
             const file = './' + safeIdentifier(n);
             const sym = safeIdentifier(n);
             imports.push(`import { ${sym} } from '${file}';`);
         }
-        // type-only imports
+
         const typeList = Array.from(importsTypeOnly).sort();
         if (typeList.length > 0) {
-            // For modern TS emit single `import type { A, B } from './X'` per file.
-            // But since each referenced name is in its own file, create separate imports:
             for (const n of typeList) {
                 const file = './' + safeIdentifier(n);
                 const sym = safeIdentifier(n);
@@ -157,12 +144,8 @@ export class TypeScriptBuilder extends CodeBuilder {
             ownAttrs: { name: string, attr: IAttributeModel }[],
             inheritedAttrs: { name: string, attr: IAttributeModel }[]
         } = { owns: ownAttrTexts, inherits: inheritedAttrTexts, ownAttrs: ownAttrObjects, inheritedAttrs: inheritedAttrObjects };
-        // 
-        // --- prepare inherited info: use collectInheritedMembers ---
+
         const inherited = collectInheritedMembers(cls, this.ObjectModel, this.ClassMaps);
-        // implemented signatures in subclass (for methods)
-        const implementedSigs = new Set<string>((cls.operations || []).map((o: IOperationModel) => opSignatureKey(o)));
-        // implemented props in subclass (safe identifier form)
         const implementedProps = new Set((cls.attributes || []).map((a: IAttributeModel) => safeIdentifier(a.name || '')));
 
 
@@ -178,7 +161,6 @@ export class TypeScriptBuilder extends CodeBuilder {
             let virtualModifier = '';
 
             if (a.modifier === 'virtual') {
-                // TypeScript does not have 'virtual' keyword; ignore
                 virtualModifier = '?';
 
             } else {
@@ -187,38 +169,31 @@ export class TypeScriptBuilder extends CodeBuilder {
 
 
             if (this.isPrivateMemberInAbstractClass(a, cls)) {
-                //console.warn(`Warning: property ${prop} is private in an abstract class; skipping.`);
                 continue;
             }
             if (this.isAbstractMemberInConcreteClass(a, cls)) {
-                //console.warn(`Warning: property ${prop} is abstract in a non-abstract class; skipping.`);
                 continue;
             }
 
             if (a.modifier !== 'abstract') {
                 sb.ownAttrs.push({ name: t, attr: a });
             }
-            //sb.owns
             sb.owns.push(`  ${vis} ${modifierText}${prop}${virtualModifier}: ${t};`);
         }
 
         if (!cls.isInterface) {
             for (const [attrName, attrObj] of inherited.attributes.entries()) {
-                // pair could be [name, attrObj] for Map or entries
                 const modStr = (attrObj.modifier || '').toLowerCase();
                 const isAbstractProp = modStr.includes('abstract');
                 if (!isAbstractProp) continue;
                 const propSafe = safeIdentifier(attrName);
                 if (implementedProps.has(propSafe)) continue;
                 const t = this.TypeModel.mapTypeForLang(attrObj.type || 'any', 'typescript').name;
-                // TypeScript override keyword (TS 4.3+). If you need backward compatibility, remove 'override'.
                 if (attrObj.visibility === 'private') {
-                    // private properties cannot be overridden; skip
                     console.warn(`Warning: inherited property ${attrName} is private and cannot be overridden; skipping.`);
                     continue;
                 }
                 sb.inheritedAttrs.push({ name: attrName, attr: attrObj });
-                //targetAttrs.push({ name: attrName, attr: attrObj });
                 sb.inherits.push(`  ${attrObj.visibility} override ${propSafe}: ${t};`);
 
             }
@@ -231,32 +206,23 @@ export class TypeScriptBuilder extends CodeBuilder {
 
         let constructorText: string[] = [];
         if (cls.isInterface) return constructorText;
-        // own attributes
 
         const ownAttrs = Array.isArray(cls.attributes) ? cls.attributes : [];
 
-        // build parameter lists:
-        // - baseParams: inherited attributes that are NOT overridden in subclass (i.e. subclass doesn't declare same name)
         const implementedPropNames = new Set((ownAttrs || []).map(a => (a.name || '')));
         const baseAttrsToPass = inheritedAttributs.filter(x => !implementedPropNames.has(x.name)).map(x => x.attr);
         const targetAttrsToPass = ownAttributs.filter(x => !implementedPropNames.has(x.name)).map(x => x.attr);
-        // order: baseAttrsToPass (from ancestors) first, then ownAttrs
+
         const usedParamNames = new Set<string>();
         const baseParams = this.buildParamListForAttributes(baseAttrsToPass, 'typescript', usedParamNames);
         const targetParams = this.buildParamListForAttributes(targetAttrsToPass, 'typescript', usedParamNames);
-        //const ownParams = this.buildParamListForAttributes(ownAttrs, 'typescript', usedParamNames);
-        // --- constructor generation ---
-        // Build parameter string: baseParams then ownParams
         const allParams = baseParams.concat(targetParams);
         const paramsSignature = allParams.map(p => `${p.paramName}: ${p.typeName}`).join(', ');
-        //const paramsSignature = baseParams.map(p => `${p.paramName}: ${p.typeName}`).join(', ');
 
-        // Inheritance: if there is a base class, call super with base param names (in same order)
         let hasBase = false;
         if (cls.baseClass !== 'None' || (cls.baseClassId && this.ClassMaps.idToClass[cls.baseClassId])) {
             hasBase = true;
         }
-        //const hasBase = !!(cls.baseClass || (cls.baseClassId && idToClass[cls.baseClassId]));
 
         const baseArgList = baseParams.map(p => p.paramName).join(', ');
 
@@ -276,7 +242,7 @@ export class TypeScriptBuilder extends CodeBuilder {
             const propName = safeIdentifier(p.propName);
             constructorText.push(`    this.${propName} = ${p.paramName};`);
         }
-        // Optionally: also set overridden inherited properties if subclass overrides them — but we already excluded overridden from baseParams.
+
         constructorText.push('  }');
         constructorText.push('');
         return constructorText;
@@ -287,7 +253,6 @@ export class TypeScriptBuilder extends CodeBuilder {
         let inheritedAttrs: string[] = [];
         let sb: { owns: string[], inherits: string[] } = { owns: ownAttrs, inherits: inheritedAttrs };
         const inherited = collectInheritedMembers(cls, this.ObjectModel, this.ClassMaps);
-        // implemented signatures in subclass (for methods)
         const implementedSigs = new Set<string>((cls.operations || []).map((o: IOperationModel) => opSignatureKey(o)));
 
         for (const o of cls.operations) {
@@ -299,12 +264,10 @@ export class TypeScriptBuilder extends CodeBuilder {
             const paramsStr = (Array.isArray(o.parameters) ? o.parameters.map((p: IParameterModel) => `${safeIdentifier(p.name || 'p')}: ${this.TypeModel.mapTypeForLang(p.type || 'any', 'typescript').name}`).join(', ') : '');
 
             if (this.isPrivateMemberInAbstractClass(o, cls)) {
-                //console.warn(`Warning: method ${method} is private in an abstract class; skipping.`);
                 continue;
             }
 
             if (this.isAbstractMemberInConcreteClass(o, cls)) {
-                //console.warn(`Warning: method ${method} is abstract in a non-abstract class; skipping.`);
                 continue;
             }
 
@@ -320,7 +283,6 @@ export class TypeScriptBuilder extends CodeBuilder {
             }
         }
 
-        // --- inherited abstract METHODS: implement stubs for abstract/interface methods not implemented in this class ---
         for (const [sig, info] of inherited.operations.entries()) {
             const inheritedOp = info.op;
             const originClass = info.originClass;
@@ -328,13 +290,10 @@ export class TypeScriptBuilder extends CodeBuilder {
             if (!isAbstract) continue;
             if (implementedSigs.has(sig)) continue;
 
-            // build stub
             const ret = this.TypeModel.mapTypeForLang(inheritedOp.returnType || 'void', 'typescript').name;
             const method = safeIdentifier(inheritedOp.name || 'method');
             const paramsStr = (Array.isArray(inheritedOp.parameters) ? inheritedOp.parameters.map((p: IParameterModel) => `${safeIdentifier(p.name || 'p')}: ${this.TypeModel.mapTypeForLang(p.type || 'any', 'typescript').name}`).join(', ') : '');
-            // use override keyword (TS 4.3+). If you want optional, make configurable.
             if (inheritedOp.visibility === 'private') {
-                // private methods cannot be overridden; skip
                 console.warn(`Warning: inherited method ${method} is private and cannot be overridden; skipping.`);
                 continue;
             }
@@ -352,8 +311,6 @@ export class TypeScriptBuilder extends CodeBuilder {
         return sb;
     }
 
-    // helper: find referenced class-names in a type string.
-    // We extract identifier tokens (simple heuristic) and keep those that match class names.
     referencedClassNamesFromType(typeStr: string | undefined): Set<string> {
         const out = new Set<string>();
         if (!typeStr) return out;

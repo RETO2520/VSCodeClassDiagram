@@ -21,7 +21,6 @@ export function activate(context: vscode.ExtensionContext) {
         }
       );
 
-      //panel.webview.html = getHtmlForWebview(panel.webview, context.extensionUri);
       panel.webview.html = getHtmlForWebviewFromFile(panel.webview, context.extensionUri);
 
       // Receive messages from the webview
@@ -30,8 +29,6 @@ export function activate(context: vscode.ExtensionContext) {
           case 'showAlert':
             {
               vscode.window.showInformationMessage(msg.text);
-              // 必要であれば、Webviewに再度メッセージを送り返す
-              // panel.webview.postMessage({ command: 'response', text: 'メッセージを受け取りました' });
             }
             break;
           case 'saveJson':
@@ -91,7 +88,6 @@ export function activate(context: vscode.ExtensionContext) {
               const payload = msg.payload || {};
               const model = payload.model || payload; // backward compat
               const language = payload.language || 'csharp';
-              // ask user for output folder
               const folderUris = await vscode.window.showOpenDialog({ canSelectFolders: true, openLabel: 'Select output folder' });
               if (!folderUris || folderUris.length === 0) return;
               const outFolder = folderUris[0];
@@ -124,25 +120,21 @@ async function generateCodeFiles(model: any, outFolder: vscode.Uri, language: st
       const csharpGen = new CodeGenerator(csharpBuilder);
 
       await csharpGen.generate(outFolder, model);
-      //await generateCSharp(model, outFolder);
       break;
     case 'typescript':
       const typescriptBuilder = new TypeScriptBuilder(model);
       const typescriptGen = new CodeGenerator(typescriptBuilder);
       await typescriptGen.generate(outFolder, model);
-      //await generateTypeScript(model, outFolder);
       break;
     case 'java':
       const javaBuilder = new JavaBuilder(model);
       const javaGen = new CodeGenerator(javaBuilder);
       await javaGen.generate(outFolder, model);
-      //await generateJava(model, outFolder);
       break;
     case 'cpp':
       const cppBuilder = new CppBuilder(model);
       const cppGen = new CodeGenerator(cppBuilder);
       await cppGen.generate(outFolder, model);
-      //await generateCpp(model, outFolder);
       break;
     case 'rust':
       const rustBuilder = new RustBuilder(model);
