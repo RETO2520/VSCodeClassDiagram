@@ -4,28 +4,114 @@ import { CodeBuilder, IClassModel, IObjectModel, pascalCase, safeIdentifier, sho
 
 export class JavaBuilder extends CodeBuilder {
     protected generateImports(cls: IClassModel): string[] {
-        throw new Error('Method not implemented.');
+        const imports: string[] = [];
+        return imports;
     }
     protected generateClassDeclaration(cls: IClassModel): string {
-        throw new Error('Method not implemented.');
+        let declaration: string = '';
+        let modifiers = '';
+        const name = safeIdentifier(cls.name || 'Unnamed');
+        if (cls.isInterface) {
+            modifiers = 'public interface';
+        }
+        else if (cls.isAbstract) {
+            modifiers = 'public abstract class';
+        }
+        else {
+            modifiers = 'public class';
+        }
+        const bases: string[] = [];
+        const impls: string[] = [];
+        if (cls.baseClass && cls.baseClass !== 'None') {
+            bases.push(pascalCase(cls.baseClass));
+        }
+        if (Array.isArray(cls.interfaces)) {
+            for (const i of cls.interfaces) {
+                if (i) {
+                    const resultInterface = this.findClassById(i);
+                    if (resultInterface) {
+                        impls.push(pascalCase(resultInterface.name));
+                    }
+
+                }
+            }
+        }
+        const extendsClause = bases.length > 0 ? (' extends ' + bases[0]) : '';
+        const implClause = impls.length > 0 ? (' implements ' + impls.join(', ')) : '';
+        declaration = `${modifiers} ${name}${extendsClause}${implClause} {`;
+        return declaration;
     }
     protected generateAttributes(cls: IClassModel): string[] {
-        throw new Error('Method not implemented.');
+        const attrbutes: string[] = [];
+        if (Array.isArray(cls.attributes)) {
+            for (const a of cls.attributes) {
+                if (this.isAbstractMember(a)) {
+                    continue;
+                }
+                if (this.isVirtualMember(a)) {
+                    continue;
+                }
+                const t = this.TypeModel.mapTypeForLang(a.type || 'Object', 'java').name;
+                const prop = safeIdentifier(a.name || 'unnamed');
+                const vis = a.visibility || 'private';
+                const emit = shouldEmitModifier(a.modifier);
+                const modText = emit ? (a.modifier + ' ') : '';
+                attrbutes.push(`  ${vis} ${modText}${t} ${prop};`);
+            }
+        }
+        attrbutes.push('');
+        return attrbutes;
     }
     protected generateConstructor(cls: IClassModel): string[] {
-        throw new Error('Method not implemented.');
+        const constructorExp: string[] = [];
+        const name = pascalCase(cls.name || 'Unnamed');
+        constructorExp.push(`  public ${name}() { }`);
+        constructorExp.push('');
+        return constructorExp;
     }
     protected generateOperations(cls: IClassModel): string[] {
-        throw new Error('Method not implemented.');
+        const operations: string[] = [];
+        if (Array.isArray(cls.operations)) {
+            for (const o of cls.operations) {
+                if (this.isVirtualMember(o)) {
+                    continue;
+                }
+                if (this.isAbstractMemberInConcreteClass(o, cls)) {
+                    continue;
+                }
+                if (this.isPrivateMemberInAbstractClass(o, cls)) {
+                    continue;
+                }
+                const ret = this.TypeModel.mapTypeForLang(o.returnType || 'void', 'java').name;
+                const methodName = safeIdentifier(o.name || 'method');
+                const vis = o.visibility || 'private';
+                const emit = shouldEmitModifier(o.modifier);
+                const modText = emit ? (o.modifier + ' ') : '';
+                const params = (Array.isArray(o.parameters) ? o.parameters.map((p: any) => `${this.TypeModel.mapTypeForLang(p.type || 'Object', 'java').name} ${safeIdentifier(p.name || 'p')}`).join(', ') : '');
+                if (o.modifier === 'abstract' && cls.isAbstract) {
+                    operations.push(`  ${vis} abstract ${ret} ${methodName}(${params});`);
+                } else {
+                    operations.push(`  ${vis} ${modText}${ret} ${methodName}(${params}) {`);
+                    if (ret !== 'void') {
+                        operations.push('    throw new UnsupportedOperationException("Not implemented");');
+                    }
+                    else {
+                        operations.push('    // TODO');
+                    }
+                    operations.push('  }');
+                }
+            }
+        }
+        return operations;
     }
     protected getClassClosing(): string {
-        throw new Error('Method not implemented.');
+        return "}";
     }
     protected getFileName(cls: IClassModel): string {
         return safeIdentifier(cls.name || 'Unnamed');
     }
     protected getFileExtension(): string {
-        throw new Error('Method not implemented.');
+        return ".java";
     }
     async BuildCode(outputFolder: vscode.Uri, model: IObjectModel): Promise<void> {
         for (const cls of model.classes) {

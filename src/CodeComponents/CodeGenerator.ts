@@ -285,6 +285,24 @@ export abstract class CodeBuilder implements ICodeBuilder {
         return params;
     }
 
+    // 共通ヘルパ: クラス図上、抽象メンバであるか
+    protected isAbstractMember(member: IAttributeModel | IOperationModel): boolean {
+        if (!member) return false;
+        const modVal = (member.modifier || '').toLowerCase();
+        if (modVal.includes('abstract')) return true;
+        return false;
+
+    }
+
+    // 共通ヘルパ: クラス図上、仮想メンバであるか
+    protected isVirtualMember(member: IAttributeModel | IOperationModel): boolean {
+        if (!member) return false;
+        const modVal = (member.modifier || '').toLowerCase();
+        if (modVal.includes('virtual')) return true;
+        return false;
+
+    }
+
     // 共通ヘルパ: private識別子で、かつvirtualまたはabstract識別子のメンバであるか
     protected isPrivateVirtualAbstractMember(member: IAttributeModel | IOperationModel): boolean {
         if (!member) return false;
