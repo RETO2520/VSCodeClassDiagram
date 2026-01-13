@@ -96,6 +96,8 @@ export class JavaBuilder extends CodeBuilder {
                 const params = (Array.isArray(o.parameters) ? o.parameters.map((p: any) => `${this.TypeModel.mapTypeForLang(p.type || 'Object', 'java').name} ${safeIdentifier(p.name || 'p')}`).join(', ') : '');
                 if (o.modifier === 'abstract' && cls.isAbstract) {
                     operations.push(`\t${vis} abstract ${ret} ${methodName}(${params});`);
+                } else if (cls.isInterface) {
+                    operations.push(`\t${vis} ${ret} ${methodName}(${params});`);
                 } else {
                     operations.push(`\t${vis} ${modText}${ret} ${methodName}(${params}) {`);
                     if (ret !== 'void') {
