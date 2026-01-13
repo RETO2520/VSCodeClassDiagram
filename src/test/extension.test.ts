@@ -47,8 +47,8 @@ suite('コード生成のテストケース', () => {
         const tmpBase = path.join(os.tmpdir(), `vscctest_${Date.now()}`);
         const outUri = vscode.Uri.file(tmpBase);
         await vscode.workspace.fs.createDirectory(outUri);
-
-        const b = new TypeScriptBuilder(model);
+        const tm = new TypeModel();
+        const b = new TypeScriptBuilder(model, tm);
         await b.Build(outUri, model);
 
         const holderUri = vscode.Uri.joinPath(outUri, 'Holder.ts');

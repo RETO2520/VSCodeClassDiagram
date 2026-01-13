@@ -187,12 +187,13 @@ export function collectInheritedMembers(cls: IClassModel, model: IObjectModel, o
 }
 
 export abstract class CodeBuilder implements ICodeBuilder {
-    TypeModel: TypeModel = new TypeModel();
+    TypeModel: TypeModel;
     protected ObjectModel: IObjectModel;
     protected ClassMaps: { nameToClass: Record<string, IClassModel>, idToClass: Record<string, IClassModel> };
     protected AllClassNames: Set<string>;
-    constructor(model: IObjectModel) {
+    constructor(model: IObjectModel, typeModel: TypeModel) {
         this.ObjectModel = model;
+        this.TypeModel = typeModel;
         this.ClassMaps = buildClassMaps(model);
         this.AllClassNames = new Set(Object.keys(this.ClassMaps.nameToClass));
     }
@@ -417,7 +418,29 @@ export class TypeModel {
         const m = this._primitiveTypes[primitiveName];
         return m[language as keyof ILanguageTypeModel];
     }
+    getTypesForLang(language: string): string[] {
+        const types: string[] = [];
+        if (!language) {
+            return types;
+        }
+        const langKeyMap: Record<string, keyof ILanguageTypeModel> = {
+            csharp: 'csharp',
+            typescript: 'typescript',
+            java: 'java',
+            cpp: 'cpp',
+            rust: 'rust'
+        };
 
+        const prop = langKeyMap[language];
+        if (!prop) return types;
+
+        const vals = Object.values(this._primitiveTypes)
+            .map(m => m[prop])
+            .filter(v => typeof v === 'string' && v.length > 0);
+
+
+        return Array.from(new Set(vals));
+    }
 
     mapTypeForLang(typeName: string, language: string): ITypeModel {
         const t = typeName.trim();

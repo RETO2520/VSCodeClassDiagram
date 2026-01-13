@@ -1,8 +1,11 @@
+
+
 (function () {
     const vscode = acquireVsCodeApi();
 
     let model = { classes: [] };
     let editingNameId = null, editingDraft = '';
+    let primitiveTypes = [];
 
     function newClass(x = 20, y = 20) {
         return {
@@ -24,7 +27,9 @@
     const container = document.getElementById('container');
     const canvas = document.getElementById('canvas');
     const svg = document.getElementById('relationSvg');
-
+    document.getElementById('langSelect').addEventListener('change', (event) => {
+        vscode.postMessage({ command: 'changedPrimitiveTypes', language: event.target.value });
+    });
     document.getElementById('addClass').addEventListener('click', () => {
         model.classes.push(newClass(40 + model.classes.length * 30, 40 + model.classes.length * 20));
         vscode.postMessage({ command: 'showAlert', text: `model length :  ${model.classes.length}` });
@@ -41,11 +46,20 @@
 
     window.addEventListener('message', event => {
         const msg = event.data;
-        if (msg.command === 'loadedJson') {
-            model = msg.payload;
-            migrateModel();
-            render();
+        switch (msg.command) {
+            case 'loadedJson':
+                model = msg.payload;
+                migrateModel();
+                render();
+                break;
+            case 'changedPrimitiveTypes':
+                primitiveTypes = msg.primitiveTypes;
+                render();
+                break;
+            default:
+                break;
         }
+
     });
 
     function migrateModel() {
@@ -122,7 +136,9 @@
         // build name lists
         const classNames = model.classes.map(c => c.name).filter(n => !!n);
         const classEntries = model.classes.map(c => ({ id: c.id, name: c.name }));
-        const primitives = ['int', 'string', 'bool', 'double', 'float', 'void', 'object'];
+        //const primitives = ['int', 'string', 'bool', 'double', 'float', 'void', 'object'];
+        const primitives = primitiveTypes;
+
         const typeOptionsAll = primitives.concat(classNames);
         const baseOptions = ['None'].concat(classNames);
 
