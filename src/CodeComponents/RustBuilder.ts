@@ -33,7 +33,7 @@ pub struct ${name} {`;
         if (Array.isArray(cls.attributes)) {
             for (const a of cls.attributes) {
                 const fieldName = snakeCase(safeIdentifier(a.name || 'unnamed'));
-                const ty = this.mapToRustType(a.type || '');
+                const ty = this.TypeModel.mapTypeForLang(a.type || '', 'rust').name;
                 const vis = (a.visibility === 'public') ? 'pub ' : '';
                 lines.push(`    ${vis}${fieldName}: ${ty},`);
             }
@@ -52,7 +52,7 @@ pub struct ${name} {`;
         const used = new Set<string>();
         const params = attrs.map(a => {
             const pName = snakeCase(this.makeParamName(a.name || 'param', used));
-            const ty = this.mapToRustType(a.type || '');
+            const ty = this.TypeModel.mapTypeForLang(a.type || '', 'rust').name;
             return { pName, ty, propName: snakeCase(safeIdentifier(a.name || 'unnamed')) };
         });
 
@@ -157,15 +157,15 @@ pub struct ${name} {`;
 
     private buildTraitMethodSignature(o: IOperationModel): string {
         const name = safeIdentifier(o.name || 'method');
-        const params = (Array.isArray(o.parameters) ? o.parameters.map(p => `${safeIdentifier(p.name || 'p')}: ${this.mapToRustType(p.type || '')}`).join(', ') : '');
-        const ret = (o.returnType && o.returnType !== 'void') ? `-> ${this.mapToRustType(o.returnType)}` : '';
+        const params = (Array.isArray(o.parameters) ? o.parameters.map(p => `${safeIdentifier(p.name || 'p')}: ${this.TypeModel.mapTypeForLang(p.type || '', 'rust').name}`).join(', ') : '');
+        const ret = (o.returnType && o.returnType !== 'void') ? `-> ${this.TypeModel.mapTypeForLang(o.returnType || '', 'rust').name}` : '';
         return `fn ${name}(${params}) ${ret}`.trim();
     }
 
     private buildMethod(o: IOperationModel, isStub: boolean = false): string[] {
         const name = safeIdentifier(o.name || 'method');
-        const params = (Array.isArray(o.parameters) ? o.parameters.map(p => `${safeIdentifier(p.name || 'p')}: ${this.mapToRustType(p.type || '')}`).join(', ') : '');
-        const ret = (o.returnType && o.returnType !== 'void') ? `-> ${this.mapToRustType(o.returnType)}` : '';
+        const params = (Array.isArray(o.parameters) ? o.parameters.map(p => `${safeIdentifier(p.name || 'p')}: ${this.TypeModel.mapTypeForLang(p.type || '', 'rust').name}`).join(', ') : '');
+        const ret = (o.returnType && o.returnType !== 'void') ? `-> ${this.TypeModel.mapTypeForLang(o.returnType || '', 'rust').name}` : '';
         const sig = `pub fn ${name}(&self${params ? ', ' + params : ''}) ${ret} {`;
         const body = o.returnType && o.returnType !== 'void' ? `unimplemented!()` : `// TODO`;
         return [sig, `        ${body}`, '    }'];

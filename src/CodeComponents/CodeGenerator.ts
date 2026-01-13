@@ -5,6 +5,7 @@ interface ILanguageTypeModel {
     typescript: string;
     java: string;
     cpp: string;
+    rust: string;
 }
 
 export interface IObjectModel {
@@ -351,14 +352,62 @@ export abstract class CodeBuilder implements ICodeBuilder {
 export class TypeModel {
     private _primitiveTypes: IPrimitiveTypeMap = {};
     constructor() {
-        this.addPrimitiveType('int', { csharp: 'int', typescript: 'number', java: 'int', cpp: 'int' });
-        this.addPrimitiveType('string', { csharp: 'string', typescript: 'string', java: 'String', cpp: 'std::string' });
-        this.addPrimitiveType('bool', { csharp: 'bool', typescript: 'boolean', java: 'boolean', cpp: 'bool' });
-        this.addPrimitiveType('float', { csharp: 'float', typescript: 'number', java: 'float', cpp: 'float' });
-        this.addPrimitiveType('double', { csharp: 'double', typescript: 'number', java: 'double', cpp: 'double' });
-        this.addPrimitiveType('void', { csharp: 'void', typescript: 'void', java: 'void', cpp: 'void' });
-        this.addPrimitiveType('char', { csharp: 'char', typescript: 'string', java: 'char', cpp: 'char' });
-        this.addPrimitiveType('object', { csharp: 'object', typescript: 'object', java: 'Object', cpp: 'auto' });
+        this.addPrimitiveType('int', {
+            csharp: 'int',
+            typescript: 'number',
+            java: 'int',
+            cpp: 'int',
+            rust: 'i32'
+        });
+        this.addPrimitiveType('string', {
+            csharp: 'string',
+            typescript: 'string',
+            java: 'String',
+            cpp: 'std::string',
+            rust: 'String'
+        });
+        this.addPrimitiveType('bool', {
+            csharp: 'bool',
+            typescript: 'boolean',
+            java: 'boolean',
+            cpp: 'bool',
+            rust: 'bool'
+        });
+        this.addPrimitiveType('float', {
+            csharp: 'float',
+            typescript: 'number',
+            java: 'float',
+            cpp: 'float',
+            rust: 'f32'
+        });
+        this.addPrimitiveType('double', {
+            csharp: 'double',
+            typescript: 'number',
+            java: 'double',
+            cpp: 'double',
+            rust: 'f64'
+        });
+        this.addPrimitiveType('void', {
+            csharp: 'void',
+            typescript: 'void',
+            java: 'void',
+            cpp: 'void',
+            rust: '()'
+        });
+        this.addPrimitiveType('char', {
+            csharp: 'char',
+            typescript: 'string',
+            java: 'char',
+            cpp: 'char',
+            rust: 'String'
+        });
+        this.addPrimitiveType('object', {
+            csharp: 'object',
+            typescript: 'object',
+            java: 'Object',
+            cpp: 'auto',
+            rust: '()'
+        });
 
     }
     addPrimitiveType(primitiveName: string, typeModel: ILanguageTypeModel) {
