@@ -8,10 +8,14 @@ import { JavaBuilder } from './CodeComponents/JavaBuilder';
 import { TypeScriptBuilder } from './CodeComponents/TypeScriptBuilder';
 import { CSharpBuilder } from './CodeComponents/CSharpBuilder';
 import { RustBuilder } from './CodeComponents/RustBuilder';
+import { Logger } from './LoggerComponents/Logger';
+
 export function activate(context: vscode.ExtensionContext) {
   const tm: TypeModel = new TypeModel();
+  let logger = new Logger(vscode.window.createOutputChannel("Class Diagram Editor Log"));
   context.subscriptions.push(
     vscode.commands.registerCommand('classDiagram.open', () => {
+
       const panel = vscode.window.createWebviewPanel(
         'classDiagram',
         'Class Diagram Editor',
@@ -99,7 +103,7 @@ export function activate(context: vscode.ExtensionContext) {
               const outFolder = folderUris[0];
               try {
                 //await generateCSharpFiles(msg.payload, outFolder);
-                await generateCodeFiles(model, tm, outFolder, language);
+                await generateCodeFiles(model, tm, logger, outFolder, language);
                 vscode.window.showInformationMessage(`${language.toUpperCase()} files generated`);
               } catch (e: any) {
                 vscode.window.showErrorMessage('Generate failed: ' + e.message);
@@ -113,40 +117,43 @@ export function activate(context: vscode.ExtensionContext) {
       panel.webview.postMessage({ command: 'changedPrimitiveTypes', primitiveTypes: ptypes });
     })
   );
+  context.subscriptions.push(logger);
 }
 
-export function deactivate() { }
+export function deactivate() {
+
+}
 
 // -------------------- Utilities --------------------
-async function generateCodeFiles(model: IObjectModel, typeModel: TypeModel, outFolder: vscode.Uri, language: string) {
+async function generateCodeFiles(model: IObjectModel, typeModel: TypeModel, logger: Logger, outFolder: vscode.Uri, language: string) {
   if (!model || !Array.isArray(model.classes)) throw new Error('Invalid model');
 
 
   // dispatch to language-specific generator
   switch ((language || 'csharp').toLowerCase()) {
     case 'csharp':
-      const csharpBuilder = new CSharpBuilder(model, typeModel);
+      const csharpBuilder = new CSharpBuilder(model, typeModel, logger);
       const csharpGen = new CodeGenerator(csharpBuilder);
 
       await csharpGen.generate(outFolder, model);
       break;
     case 'typescript':
-      const typescriptBuilder = new TypeScriptBuilder(model, typeModel);
+      const typescriptBuilder = new TypeScriptBuilder(model, typeModel, logger);
       const typescriptGen = new CodeGenerator(typescriptBuilder);
       await typescriptGen.generate(outFolder, model);
       break;
     case 'java':
-      const javaBuilder = new JavaBuilder(model, typeModel);
+      const javaBuilder = new JavaBuilder(model, typeModel, logger);
       const javaGen = new CodeGenerator(javaBuilder);
       await javaGen.generate(outFolder, model);
       break;
     case 'cpp':
-      const cppBuilder = new CppBuilder(model, typeModel);
+      const cppBuilder = new CppBuilder(model, typeModel, logger);
       const cppGen = new CodeGenerator(cppBuilder);
       await cppGen.generate(outFolder, model);
       break;
     case 'rust':
-      const rustBuilder = new RustBuilder(model, typeModel);
+      const rustBuilder = new RustBuilder(model, typeModel, logger);
       const rustGen = new CodeGenerator(rustBuilder);
       await rustGen.generate(outFolder, model);
       break;

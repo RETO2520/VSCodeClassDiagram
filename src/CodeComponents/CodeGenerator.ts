@@ -1,5 +1,6 @@
 import console = require('node:console');
 import * as vscode from 'vscode';
+import { Logger } from '../LoggerComponents/Logger';
 interface ILanguageTypeModel {
     csharp: string;
     typescript: string;
@@ -191,9 +192,11 @@ export abstract class CodeBuilder implements ICodeBuilder {
     protected ObjectModel: IObjectModel;
     protected ClassMaps: { nameToClass: Record<string, IClassModel>, idToClass: Record<string, IClassModel> };
     protected AllClassNames: Set<string>;
-    constructor(model: IObjectModel, typeModel: TypeModel) {
+    protected logger: Logger | null;
+    constructor(model: IObjectModel, typeModel: TypeModel, logger: Logger | null = null) {
         this.ObjectModel = model;
         this.TypeModel = typeModel;
+        this.logger = logger;
         this.ClassMaps = buildClassMaps(model);
         this.AllClassNames = new Set(Object.keys(this.ClassMaps.nameToClass));
     }
@@ -312,13 +315,13 @@ export abstract class CodeBuilder implements ICodeBuilder {
 
         const isPrivateAndVirtual = (member.visibility === 'private' && modVal.includes('virtual'));
         if (isPrivateAndVirtual) {
-            console.warn(`Warning: member ${member.name} is private and virtual; skipping.`);
+            this.logger?.warn(`Warning: member ${member.name} is private and virtual; skipping.`);
             return true;
         }
 
         const isPrivateAndAbstract = (member.visibility === 'private' && modVal.includes('abstract'));
         if (isPrivateAndAbstract) {
-            console.warn(`Warning: member ${member.name} is private and abstract; skipping.`);
+            this.logger?.warn(`Warning: member ${member.name} is private and abstract; skipping.`);
             return true;
         }
         return false;
@@ -329,7 +332,7 @@ export abstract class CodeBuilder implements ICodeBuilder {
     protected isPrivateMemberInAbstractClass(member: IAttributeModel | IOperationModel, cls: IClassModel): boolean {
         if (!member || !cls) return false;
         if (cls.isAbstract && member.visibility === 'private') {
-            console.warn(`Warning: member ${member.name} is private in abstract class ${cls.name}; skipping.`);
+            this.logger?.warn(`Warning: member ${member.name} is private in abstract class ${cls.name}; skipping.`);
             return true;
         }
         return false;
@@ -340,7 +343,7 @@ export abstract class CodeBuilder implements ICodeBuilder {
         if (!member || !cls) return false;
         const modVal = (member.modifier || 'None').toLowerCase();
         if (!cls.isAbstract && modVal.includes('abstract')) {
-            console.warn(`Warning: member ${member.name} is abstract in concrete class ${cls.name}; skipping.`);
+            this.logger?.warn(`Warning: member ${member.name} is abstract in concrete class ${cls.name}; skipping.`);
             return true;
         }
         return false;
