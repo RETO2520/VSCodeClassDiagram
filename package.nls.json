@@ -1,0 +1,5 @@
+{
+    "package.displayName": "クラス図エディター",
+    "package.description": "シンプルなクラス図エディター",
+    "contributes.commands.title": "クラス図エディターを開く"
+}

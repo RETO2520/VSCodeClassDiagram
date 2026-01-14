@@ -1,0 +1,5 @@
+{
+    "package.displayName": "Class Diagram Editor",
+    "package.description": "Simple class diagram editor",
+    "contributes.commands.title": "Open Class Diagram Editor"
+}

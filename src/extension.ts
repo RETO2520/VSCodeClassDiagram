@@ -157,16 +157,16 @@ async function generateCodeFiles(model: IObjectModel, typeModel: TypeModel, outF
 
 // -------------------- Webview HTML --------------------
 function getHtmlForWebviewFromFile(webview: vscode.Webview, extensionUri: vscode.Uri): string {
-  const mediaPath = (p: string) => vscode.Uri.joinPath(extensionUri, 'src', 'media', p);
+  const mediaPath = (p: string) => vscode.Uri.joinPath(extensionUri, 'media', p);
 
   // HTML を外部ファイルから読み込む（src/media/index.html）
-  const htmlPath = path.join(extensionUri.fsPath, 'src', 'media', 'index.html');
+  const htmlPath = path.join(extensionUri.fsPath, 'media', 'index.html');
   let html = fs.readFileSync(htmlPath, 'utf8');
 
   const styleUri = webview.asWebviewUri(mediaPath('style.css'));
   const mainUri = webview.asWebviewUri(mediaPath('main.js'));
   // Webview 用の base を注入して相対パスでの資源解決を有効化
-  const mediaUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'src', 'media')).toString();
+  const mediaUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media')).toString();
   html = html.replace(/<head>/i, `<head><base href="${mediaUri}/">`);
   const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource};">`;
 
