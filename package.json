@@ -22,6 +22,7 @@
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.1",
+    "license-checker-rseidelsohn": "^4.4.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
@@ -34,8 +35,13 @@
     ]
   },
   "keywords": [],
-  "author": "shunichi",
-  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RETO2520/VSCodeClassDiagram.git"
+  },
+  "author": "RETO2520",
+  "license": "MIT",
   "type": "commonjs",
-  "publisher": "reto"
+  "publisher": "reto",
+  "pricing": "Free"
 }
