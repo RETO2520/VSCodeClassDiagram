@@ -33,7 +33,8 @@
 - Q: ソースコードからクラス図は変換できますか？
     - A: 現状、出来ません。
 - Q: `Generate`ボタンで部分的にコードが生成されません。
-    - A: 生成する言語によってはメンバがスキップされます。詳しくは各言語ビルダーの`generateAttributes`メソッド、`generateOperations`メソッドを見てください。
+    - A: 生成する言語によってはメンバがスキップされます。`Output`パネルの`Class Diagram Editor Log`にてスキップされたものは出力されます。
+
 
 **貢献**
 - バグ報告・機能要望はリポジトリの Issues にお願いします: https://github.com/RETO2520/VSCodeClassDiagram/issues
