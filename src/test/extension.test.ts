@@ -1,4 +1,4 @@
-import * as assert from 'assert';
+//import * as assert from 'assert';
 
 /*
  * You can import and use all API from the 'vscode' module
@@ -14,11 +14,13 @@ import { CppBuilder } from '../CodeComponents/CppBuilder';
 import * as os from 'os';
 import * as path from 'path';
 import type { IObjectModel, IClassModel } from '../CodeComponents/CodeGenerator';
+import assert from 'assert';
 suite('Extension Test Suite', () => {
     vscode.window.showInformationMessage('Start all tests.');
 
     test('Sample test', () => {
         console.log('Sample test');
+
         assert.strictEqual(-1, [1, 2, 3].indexOf(5));
         assert.strictEqual(-1, [1, 2, 3].indexOf(0));
     });

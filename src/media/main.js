@@ -257,7 +257,9 @@
             // attributes
             const attrsDiv = document.createElement('div'); const attrsHeader = document.createElement('div');
             attrsHeader.innerText = 'Attributes';
-            //attrsHeader.style.color = 'black';
+            attrsHeader.className = 'row mini';
+            const addAttrBtn = document.createElement('button'); addAttrBtn.innerText = '+Attr'; addAttrBtn.className = 'mini'; addAttrBtn.addEventListener('click', () => { cls.attributes.push({ name: 'field', type: 'int', visibility: 'private', modifier: 'None' }); render(); });
+            attrsHeader.appendChild(addAttrBtn);
             attrsDiv.appendChild(attrsHeader);
             for (let i = 0; i < cls.attributes.length; i++) {
                 const a = cls.attributes[i];
@@ -281,14 +283,18 @@
                 row.appendChild(nameIn); row.appendChild(typeIn); row.appendChild(vis); row.appendChild(mod); row.appendChild(rem);
                 attrsDiv.appendChild(row);
             }
-            const addAttrBtn = document.createElement('button'); addAttrBtn.innerText = '+Attr'; addAttrBtn.className = 'mini'; addAttrBtn.addEventListener('click', () => { cls.attributes.push({ name: 'field', type: 'int', visibility: 'private', modifier: 'None' }); render(); });
-            attrsDiv.appendChild(addAttrBtn); section.appendChild(attrsDiv);
+
+            section.appendChild(attrsDiv);
 
             // operations
             const opsDiv = document.createElement('div');
+
             const opsHeader = document.createElement('div');
             opsHeader.innerText = 'Operations';
+            opsHeader.className = 'row mini';
+            const addOpBtn = document.createElement('button'); addOpBtn.innerText = '+Op'; addOpBtn.className = 'mini'; addOpBtn.addEventListener('click', () => { cls.operations.push({ name: 'Op', returnType: 'void', visibility: 'private', modifier: 'None', parameters: [] }); render(); });
             //opsHeader.style.color = 'black';
+            opsHeader.appendChild(addOpBtn);
             opsDiv.appendChild(opsHeader);
             for (let i = 0; i < cls.operations.length; i++) {
                 const o = cls.operations[i];
@@ -313,12 +319,14 @@
                     const prem = document.createElement('button'); prem.className = 'removeBtn'; prem.innerText = 'x'; prem.addEventListener('click', () => { o.parameters.splice(p, 1); render(); });
                     pRow.appendChild(pn); pRow.appendChild(pt); pRow.appendChild(prem); paramsDiv.appendChild(pRow);
                 }
-                const addParamBtn = document.createElement('button'); addParamBtn.innerText = '+Param'; addParamBtn.className = 'mini'; addParamBtn.addEventListener('click', () => { if (!o.parameters) o.parameters = []; o.parameters.push({ name: 'p', type: 'int' }); render(); });
+                const addParamBtn = document.createElement('button'); addParamBtn.innerText = '+Param'; addParamBtn.className = 'row mini'; addParamBtn.addEventListener('click', () => { if (!o.parameters) o.parameters = []; o.parameters.push({ name: 'p', type: 'int' }); render(); });
                 paramsDiv.appendChild(addParamBtn);
-                opsDiv.appendChild(row); opsDiv.appendChild(paramsDiv);
+                opsDiv.appendChild(row);
+                opsDiv.appendChild(paramsDiv);
             }
-            const addOpBtn = document.createElement('button'); addOpBtn.innerText = '+Op'; addOpBtn.className = 'mini'; addOpBtn.addEventListener('click', () => { cls.operations.push({ name: 'Op', returnType: 'void', visibility: 'private', modifier: 'None', parameters: [] }); render(); });
-            opsDiv.appendChild(addOpBtn); section.appendChild(opsDiv);
+
+            //opsDiv.appendChild(addOpBtn);
+            section.appendChild(opsDiv);
 
             el.appendChild(section); canvas.appendChild(el);
 
