@@ -549,61 +549,41 @@
             }
             path.setAttribute('fill', 'none');
 
-            // style by type
-            // if (r.type === 'Inheritance') {
-            //     path.setAttribute('stroke', 'black');
-            //     path.setAttribute('stroke-width', '1.5');
-            //     path.setAttribute('marker-end', 'url(#tri)');
-            //     path.setAttribute('stroke-dasharray', ''); // solid
-            // } else if (r.type === 'Interface') {
-            //     path.setAttribute('stroke', 'black');
-            //     path.setAttribute('stroke-width', '1.2');
-            //     path.setAttribute('marker-end', 'url(#tri)');
-            //     path.setAttribute('stroke-dasharray', '6 4'); // dashed
-            // } else if (r.type === 'Association') {
-            //     path.setAttribute('stroke', 'black');
-            //     path.setAttribute('stroke-width', '1');
-            //     path.setAttribute('marker-end', 'url(#arrow)');
-            // } else { // Dependency or others
-            //     path.setAttribute('stroke', 'gray');
-            //     path.setAttribute('stroke-width', '1');
-            //     path.setAttribute('stroke-dasharray', '4 3');
-            // }
-
+            path.style.stroke = 'var(--vscode-foreground)';
             if (r.type === 'Composition') {
-                path.setAttribute('stroke', 'black');
+                //path.setAttribute('stroke', 'black');
                 path.setAttribute('stroke-width', '1.2');
                 // diamond at whole side -> we treat the declaring class as "from", so diamond at start
                 path.setAttribute('marker-start', 'url(#diamondFilledStart)');
                 path.setAttribute('stroke-dasharray', ''); // solid
             } else if (r.type === 'Aggregation') {
-                path.setAttribute('stroke', 'black');
+                //path.setAttribute('stroke', 'black');
                 path.setAttribute('stroke-width', '1.2');
                 path.setAttribute('marker-start', 'url(#diamondHollowStart)');
                 path.setAttribute('stroke-dasharray', ''); // solid
             } else if (r.type === 'Association') {
-                path.setAttribute('stroke', 'black');
+                //path.setAttribute('stroke', 'black');
                 path.setAttribute('stroke-width', '1');
                 path.setAttribute('marker-end', 'url(#arrow)');
                 path.setAttribute('stroke-dasharray', ''); // solid
             } else if (r.type === 'Dependency') {
-                path.setAttribute('stroke', 'gray');
+                //path.setAttribute('stroke', 'gray');
                 path.setAttribute('stroke-width', '1');
                 path.setAttribute('marker-end', 'url(#arrow)');
                 path.setAttribute('stroke-dasharray', '4 3'); // dashed
             } else if (r.type === 'Inheritance') {
-                path.setAttribute('stroke', 'black');
+                //path.setAttribute('stroke', 'black');
                 path.setAttribute('stroke-width', '1.5');
                 path.setAttribute('marker-end', 'url(#tri)');
                 path.setAttribute('stroke-dasharray', ''); // solid
             } else if (r.type === 'Interface') {
-                path.setAttribute('stroke', 'black');
+                //path.setAttribute('stroke', 'black');
                 path.setAttribute('stroke-width', '1.2');
                 path.setAttribute('marker-end', 'url(#tri)');
                 path.setAttribute('stroke-dasharray', '6 4'); // dashed
             } else {
                 // fallback
-                path.setAttribute('stroke', 'black');
+                //path.setAttribute('stroke', 'black');
                 path.setAttribute('stroke-width', '1');
             }
 
@@ -625,13 +605,11 @@
         popup.className = 'interfaces-popup';
         popup.setAttribute('role', 'dialog');
         popup.innerHTML = '<div class="ip-title">Select Interfaces</div>';
-        popup.style.color = 'black';
         const list = document.createElement('div');
         list.className = 'ip-list';
 
         if (candidates.length === 0) {
             const note = document.createElement('div'); note.className = 'ip-note'; note.innerText = 'No interface classes available.';
-            note.style.color = 'black';
             list.appendChild(note);
         } else {
             for (const c of candidates) {

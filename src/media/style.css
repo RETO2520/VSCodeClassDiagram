@@ -139,7 +139,8 @@ input[type=text] {
     width: 240px;
     max-height: 280px;
     overflow: auto;
-    background: #fff;
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-foreground);
     border: 1px solid #ccc;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
     padding: 8px;
@@ -164,7 +165,7 @@ input[type=text] {
 }
 
 .interfaces-popup .ip-note {
-    color: #666;
+    /* color: #666; */
     font-size: 13px;
     padding: 6px;
 }
