@@ -1,5 +1,6 @@
 {
-    "package.displayName": "クラス図エディター",
-    "package.description": "シンプルなクラス図エディター",
-    "contributes.commands.title": "クラス図エディターを開く"
+    "package.displayName": "クラス図エディタ",
+    "package.description": "シンプルなクラス図エディタ",
+    "contributes.commands.classdiagram.title": "クラス図エディタを開く",
+    "contributes.commands.workflow.title": "ワークフローエディタを開く"
 }

@@ -1,5 +1,6 @@
 {
     "package.displayName": "Class Diagram Editor",
     "package.description": "Simple class diagram editor",
-    "contributes.commands.title": "Open Class Diagram Editor"
+    "contributes.commands.classdiagram.title": "Open Class Diagram Editor",
+    "contributes.commands.workflow.title": "Open Workflow Editor"
 }

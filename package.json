@@ -4,7 +4,7 @@
   "description": "%package.description%",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.107.0"
+    "vscode": "^1.104.0"
   },
   "activationEvents": [],
   "main": "./out/extension.js",
@@ -14,23 +14,40 @@
     "build": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "test:js": "node src/test/js/main.test.js",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "lint": "eslint . --ext .ts,.tsx"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.3",
+    "@eslint/js": "^9.39.2",
+    "@stylistic/eslint-plugin": "^5.7.0",
     "@types/node": "^25.0.3",
-    "@types/vscode": "^1.107.0",
+    "@types/vscode": "^1.104.0",
+    "@typescript-eslint/eslint-plugin": "^8.53.0",
+    "@typescript-eslint/parser": "^8.53.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.1",
+    "eslint": "^9.39.2",
+    "globals": "^17.0.0",
     "license-checker-rseidelsohn": "^4.4.2",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.53.0"
   },
   "contributes": {
     "commands": [
       {
         "command": "classDiagram.open",
-        "title": "%contributes.commands.title%"
+        "title": "%contributes.commands.classdiagram.title%",
+        "category": "class diagram",
+        "shortTitle": "open class diagram"
+      },
+      {
+        "command": "workflowDiagram.open",
+        "title": "%contributes.commands.workflow.title%",
+        "category": "class diagram",
+        "shortTitle": "open workflow"
       }
     ]
   },

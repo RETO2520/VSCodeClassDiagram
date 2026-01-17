@@ -40,7 +40,30 @@ export interface IOperationModel {
     visibility: string;
     modifier: string;
     parameters: IParameterModel[];
+    workflow: IWorkflowModel;
 }
+
+export interface IWorkflowModel {
+    nodes: IWorkflowNode[];
+    edges: IWorkflowEdge[];
+}
+
+export interface IWorkflowNode {
+    id: string;
+    // start, end, process, decision, loop, call
+    type: string;
+    label: string;
+    x: number;
+    y: number;
+}
+
+export interface IWorkflowEdge {
+    from: string;
+    to: string;
+    condition: boolean;
+}
+
+
 export interface IParameterModel {
     name: string;
     type: string;

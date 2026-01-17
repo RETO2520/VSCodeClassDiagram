@@ -1,0 +1,180 @@
+:root {
+    --bg: #1e1e1e;
+    --toolbar-bg: #252526;
+    --node-fill: #2d2d30;
+    --stroke: #9da5b4;
+    --text: #e5e5e5;
+    --edge: #9da5b4;
+    --handle-fill: #6aa0ff;
+    --edge-handle-fill: #ffd166;
+    --edge-handle-stroke: #ffb84d;
+    --input-padding-vertical: 6px;
+    --input-padding-horizontal: 4px;
+}
+
+html,
+body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: Segoe UI, Roboto, sans-serif;
+    color: var(--text);
+    background: var(--vscode-editor-background);
+}
+
+button:hover {
+    cursor: pointer;
+    background: var(--vscode-button-hoverBackground);
+}
+
+button:focus {
+    outline-color: var(--vscode-focusBorder);
+}
+
+#toolbar {
+    height: 44px;
+    background: var(--vscode-editor-background);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid #111;
+}
+
+#toolbar button,
+#toolbar select {
+    background: #333;
+    color: var(--vscode-button-foreground);
+    background: var(--vscode-button-background);
+    border: 1px solid #444;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+#createButtons {
+    margin-left: 12px;
+    display: flex;
+    gap: 6px;
+}
+
+#createButtons .createBtn {
+    padding: var(--input-padding-vertical) var(--input-padding-horizontal);
+    font-size: 13px;
+    color: var(--vscode-button-foreground);
+    background: var(--vscode-button-background);
+}
+
+#canvasWrapper {
+    width: 100%;
+    height: calc(100vh - 44px);
+    overflow: hidden;
+    position: relative;
+}
+
+#canvas {
+    width: 100%;
+    height: 100%;
+    background: var(--vscode-editor-background);
+    touch-action: none;
+    user-select: none;
+}
+
+.node rect,
+.node ellipse,
+.node polygon {
+    fill: var(--node-fill);
+    stroke: var(--stroke);
+    stroke-width: 1.5;
+}
+
+.node text {
+    fill: var(--text);
+    font-size: 12px;
+    pointer-events: none;
+    font-weight: 500;
+}
+
+.edge {
+    stroke: var(--edge);
+    stroke-width: 1.4;
+    fill: none;
+    marker-end: url(#arrow);
+    cursor: context-menu;
+}
+
+.edge-label {
+    fill: var(--text);
+    color: var(--vscode-button-foreground);
+    background: var(--vscode-button-background);
+    font-size: 11px;
+    pointer-events: none;
+}
+
+.node:hover {
+    cursor: grab;
+}
+
+.node:active {
+    cursor: grabbing;
+}
+
+/* handle */
+.handle {
+    fill: var(--handle-fill);
+    stroke: #2b6fb8;
+    stroke-width: 1;
+    cursor: crosshair;
+}
+
+/* edge handle (midpoint draggable) */
+.edge-handle {
+    fill: var(--edge-handle-fill);
+    stroke: var(--edge-handle-stroke);
+    stroke-width: 1.25;
+    cursor: move;
+    r: 6px;
+}
+
+/* context menu */
+#contextMenu,
+#edgeContextMenu {
+    position: fixed;
+    background: #1b1b1b;
+    border: 1px solid #333;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+    z-index: 9999;
+    min-width: 160px;
+    color: var(--text);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+#contextMenu .menuItem,
+#edgeContextMenu .menuItem {
+    padding: 8px 10px;
+    border-bottom: 1px solid #151515;
+    cursor: pointer;
+}
+
+#contextMenu .menuItem:hover,
+#edgeContextMenu .menuItem:hover {
+    background: #2a2a2a;
+}
+
+#contextMenu.hidden,
+#edgeContextMenu.hidden {
+    display: none;
+}
+
+/* inline editor */
+.inline-input {
+    position: fixed;
+    z-index: 10000;
+    background: #272727;
+    color: var(--text);
+    border: 1px solid #444;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+}

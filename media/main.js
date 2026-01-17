@@ -1,7 +1,7 @@
 
 
 (function () {
-    const vscode = acquireVsCodeApi();
+    const vscode = acquireVsCodeApi();// eslint-disable-line no-undef
 
     let model = { classes: [] };
     let editingNameId = null, editingDraft = '';
@@ -43,7 +43,9 @@
         vscode.postMessage({ command: 'generateCode', payload: { model: exportModel, language: lang } });
 
     });
-
+    vscode.postMessage?.({
+        command: 'requestWorkspaceDiagram'
+    });
     window.addEventListener('message', event => {
         const msg = event.data;
         switch (msg.command) {
@@ -140,7 +142,7 @@
         const primitives = primitiveTypes;
 
         const typeOptionsAll = primitives.concat(classNames);
-        const baseOptions = ['None'].concat(classNames);
+        //const baseOptions = ['None'].concat(classNames);
 
         for (const cls of model.classes) {
             const el = document.createElement('div');
@@ -337,7 +339,12 @@
                 if (editingNameId === cls.id) return;
                 const tgt = ev.target;
                 if (tgt.closest && (tgt.closest('input') || tgt.closest('select') || tgt.closest('button') || tgt.closest('.nameText'))) return;
-                isDragging = true; startX = ev.clientX; startY = ev.clientY; origX = cls.x; origY = cls.y; try { namebarEl.setPointerCapture(ev.pointerId); } catch { }
+                isDragging = true; startX = ev.clientX; startY = ev.clientY; origX = cls.x; origY = cls.y;
+                try {
+                    namebarEl.setPointerCapture(ev.pointerId);
+                } catch (e) {
+                    console.log(e);
+                }
             });
             window.addEventListener('pointermove', (ev) => {
                 if (!isDragging) return;

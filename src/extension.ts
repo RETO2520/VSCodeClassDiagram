@@ -12,7 +12,7 @@ import { Logger } from './LoggerComponents/Logger';
 
 export function activate(context: vscode.ExtensionContext) {
   const tm: TypeModel = new TypeModel();
-  let logger = new Logger(vscode.window.createOutputChannel("Class Diagram Editor Log"));
+  const logger = new Logger(vscode.window.createOutputChannel("Class Diagram Editor Log"));
   context.subscriptions.push(
     vscode.commands.registerCommand('classDiagram.open', () => {
 
@@ -32,9 +32,29 @@ export function activate(context: vscode.ExtensionContext) {
       panel.webview.onDidReceiveMessage(async (msg) => {
 
         switch (msg.command) {
+          case "requestWorkspaceDiagram": {
+            // ワークスペースに diagram.json があれば優先して返す
+            const files = await vscode.workspace.findFiles("**/diagram.json", "**/node_modules/**", 1);
+            if (files.length > 0) {
+              const uri = files[0];
+              const contentBytes = await vscode.workspace.fs.readFile(uri);
+              const json = new TextDecoder('utf8').decode(contentBytes);
+              const obj = JSON.parse(json);
+              panel.webview.postMessage({
+                command: "loadedJson",
+                payload: obj
+              });
+            }
+            break;
+          }
           case 'changedPrimitiveTypes':
-            const ptypes = tm.getTypesForLang(msg.language);
-            panel.webview.postMessage({ command: 'changedPrimitiveTypes', primitiveTypes: ptypes });
+            {
+              const ptypes = tm.getTypesForLang(msg.language);
+              panel.webview.postMessage({
+                command: 'changedPrimitiveTypes',
+                primitiveTypes: ptypes
+              });
+            }
             break;
           case 'showAlert':
             {
@@ -56,7 +76,9 @@ export function activate(context: vscode.ExtensionContext) {
               }
 
               const uri = await vscode.window.showSaveDialog({
-                filters: { 'JSON': ['json'] },
+                filters: {
+                  'JSON': ['json']
+                },
                 defaultUri: defaultUri
               });
 
@@ -78,7 +100,9 @@ export function activate(context: vscode.ExtensionContext) {
               }
               const uris = await vscode.window.showOpenDialog({
                 canSelectFiles: true,
-                filters: { 'JSON': ['json'] },
+                filters: {
+                  'JSON': ['json']
+                },
                 defaultUri: defaultUri
               });
               if (!uris || uris.length === 0) return;
@@ -86,27 +110,37 @@ export function activate(context: vscode.ExtensionContext) {
               const json = new TextDecoder('utf8').decode(bytes);
               try {
                 const obj = JSON.parse(json);
-                panel.webview.postMessage({ command: 'loadedJson', payload: obj });
+                panel.webview.postMessage({
+                  command: 'loadedJson',
+                  payload: obj
+                });
                 vscode.window.showInformationMessage('Loaded diagram JSON');
               } catch (e) {
-                vscode.window.showErrorMessage('Invalid JSON');
+                vscode.window.showErrorMessage(`Invalid JSON ${e}`);
               }
             }
             break;
           case 'generateCode':
             {
-              const payload = msg.payload || {};
+              const payload = msg.payload || {
+              };
               const model = payload.model || payload; // backward compat
               const language = payload.language || 'csharp';
-              const folderUris = await vscode.window.showOpenDialog({ canSelectFolders: true, openLabel: 'Select output folder' });
+              const folderUris = await vscode.window.showOpenDialog({
+                canSelectFolders: true,
+                openLabel: 'Select output folder'
+              });
               if (!folderUris || folderUris.length === 0) return;
               const outFolder = folderUris[0];
               try {
                 //await generateCSharpFiles(msg.payload, outFolder);
                 await generateCodeFiles(model, tm, logger, outFolder, language);
                 vscode.window.showInformationMessage(`${language.toUpperCase()} files generated`);
-              } catch (e: any) {
-                vscode.window.showErrorMessage('Generate failed: ' + e.message);
+              } catch (e: unknown) {
+                if (e instanceof Error) {
+                  vscode.window.showErrorMessage('Generate failed: ' + e.message);
+                }
+
               }
             }
             break;
@@ -114,7 +148,152 @@ export function activate(context: vscode.ExtensionContext) {
       }, undefined, context.subscriptions);
 
       const ptypes = tm.getTypesForLang('csharp');
-      panel.webview.postMessage({ command: 'changedPrimitiveTypes', primitiveTypes: ptypes });
+      panel.webview.postMessage({
+        command: 'changedPrimitiveTypes',
+        primitiveTypes: ptypes
+      });
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('workflowDiagram.open', () => {
+      const panel = vscode.window.createWebviewPanel(
+        "workflow",
+        "Workflow Diagram",
+        vscode.ViewColumn.One,
+        {
+          enableScripts: true,
+          retainContextWhenHidden: true
+        }
+      );
+
+      const mediaPath = path.join(context.extensionPath, "media.workflow");
+      const indexPath = path.join(mediaPath, "index.html");
+      let html = fs.readFileSync(indexPath, {
+        encoding: "utf8"
+      });
+
+      const styleUri = panel.webview.asWebviewUri(
+        vscode.Uri.file(path.join(mediaPath, "style.css"))
+      );
+
+      // base を注入して相対モジュール import を有効化
+      const baseUri = panel.webview.asWebviewUri(vscode.Uri.file(mediaPath)).toString();
+      html = html.replace(/<head>/i, `<head><base href="${baseUri}/">`);
+
+      // 脆弱性回避のために CSP をメタタグとして注入（スクリプトは webview.cspSource からのみ許可）
+      const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${panel.webview.cspSource} data:; style-src ${panel.webview.cspSource} 'unsafe-inline'; script-src ${panel.webview.cspSource};">`;
+
+      // webview.cspSource を挿入（安全なスキーム）
+      html = html.replace(/__STYLE_URI__/g, styleUri.toString());
+      //html = html.replace(/__SCRIPT_URI__/g, scriptUri.toString());
+      html = html.replace(/__CSP_SOURCE__/g, csp);
+      //html = html.replace(/__CSP_SOURCE__/g, panel.webview.cspSource);
+
+      panel.webview.html = html;
+
+      panel.webview.onDidReceiveMessage(async (msg) => {
+        try {
+          switch (msg.type) {
+            case "alart": {
+              vscode.window.showInformationMessage(msg.text);
+              break;
+            };
+
+            case "requestWorkspaceDiagram": {
+              // ワークスペースに diagram.json があれば優先して返す
+              const files = await vscode.workspace.findFiles("**/diagram.json", "**/node_modules/**", 1);
+              if (files.length > 0) {
+                const uri = files[0];
+                const contentBytes = await vscode.workspace.fs.readFile(uri);
+                const content = Buffer.from(contentBytes).toString("utf8");
+                panel.webview.postMessage({
+                  type: "fileLoaded",
+                  filePath: uri.fsPath,
+                  content
+                });
+              } else {
+                // ない場合は空構造を返す
+                panel.webview.postMessage({
+                  type: "fileLoaded",
+                  filePath: null,
+                  content: JSON.stringify({
+                    classes: []
+                  }, null, 2)
+                });
+              }
+              break;
+            }
+
+            case "openFile": {
+              // ユーザーに選択させて JSON を読み込み、返す
+              const uris = await vscode.window.showOpenDialog({
+                canSelectMany: false,
+                filters: {
+                  "JSON": ["json"]
+                },
+                openLabel: "Load JSON"
+              });
+              if (!uris || uris.length === 0) {
+                panel.webview.postMessage({
+                  type: "openCanceled"
+                });
+                break;
+              }
+              const uri = uris[0];
+              const bytes = await vscode.workspace.fs.readFile(uri);
+              const content = Buffer.from(bytes).toString("utf8");
+              panel.webview.postMessage({
+                type: "fileLoaded",
+                filePath: uri.fsPath,
+                content
+              });
+              break;
+            }
+
+            case "saveFile": {
+              // webview が渡す content を保存する（保存先をユーザーに選ばせる）
+              const defaultUri = (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0])
+                ? vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, "diagram.json")
+                : undefined;
+
+              const uri = await vscode.window.showSaveDialog({
+                defaultUri,
+                filters: {
+                  "JSON": ["json"]
+                },
+                saveLabel: "Save JSON"
+              });
+
+              if (!uri) {
+                panel.webview.postMessage({
+                  type: "saveCanceled"
+                });
+                break;
+              }
+
+              const contentStr: string = msg.content || "{}";
+              const enc = new TextEncoder();
+              await vscode.workspace.fs.writeFile(uri, enc.encode(contentStr));
+              panel.webview.postMessage({
+                type: "saveCompleted",
+                filePath: uri.fsPath
+              });
+              break;
+            }
+
+            default:
+              console.log("Unknown message from webview:", msg);
+          }
+        } catch (e: unknown) {
+          if (e instanceof Error) {
+            panel.webview.postMessage({
+              type: "error",
+              message: e.message
+            });
+          }
+
+        }
+      });
     })
   );
   context.subscriptions.push(logger);
@@ -132,30 +311,39 @@ async function generateCodeFiles(model: IObjectModel, typeModel: TypeModel, logg
   // dispatch to language-specific generator
   switch ((language || 'csharp').toLowerCase()) {
     case 'csharp':
-      const csharpBuilder = new CSharpBuilder(model, typeModel, logger);
-      const csharpGen = new CodeGenerator(csharpBuilder);
-
-      await csharpGen.generate(outFolder, model);
+      {
+        const csharpBuilder = new CSharpBuilder(model, typeModel, logger);
+        const csharpGen = new CodeGenerator(csharpBuilder);
+        await csharpGen.generate(outFolder, model);
+      }
       break;
     case 'typescript':
-      const typescriptBuilder = new TypeScriptBuilder(model, typeModel, logger);
-      const typescriptGen = new CodeGenerator(typescriptBuilder);
-      await typescriptGen.generate(outFolder, model);
+      {
+        const typescriptBuilder = new TypeScriptBuilder(model, typeModel, logger);
+        const typescriptGen = new CodeGenerator(typescriptBuilder);
+        await typescriptGen.generate(outFolder, model);
+      }
       break;
     case 'java':
-      const javaBuilder = new JavaBuilder(model, typeModel, logger);
-      const javaGen = new CodeGenerator(javaBuilder);
-      await javaGen.generate(outFolder, model);
+      {
+        const javaBuilder = new JavaBuilder(model, typeModel, logger);
+        const javaGen = new CodeGenerator(javaBuilder);
+        await javaGen.generate(outFolder, model);
+      }
       break;
     case 'cpp':
-      const cppBuilder = new CppBuilder(model, typeModel, logger);
-      const cppGen = new CodeGenerator(cppBuilder);
-      await cppGen.generate(outFolder, model);
+      {
+        const cppBuilder = new CppBuilder(model, typeModel, logger);
+        const cppGen = new CodeGenerator(cppBuilder);
+        await cppGen.generate(outFolder, model);
+      }
       break;
     case 'rust':
-      const rustBuilder = new RustBuilder(model, typeModel, logger);
-      const rustGen = new CodeGenerator(rustBuilder);
-      await rustGen.generate(outFolder, model);
+      {
+        const rustBuilder = new RustBuilder(model, typeModel, logger);
+        const rustGen = new CodeGenerator(rustBuilder);
+        await rustGen.generate(outFolder, model);
+      }
       break;
     default: throw new Error('Unsupported language: ' + language);
   }
@@ -183,3 +371,4 @@ function getHtmlForWebviewFromFile(webview: vscode.Webview, extensionUri: vscode
 
   return html;
 }
+

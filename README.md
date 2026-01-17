@@ -1,46 +1,80 @@
+# Class Diagram & Workflow Editor for VS Code
 
-# VSCode Class Diagram (クラス図エディタ)
+VS Code 内でクラス図やワークフロー図を作成し、それらに基づいて各種プログラミング言語のソースコード雛形を生成することができる拡張機能です。
 
-**概要**
-- **拡張機能**: VSCode 内でクラス図からソースコードの雛形を生成・表示するためのエディタです。
+## 主な機能
 
-**主な機能**
-- **クラス図からコードの雛形を生成**: プロジェクト内の言語別ビルダー（TypeScript/Java/C++/C#/Rustなど）に基づき、クラスや型の構造を図示します。
-- **簡易ビューワー**: 生成したクラス図を拡張パネルで確認できます。
+- **クラス図エディタ**:
+  - クラス、インターフェースの作成。
+  - 属性（フィールド）および操作（メソッド）の定義。
+  - 継承（Base Class）およびインターフェースの実装（Interfaces）の指定。
+  - 抽象クラス、抽象メソッド、仮想メソッドのサポート。
+- **ワークフロー図エディタ**:
+  - シンプルなワークフロー図を視覚的に作成可能。
+- **マルチ言語コード生成**:
+  - 作成したクラス図から以下の言語のコードを自動生成：
+    - **TypeScript**, **Java**, **C#**, **C++**, **Rust**
+- **JSONベースのデータ管理**:
+  - 図の情報を `diagram.json` として保存・読み込みが可能。プロジェクト間で図の共有が容易です。
 
-**使用方法**
-1. コマンドパレットを開く（`Ctrl+Shift+P` または `F1`）。
-2. `クラス図エディターを開く` を選択します。
-    - 設定(`Configure Display Language`)により、英語では`Open Class Diagram Editor`です。
-3. WebViewが開き、そこで操作ができます。
-    * `Add Class`ボタンでクラス図を生成できます。
-    * `Save Json`ボタンで現在のクラス図の情報をJsonで保存できます。
-    * `Load Json`ボタンで`Save Json`ボタンで保存されたJsonを読み込めます。
-    * `Generate`ボタンでツールバー上のドロップダウンリストで選択されている言語のコードを生成します。
+## 使用方法
 
-**コマンド**
-- `classDiagram.open`: クラス図エディタを開きます。
+### 1. エディタを起動する
+コマンドパレット（`Ctrl+Shift+P` または `F1`）を開き、以下のコマンドを実行します：
+- `Open Class Diagram Editor` (クラス図エディタを開く)
+- `Open Workflow Editor` (ワークフロー図エディタを開く)
 
-**設定**
-- 現在のところ追加のユーザー設定はありません。
+### 2. クラス図の作成とコード生成
+1. **Add Class**: ボタンをクリックして新しいクラスを図面に追加します。
+2. **詳細設定**: クラス名、メンバ、継承関係などを編集パネルで設定します。
+3. **Generate**: ツールバーで生成対象の言語を選択し、`Generate` ボタンを押します。出力先のフォルダを選択すると、ファイルが自動生成されます。
+   - ※ 生成されたコードの詳細は `Output` パネルの `Class Diagram Editor Log` で確認できます。
 
-**スクリーンショット / メディア**
-- サンプル表示やスタイルは `media/` フォルダ内のファイルで確認できます（例: [media/index.html](media/index.html)）。
+### 3. 図の保存と読み込み
+- **Save Json**: 現在の図の状態を JSON ファイルとして保存します。デフォルトではワークスペース直下の `diagram.json` に保存されます。
+- **Load Json**: 保存した JSON ファイルを読み込んで図を復元します。
 
-**よくある質問**
-- Q: サポートされる言語は？
-	- A: 現在はプロジェクト内の `CodeComponents` に実装された言語ビルダー（TypeScript, Java, C++, C#, Rust ）を使用します。個別言語のサポートは今後拡張可能です。
-- Q: ソースコードからクラス図は変換できますか？
-    - A: 現状、出来ません。
-- Q: `Generate`ボタンで部分的にコードが生成されません。
-    - A: 生成する言語によってはメンバがスキップされます。`Output`パネルの`Class Diagram Editor Log`にてスキップされたものは出力されます。
+## コマンド
 
+| コマンド ID | 説明 |
+| :--- | :--- |
+| `classDiagram.open` | クラス図エディタを新しいパネルで開きます。 |
+| `workflowDiagram.open` | ワークフロー図エディタを新しいパネルで開きます。 |
 
-**貢献**
-- バグ報告・機能要望はリポジトリの Issues にお願いします: https://github.com/RETO2520/VSCodeClassDiagram/issues
-- 開発者向けには `src/` 以下のソースを参照してください。
+## サポートされるデータ型
 
-**ライセンス**
-- この拡張はリポジトリの `MIT LICENSE` に従います。詳細は [MIT LICENSE](LICENSE) を参照してください。
+各言語に合わせて以下のプリミティブ型が自動的にマッピングされます：
 
----
+| クラス図上の型 | C# | TypeScript | Java | C++ | Rust |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `int` | `int` | `number` | `int` | `int` | `i32` |
+| `string` | `string` | `string` | `String` | `std::string` | `String` |
+| `bool` | `bool` | `boolean` | `boolean` | `bool` | `bool` |
+| `float` | `float` | `number` | `float` | `float` | `f32` |
+| `double` | `double` | `number` | `double` | `double` | `f64` |
+| `void` | `void` | `void` | `void` | `void` | `()` |
+| `char` | `char` | `string` | `char` | `char` | `String` |
+| `object` | `object` | `object` | `Object` | `auto` | `()` |
+
+## スクリーンショット / メインコンポーネント
+
+- エディタのUIスタイルやロジックは `media/` および `media.workflow/` フォルダ内の資材（HTML/CSS/JS）に基づいています。
+
+## FAQ
+
+- **Q: ソースコードからクラス図へ逆変換（リバースエンジニアリング）はできますか？**
+  - A: 現在、逆変換機能はサポートしておりません。
+- **Q: `Generate` ボタンで一部のメンバがスキップされます。**
+  - A: 言語仕様（例：private かつ abstract/virtual なメンバなど）により、適切でない組み合わせはログに出力された上でスキップされる場合があります。
+- **Q: C++ で `List<T>` を使うとどうなりますか？**
+  - A: `std::vector<T>` に変換されるように一部特殊なマッピングが実装されています。
+
+## 貢献・作者
+
+- **作者**: RETO2520
+- **リポジトリ**: [GitHub: VSCodeClassDiagram](https://github.com/RETO2520/VSCodeClassDiagram)
+- バグ報告や機能要望は GitHub の Issues までお寄せください。
+
+## ライセンス
+
+[MIT LICENSE](LICENSE)

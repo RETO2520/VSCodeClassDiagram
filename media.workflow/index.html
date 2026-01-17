@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+    <meta charset="utf-8" />
+    __CSP_SOURCE__
+    <!-- <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; img-src __CSP_SOURCE__ data:; style-src __CSP_SOURCE__ 'unsafe-inline'; script-src __CSP_SOURCE__;">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /> -->
+    <title>Workflow</title>
+
+    <link rel="stylesheet" href="__STYLE_URI__" />
+</head>
+
+<body>
+    <div id="toolbar">
+        <button id="btnLoad">Load JSON</button>
+        <button id="btnSave">Save JSON</button>
+
+        <label for="operationSelect">Operation:</label>
+        <select id="operationSelect"></select>
+        <div id="createButtons">
+            <button data-type="start" class="createBtn">New Start</button>
+            <button data-type="process" class="createBtn">New Process</button>
+            <button data-type="decision" class="createBtn">New Decision</button>
+            <button data-type="loop" class="createBtn">New Loop</button>
+            <button data-type="call" class="createBtn">New Call</button>
+            <button data-type="end" class="createBtn">New End</button>
+        </div>
+
+        <span id="filePath" style="margin-left:12px;color:#9da5b4;font-size:12px;"></span>
+    </div>
+
+    <div id="canvasWrapper">
+        <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <marker id="arrow" markerWidth="10" markerHeight="10" refX="10" refY="5" orient="auto"
+                    markerUnits="strokeWidth">
+                    <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+                </marker>
+            </defs>
+
+            <g id="edges"></g>
+            <g id="nodes"></g>
+        </svg>
+    </div>
+
+    <!-- コンテキストメニュー -->
+    <div id="contextMenu" class="hidden">
+        <div class="menuItem" data-type="start">Add Start</div>
+        <div class="menuItem" data-type="end">Add End</div>
+        <div class="menuItem" data-type="process">Add Process</div>
+        <div class="menuItem" data-type="decision">Add Decision</div>
+        <div class="menuItem" data-type="loop">Add Loop</div>
+        <div class="menuItem" data-type="call">Add Call</div>
+        <div class="menuItem" data-type="delete">Delete Node</div>
+    </div>
+    <div id="edgeContextMenu" class="hidden">
+        <div class="menuItem" data-type="deleteEdge">Delete Edge</div>
+    </div>
+    <!-- <script src="__SCRIPT_URI__"></script> -->
+    <script type="module" src="workflow.js"></script>
+</body>
+
+</html>
