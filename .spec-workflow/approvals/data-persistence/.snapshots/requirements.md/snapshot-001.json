@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1768796398411_3sives0pq",
+  "approvalId": "approval_1768796398385_7lrljnawg",
+  "approvalTitle": "Granular Requirements: Data Persistence (Template Compliant)",
+  "version": 1,
+  "timestamp": "2026-01-19T04:19:58.411Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# Requirements - Data Persistence\r\n\r\n## Introduction\r\n図面のバイナリ（状態）を永続化し、セッション間やプロジェクト間でのポータビリティを確保するデータ管理レイヤー。JSON 形式でのファイル保存とロードを担当します。\r\n\r\n## Alignment with Product Vision\r\n`product.md` で掲げた「プロジェクトとしての再利用性」を実現するための基盤です。一度設計したモデルをファイルとして保存し、チームで共有可能にします。\r\n\r\n## Requirements\r\n\r\n### Requirement 1: 図面の保存とロード\r\n**User Story:** 開発者として、編集した図面を `diagram.json` などのファイルに保存し、後で開き直したい。これにはクラス構造とワークフローロジックの両方が含まれる。\r\n\r\n#### Acceptance Criteria\r\n1. WHEN 「Save」ボタンをクリック THEN ファイル保存ダイアログ SHALL 表示され、JSON 形式で書き出される。\r\n2. WHEN 保存された JSON ファイルを選択してロード THEN キャンバス上のクラスと関係 SHALL 保存時の状態で完全に復元される。\r\n3. IF ロードされた JSON の形式が不正 THEN システム SHALL エラーを表示し、読み込みを中断する。\r\n\r\n### Requirement 2: モデルのマイグレーション\r\n**User Story:** 開発者として、拡張機能のバージョンアップによってデータ形式が変更されても、古いファイルを壊さずに読み込みたい。\r\n\r\n#### Acceptance Criteria\r\n1. IF ロード対象の JSON に ID が存在しない（名称ベース） THEN システム SHALL `cryptoRandomId` を自動付与して内部モデルに変換する。\r\n2. IF 必要なフィールド（`isAbstract` 等）が欠落している THEN デフォルト値 SHALL 適用される。\r\n\r\n## Non-Functional Requirements\r\n\r\n### Reliability\r\n- ファイル書き込みは `vscode.workspace.fs.writeFile` を使用し、VS Code の堅牢なファイルシステム API に依拠する。\r\n\r\n### Performance\r\n- 1MB 程度の JSON ファイル（数百クラス相当）のパースとロードが 1 秒以内に完了すること。\r\n",
+  "fileStats": {
+    "size": 2211,
+    "lines": 33,
+    "lastModified": "2026-01-19T04:19:41.181Z"
+  },
+  "comments": []
+}

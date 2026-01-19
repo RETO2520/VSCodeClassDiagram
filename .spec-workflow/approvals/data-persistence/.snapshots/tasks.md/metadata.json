@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/data-persistence/tasks.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-19T04:20:01.985Z",
+      "trigger": "initial",
+      "approvalId": "approval_1768796401954_dmbwalap5",
+      "approvalTitle": "Granular Tasks: Data Persistence (Template Compliant)"
+    }
+  ]
+}

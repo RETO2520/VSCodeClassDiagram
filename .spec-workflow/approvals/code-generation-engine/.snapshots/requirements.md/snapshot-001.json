@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1768796396836_svuo9e1mg",
+  "approvalId": "approval_1768796396818_wupii8qrt",
+  "approvalTitle": "Granular Requirements: Code Generation Engine (Template Compliant)",
+  "version": 1,
+  "timestamp": "2026-01-19T04:19:56.836Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# Requirements - Code Generation Engine\r\n\r\n## Introduction\r\nクラス図データ（JSON）を解析し、各種プログラミング言語（TypeScript, Java, C#, C++, Rust）のソースコードファイルを生成するコアエンジン。設計意図を直接動くコードに変換します。\r\n\r\n## Alignment with Product Vision\r\n`product.md` の核心である「多言語ソースコードの雛形自動生成」を担当します。\r\n\r\n## Requirements\r\n\r\n### Requirement 1: 多言語ソースコード生成\r\n**User Story:** 開発者として、作成したクラス図から任意のターゲット言語のスケルトンコードを一括生成したい。これにより、手動のタイピング時間を削減し、設計との乖離を防ぐ。\r\n\r\n#### Acceptance Criteria\r\n1. WHEN 言語（例: Rust）を選択して実行 THEN 各クラスに対応するファイル（例: `class_name.rs`）が生成される。\r\n2. IF 生成先に同名ファイルが存在 THEN システム SHALL ユーザーに上書き確認（またはバックアップ）を行う。\r\n3. WHEN 生成が完了 THEN 生成されたファイルリストとログ SHALL 出力チャネルに表示される。\r\n\r\n### Requirement 2: 型の自動変換\r\n**User Story:** 開発者として、図面上の抽象的な型（string, int等）がターゲット言語の適切な組み込み型に自動変換されることを期待する。\r\n\r\n#### Acceptance Criteria\r\n1. IF ターゲット言語が TypeScript THEN `int` SHALL `number` に変換される。\r\n2. IF ターゲット言語が Rust THEN `string` SHALL `String` または `&str` (設定による) に変換される。\r\n\r\n## Non-Functional Requirements\r\n\r\n### Code Architecture and Modularity\r\n- **Builder Pattern**: 新しい言語の追加を容易にするため、各言語のロジックを `Builder` クラスにカプセル化する。\r\n- **Separation of Concerns**: パースロジック、コード構築ロジック、ファイル書き込みロジックを分離。\r\n\r\n### Reliability\r\n- 生成プロセス中にエラーが発生した場合でも、不完全なファイルが残らないようアトミックな書き込み（またはクリーンアップ）を試みる。\r\n",
+  "fileStats": {
+    "size": 2248,
+    "lines": 34,
+    "lastModified": "2026-01-19T04:19:22.587Z"
+  },
+  "comments": []
+}

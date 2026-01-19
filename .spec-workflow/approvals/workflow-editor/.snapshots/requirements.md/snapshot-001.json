@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1768796395284_amwyqov3p",
+  "approvalId": "approval_1768796395267_vhtrnsujm",
+  "approvalTitle": "Granular Requirements: Workflow Editor (Template Compliant)",
+  "version": 1,
+  "timestamp": "2026-01-19T04:19:55.284Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# Requirements - Workflow Editor\r\n\r\n## Introduction\r\n特定のメソッド（操作）の内部ロジックを視覚的に定義するためのワークフローエディタ。UML アクティビティ図に近い形式で、処理フローを視覚化します。\r\n\r\n## Alignment with Product Vision\r\n`product.md` での「ロジックの視覚的定義」を実現する機能であり、コード生成エンジンがメソッド内部のロジックを作成するための基盤となります。\r\n\r\n## Requirements\r\n\r\n### Requirement 1: ノードの配置と接続\r\n**User Story:** 開発者として、処理、分岐、開始、終了の各ノードを配置し、それらを接続してフローを構築・編集したい。\r\n\r\n#### Acceptance Criteria\r\n1. WHEN パレットのボタンをクリック THEN 対応する種類のノードがキャンバス中央に生成される。\r\n2. WHEN ノードの「ハンドル（＋）」から別のノードへドラッグ THEN 新しい接続エッジ SHALL 生成される。\r\n3. IF 出力元が「分岐（Decision）」ノード THEN 接続エッジに条件ラベル（true/false等）を付与できる。\r\n\r\n### Requirement 2: エッジ（接続線）の整形\r\n**User Story:** 開発者として、複雑なフローでも見やすくするために接続線を曲げたい。\r\n\r\n#### Acceptance Criteria\r\n1. WHEN 接続エッジ上をクリック THEN 中間点（Midpoint）ハンドルが表示される。\r\n2. WHEN 中間点ハンドルをドラッグ THEN エッジのパス SHALL 追従して変形し、座標が保存される。\r\n\r\n## Non-Functional Requirements\r\n\r\n### Code Architecture and Modularity\r\n- **Modular Design**: `media.workflow/` 内で State, Draw, Interactions, Utils にファイルを分割し、疎結合を実現。\r\n- **ES Modules**: モダンなブラウザ機能（Webview）を活かし、`<script type=\"module\">` を使用。\r\n\r\n### Usability\r\n- コンテキストメニュー（右クリック）により、キーボード操作を最小限に抑えた高速な編集を可能にする。\r\n",
+  "fileStats": {
+    "size": 2090,
+    "lines": 34,
+    "lastModified": "2026-01-19T04:19:03.989Z"
+  },
+  "comments": []
+}

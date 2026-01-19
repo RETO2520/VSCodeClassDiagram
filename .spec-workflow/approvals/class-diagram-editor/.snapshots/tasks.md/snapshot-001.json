@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1768796394673_jb9cw626n",
+  "approvalId": "approval_1768796394665_rmwiddgu3",
+  "approvalTitle": "Granular Tasks: Class Diagram Editor (Template Compliant)",
+  "version": 1,
+  "timestamp": "2026-01-19T04:19:54.673Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# Tasks - Class Diagram Editor\r\n\r\n- [ ] 1. Define internal data interfaces\r\n  - File: `media/main.js`\r\n  - Define `Class`, `Attribute`, `Operation` interfaces if using JSDoc, or ensure model structure is consistent.\r\n  - Purpose: Establish type safety within the Webview frontend.\r\n  - _Leverage: `media/main.js`_\r\n  - _Requirements: 1.1_\r\n  - _Prompt: Role: JavaScript Developer | Task: Define clear object structures for Class, Attribute, and Operation in media/main.js. Use JSDoc for type hints. Ensure consistency with the JSON persistence format defined in requirements 1.1. | Success: Model definitions are clear and consistently used throughout the file._\r\n\r\n- [ ] 2. Implement HTML Node Rendering\r\n  - File: `media/main.js`\r\n  - Update `render()` to generate `div.classbox` for each class in the model.\r\n  - Purpose: Visualize classes on the canvas.\r\n  - _Leverage: `media/main.js`, `media/style.css`_\r\n  - _Requirements: 1.1_\r\n  - _Prompt: Role: Frontend Developer | Task: Implement or refactor the render() function in media/main.js to dynamically create HTML elements for each class in the model. Include sections for attributes and operations. | Success: Classes are correctly rendered as boxes on the UI._\r\n\r\n- [ ] 3. Refactor Relation Engine (SVG)\r\n  - File: `media/main.js`\r\n  - Ensure `drawRelations()` correctly calculates intersection points and draws SVG paths.\r\n  - Purpose: Draw inheritance and association lines between classes.\r\n  - _Leverage: Existing `lineRectIntersection` function._\r\n  - _Requirements: 1.2_\r\n  - _Prompt: Role: SVG Graphics Expert | Task: Refactor drawRelations() in media/main.js to draw SVG paths between classes. Use lineRectIntersection to find the exact boundary points for arrow heads. | Success: Relations are drawn cleanly and stay attached to class boundaries during movement._\r\n\r\n- [ ] 4. Implement Interaction Handlers\r\n  - File: `media/main.js`\r\n  - Add pointer event listeners for dragging, double-clicking, and button clicks.\r\n  - Purpose: Enable user interaction with the diagram.\r\n  - _Leverage: `media/main.js`_\r\n  - _Requirements: 1.3_\r\n  - _Prompt: Role: UI Interaction specialist | Task: Implement pointer-event based dragging for class boxes and double-click handlers for inline editing. Ensure drawRelations() is called during moves. | Success: Interaction is smooth and responsive._\r\n",
+  "fileStats": {
+    "size": 2351,
+    "lines": 34,
+    "lastModified": "2026-01-19T04:18:51.954Z"
+  },
+  "comments": []
+}

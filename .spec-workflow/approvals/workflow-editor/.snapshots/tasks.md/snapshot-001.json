@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1768796396350_960b6vgxl",
+  "approvalId": "approval_1768796396334_4vncawgg3",
+  "approvalTitle": "Granular Tasks: Workflow Editor (Template Compliant)",
+  "version": 1,
+  "timestamp": "2026-01-19T04:19:56.350Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# Tasks - Workflow Editor\r\n\r\n- [ ] 1. Set up modular ES6 structure\r\n  - File: `media.workflow/index.html`, `media.workflow/workflow.js`\r\n  - Ensure correct module imports and initialization flow.\r\n  - Purpose: Establish a clean foundation for the editor logic.\r\n  - _Leverage: Project ES Module structure patterns._\r\n  - _Requirements: NFR (Architecture)_\r\n  - _Prompt: Role: Frontend Architect | Task: Configure the ES Module entry point in index.html and workflow.js. Ensure proper import/export relationships between state, draw, and interactions modules. | Success: The webview loads without console errors and modules communicate via exported functions._\r\n\r\n- [ ] 2. Implement SVG Node Drawing Engine\r\n  - File: `media.workflow/workflow.draw.js`\r\n  - Implement functions to draw different node shapes using SVG elements.\r\n  - Purpose: Visual representation of workflow elements.\r\n  - _Leverage: `media.workflow/workflow.draw.js`_\r\n  - _Requirements: 1.1_\r\n  - _Prompt: Role: SVG Specialist | Task: Implement drawNode() in workflow.draw.js to support 'process' (rect), 'decision' (diamond), and 'start/end' (ellipse) shapes. Add proper labels inside shapes. | Success: All node types are rendered with correct styling._\r\n\r\n- [ ] 3. Implement Edge Path Logic with Midpoints\r\n  - File: `media.workflow/workflow.draw.js`\r\n  - Implement `appendEdgePath` and `updateEdgeVisual` to support polylines with one midpoint.\r\n  - Purpose: Enable flexible connection lines.\r\n  - _Leverage: `boundaryPointTowards` utility._\r\n  - _Requirements: 1.2_\r\n  - _Prompt: Role: Graphics Programmer | Task: Refactor edge drawing to support optional 'mid' point in the edge model. Calculate the best boundary entry/exit points for the nodes. | Success: Edges are drawn as two-segment polylines if a midpoint exists._\r\n\r\n- [ ] 4. Connect Extension Messaging API\r\n  - File: `media.workflow/workflow.interactions.js`\r\n  - Implement `vscode.postMessage` calls for Save/Load operations.\r\n  - Purpose: Sync diagram data with the VS Code extension host.\r\n  - _Leverage: `media.workflow/workflow.api.js`_\r\n  - _Requirements: 1.3_\r\n  - _Prompt: Role: VS Code Extension Developer | Task: Implement saving logic in interactions.js to collect the current state and send a 'saveFile' message to the VS Code host. Handle incoming 'fileLoaded' messages to re-draw the UI. | Success: Data is correctly persisted to and from the Extension Host._\r\n",
+  "fileStats": {
+    "size": 2409,
+    "lines": 34,
+    "lastModified": "2026-01-19T04:19:10.563Z"
+  },
+  "comments": []
+}

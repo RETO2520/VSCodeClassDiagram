@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1768796395741_ev3bw58ou",
+  "approvalId": "approval_1768796395728_j6530r3pz",
+  "approvalTitle": "Granular Design: Workflow Editor (Template Compliant)",
+  "version": 1,
+  "timestamp": "2026-01-19T04:19:55.741Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# Design Document - Workflow Editor\r\n\r\n## Overview\r\nクラス図エディタから特定の操作（Operation）を選択した際に起動する、メソッド内部ロジック編集用Webviewコンポーネント。ES Modules による詳細なモジュール分割を採用し、メンテナンス性を高めます。\r\n\r\n## Steering Document Alignment\r\n\r\n### Technical Standards (tech.md)\r\n- **ES Modules**: `workflow.*.js` 形式でファイルを分割し、モジュール間の依存関係を明示。\r\n- **SVG Canvas**: 複雑なパス描画に対応するため、全面 SVG による描画を採用。\r\n\r\n### Project Structure (structure.md)\r\n- **`media.workflow/`**: ワークフロー専用のディレクトリとして独立。\r\n\r\n## Code Reuse Analysis\r\n- **`workflow.utils.js`**: `getSvgPoint` 等の汎用座標計算ロジックをクラス図エディタと（必要に応じて）共有可能。\r\n\r\n## Architecture\r\n\r\n```mermaid\r\ngraph TD\r\n    A[index.html] --> B[workflow.js]\r\n    B --> C[workflow.state.js]\r\n    B --> D[workflow.draw.js]\r\n    B --> E[workflow.interactions.js]\r\n    B --> F[workflow.api.js]\r\n    C[State Management] --- D[Render Engine]\r\n    D --- E[Event Logic]\r\n```\r\n\r\n## Components and Interfaces\r\n\r\n### State Manager (`workflow.state.js`)\r\n- **Purpose**: 図面の状態（ノード、エッジ）を一元管理。\r\n- **Interfaces**: `setWorkflow(wf)`, `state` オブジェクト。\r\n\r\n### Interaction Manager (`workflow.interactions.js`)\r\n- **Purpose**: ドラッグ、接続、コンテキストメニュー等の入力を処理。\r\n- **Interfaces**: `initInteractions(params)`\r\n\r\n## Data Models\r\n\r\n### Workflow Model\r\n```typescript\r\ninterface Workflow {\r\n  nodes: WorkflowNode[];\r\n  edges: WorkflowEdge[];\r\n}\r\n\r\ninterface WorkflowNode {\r\n  id: string;\r\n  type: 'start' | 'end' | 'process' | 'decision';\r\n  label: string;\r\n  x: number;\r\n  y: number;\r\n}\r\n\r\ninterface WorkflowEdge {\r\n  from: string; // Node ID\r\n  to: string;   // Node ID\r\n  mid?: { x: number, y: number };\r\n  condition?: string;\r\n}\r\n```\r\n\r\n## Testing Strategy\r\n- **Unit Testing**: 状態遷移 (`workflow.state.js`) の単体テスト。\r\n- **Manual Verification**: ノード生成からエッジの曲げ、保存までの一連のフロー確認。\r\n",
+  "fileStats": {
+    "size": 2265,
+    "lines": 69,
+    "lastModified": "2026-01-19T04:19:08.484Z"
+  },
+  "comments": []
+}

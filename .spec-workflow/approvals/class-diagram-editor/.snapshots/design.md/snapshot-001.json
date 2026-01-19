@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1768796394190_9a6vit3v6",
+  "approvalId": "approval_1768796394184_xwnvgty3g",
+  "approvalTitle": "Granular Design: Class Diagram Editor (Template Compliant)",
+  "version": 1,
+  "timestamp": "2026-01-19T04:19:54.190Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# Design Document - Class Diagram Editor\r\n\r\n## Overview\r\nVS Code Webview 上で UML ライクなクラス図を視覚的に編集するためのコンポーネント。HTML DOM によるノード表現と SVG によるリレーション表現を組み合わせたハイブリッド描画方式を採用します。\r\n\r\n## Steering Document Alignment\r\n\r\n### Technical Standards (tech.md)\r\n- **Vanilla JS & CSS**: 外部ライブラリを最小限に抑え、パフォーマンスとカスタマイズ性を優先。\r\n- **PostMessage API**: Extension Host との通信に標準 API を使用。\r\n\r\n### Project Structure (structure.md)\r\n- **`media/`**: Webview 用の静的リソース（HTML, CSS, JS）を配置。\r\n- **Domain logic**: `main.js` 内に描画ロジックとイベントハンドラを定義。\r\n\r\n## Code Reuse Analysis\r\n- **`style.css`**: VS Code の CSS 変数 (`--vscode-editor-foreground` 等) を再利用。\r\n- **`main.js`**: 既存の `lineRectIntersection` ロジックを継承。\r\n\r\n## Architecture\r\n\r\n```mermaid\r\ngraph TD\r\n    A[index.html] --> B[main.js]\r\n    A --> C[style.css]\r\n    B --> D[Event Handles: Click, Drag]\r\n    B --> E[Render Engine: DOM + SVG]\r\n    E --> F[Class Boxes: HTML]\r\n    E --> G[Relations: SVG Arrows]\r\n```\r\n\r\n### Modular Design Principles\r\n- **DOM/SVG Separation**: ノードは操作性の高い HTML DOM、コネクタは柔軟な SVG で分離管理。\r\n- **State-Driven Rendering**: `model` オブジェクトの変更を検知して `render()` を呼び出す構造。\r\n\r\n## Components and Interfaces\r\n\r\n### Render Engine (`render()`)\r\n- **Purpose**: JSON モデルを視覚的な要素に変換。\r\n- **Interfaces**: `render(model)`\r\n- **Dependencies**: `drawRelations()`\r\n\r\n### Relation Engine (`drawRelations()`)\r\n- **Purpose**: ノード間の接続線を SVG で描画。\r\n- **Interfaces**: `drawRelations(classes)`\r\n- **Dependencies**: `lineRectIntersection()`\r\n\r\n## Data Models\r\n\r\n### Class Model\r\n```typescript\r\ninterface Class {\r\n  id: string; // cryptoRandomId\r\n  name: string;\r\n  x: number;\r\n  y: number;\r\n  width: number;\r\n  height: number;\r\n  attributes: Attribute[];\r\n  operations: Operation[];\r\n  baseClassId?: string;\r\n}\r\n```\r\n\r\n## Error Handling\r\n1. **Scenario 1: 循環参照の発生**\r\n   - **Handling**: 継承関係のループを検知し、保存時に警告を出す。\r\n   - **User Impact**: ユーザーに警告ダイアログを表示。\r\n\r\n## Testing Strategy\r\n- **Unit Testing**: `lineRectIntersection` の座標計算テスト。\r\n- **Manual Verification**: VS Code 上でのドラッグ操作とリレーションの追従確認。\r\n",
+  "fileStats": {
+    "size": 2623,
+    "lines": 73,
+    "lastModified": "2026-01-19T04:18:49.974Z"
+  },
+  "comments": []
+}

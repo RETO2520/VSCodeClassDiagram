@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1768796398904_qgy7a9zle",
+  "approvalId": "approval_1768796398890_239ouldnn",
+  "approvalTitle": "Granular Design: Data Persistence (Template Compliant)",
+  "version": 1,
+  "timestamp": "2026-01-19T04:19:58.904Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# Design Document - Data Persistence\r\n\r\n## Overview\r\nVS Code の FileSystem API を活用し、`diagram.json` への永続化と、Webview のメモリ上のモデルとの同期を行うレイヤー。\r\n\r\n## Steering Document Alignment\r\n\r\n### Technical Standards (tech.md)\r\n- **JSON**: データ交換フォーマットとして標準的な JSON を採用。\r\n- **VS Code API**: `workspace.fs` を通じてファイル操作を行うことで、リモート環境（Codespaces 等）にも対応。\r\n\r\n### Project Structure (structure.md)\r\n- **`src/extension.ts`**: 保存・読込のコマンド起点。\r\n- **Webview side**: 保存データの整形とマイグレーションロジックの実行。\r\n\r\n## Code Reuse Analysis\r\n- **`cryptoRandomId`**: ID 生成に VS Code または Webview の標準 API を利用。\r\n\r\n## Architecture\r\n\r\n```mermaid\r\ngraph LR\r\n    A[Webview Canvas] -- postMessage(saveJson) --> B[Extension Host]\r\n    B -- workspace.fs.writeFile --> C[diagram.json]\r\n    C -- workspace.fs.readFile --> B\r\n    B -- postMessage(loadedJson) --> A\r\n    A -- migrateModel() --> D[Unified In-memory State]\r\n```\r\n\r\n## Components and Interfaces\r\n\r\n### Persistence Commands (`src/extension.ts`)\r\n- **Purpose**: ファイルダイアログの表示とファイル I/O 実行。\r\n- **Interfaces**: `saveJson`, `loadJson` メッセージハンドラ。\r\n\r\n### Migration Utility (`media/main.js` 等)\r\n- **Purpose**: バージョン間のデータ差分吸収。\r\n- **Interfaces**: `migrateModel(data)`\r\n\r\n## Data Models\r\n\r\n### Root Schema\r\n```json\r\n{\r\n  \"classes\": [\r\n    {\r\n      \"id\": \"uuid\",\r\n      \"name\": \"ClassName\",\r\n      \"attributes\": [],\r\n      \"operations\": [\r\n        { \"name\": \"op\", \"workflow\": { \"nodes\": [], \"edges\": [] } }\r\n      ]\r\n    }\r\n  ]\r\n}\r\n```\r\n\r\n## Error Handling\r\n1. **Scenario: 保存ダイアログのキャンセル**\r\n   - **Handling**: 書き込み処理を中断し、ステータスバーなどの通知は行わない（正常系）。\r\n2. **Scenario: JSON パースエラー**\r\n   - **Handling**: `try-catch` で捕捉し、具体的なエラー箇所を通知。\r\n\r\n## Testing Strategy\r\n- **Manual Verification**: 複雑な図面を保存し、一旦ファイルを閉じてから再度開いた時の整合性確認。\r\n- **Regression Testing**: 古いバージョンの JSON データの読み込みテスト。\r\n",
+  "fileStats": {
+    "size": 2360,
+    "lines": 67,
+    "lastModified": "2026-01-19T04:19:45.620Z"
+  },
+  "comments": []
+}

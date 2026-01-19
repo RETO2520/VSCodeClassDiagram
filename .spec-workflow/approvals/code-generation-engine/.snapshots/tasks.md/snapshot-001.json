@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1768796397938_2jf8a273b",
+  "approvalId": "approval_1768796397914_z4jkqar16",
+  "approvalTitle": "Granular Tasks: Code Generation Engine (Template Compliant)",
+  "version": 1,
+  "timestamp": "2026-01-19T04:19:57.938Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# Tasks - Code Generation Engine\r\n\r\n- [ ] 1. Define IGeneratorBuilder interface\r\n  - File: `src/CodeComponents/CodeGenerator.ts`\r\n  - Define methods like `getFileName`, `buildClassHeader`, `buildAttribute`, `buildOperation`, `buildClassFooter`.\r\n  - Purpose: Formalize the contract for language-specific builders.\r\n  - _Leverage: CodeGenerator patterns._\r\n  - _Requirements: NFR (Architecture)_\r\n  - _Prompt: Role: TypeScript Architect | Task: Define a robust IGeneratorBuilder interface in CodeGenerator.ts that abstracts the source code construction steps for different languages. | Success: Interface is defined and correctly used by the CodeGenerator class._\r\n\r\n- [ ] 2. Implement TypeScriptBuilder\r\n  - File: `src/CodeComponents/TypeScriptBuilder.ts`\r\n  - Create a class implementing `IGeneratorBuilder` for TypeScript syntax.\r\n  - Purpose: Support TypeScript as a target language.\r\n  - _Leverage: `TypeModel` mapping for TS._\r\n  - _Requirements: 1.1, 2.1_\r\n  - _Prompt: Role: TypeScript Developer | Task: Implement the IGeneratorBuilder interface in TypeScriptBuilder.ts. Ensure classes, interfaces, and methods follow TypeScript conventions. | Success: Builder correctly generates .ts files._\r\n\r\n- [ ] 3. Implement RustBuilder\r\n  - File: `src/CodeComponents/RustBuilder.ts`\r\n  - Create a class implementing `IGeneratorBuilder` for Rust syntax (structs, traits, impls).\r\n  - Purpose: Support Rust as a target language.\r\n  - _Leverage: `TypeModel` mapping for Rust._\r\n  - _Requirements: 1.1, 2.2_\r\n  - _Prompt: Role: Rust Developer | Task: Implement the IGeneratorBuilder interface in RustBuilder.ts. Map UML classes to Rust structs and traits. Handle the 'impl' block generation. | Success: Builder correctly generates .rs files._\r\n\r\n- [ ] 4. Integrate Output Channel Logger\r\n  - File: `src/LoggerComponents/Logger.ts`, `src/extension.ts`\r\n  - Ensure all generation progress and warnings are sent to the \"Class Diagram Editor Log\".\r\n  - Purpose: Provide transparency to the user during long-running tasks.\r\n  - _Leverage: VS Code `OutputChannel` API._\r\n  - _Requirements: 1.3_\r\n  - _Prompt: Role: VS Code Extension Developer | Task: Integrate the Logger class into the CodeGenerator workflow to log file creation status and any conversion warnings. | Success: Users can monitor generation progress in the Output tab._\r\n",
+  "fileStats": {
+    "size": 2325,
+    "lines": 34,
+    "lastModified": "2026-01-19T04:19:28.680Z"
+  },
+  "comments": []
+}

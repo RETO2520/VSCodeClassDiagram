@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/code-generation-engine/design.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-19T04:19:57.330Z",
+      "trigger": "initial",
+      "approvalId": "approval_1768796397317_n2hqge7qs",
+      "approvalTitle": "Granular Design: Code Generation Engine (Template Compliant)"
+    }
+  ]
+}

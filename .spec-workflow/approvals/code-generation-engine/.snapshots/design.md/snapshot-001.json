@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1768796397331_ts6fs2ytm",
+  "approvalId": "approval_1768796397317_n2hqge7qs",
+  "approvalTitle": "Granular Design: Code Generation Engine (Template Compliant)",
+  "version": 1,
+  "timestamp": "2026-01-19T04:19:57.330Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# Design Document - Code Generation Engine\r\n\r\n## Overview\r\nJSON 形式の IObjectModel を解析し、Builder パターンを用いて多言語のコードを生成するバックエンドモジュール。\r\n\r\n## Steering Document Alignment\r\n\r\n### Technical Standards (tech.md)\r\n- **TypeScript**: 拡張機能のコアロジックを TypeScript で実装し、型安全性を確保。\r\n- **Builder Pattern**: `IGeneratorBuilder` インターフェースによる拡張性の担保。\r\n\r\n### Project Structure (structure.md)\r\n- **`src/CodeComponents/`**: 各言語の Builder 実装を配置。\r\n\r\n## Code Reuse Analysis\r\n- **`CodeGenerator.ts`**: 全言語共通の生成フロー（フォルダ作成、ファイルループ、Builder 呼び出し）を統括。\r\n- **`TypeModel.ts`**: 言語ごとの型変換マップを集中管理。\r\n\r\n## Architecture\r\n\r\n```mermaid\r\ngraph TD\r\n    A[Extension Host] --> B[CodeGenerator]\r\n    B --> C{Lang Switch}\r\n    C -->|TS| D[TypeScriptBuilder]\r\n    C -->|Java| E[JavaBuilder]\r\n    C -->|Rust| F[RustBuilder]\r\n    D --- G[IGeneratorBuilder Interface]\r\n    E --- G\r\n    F --- G\r\n```\r\n\r\n## Components and Interfaces\r\n\r\n### `CodeGenerator` (`src/CodeComponents/CodeGenerator.ts`)\r\n- **Purpose**: 生成プロセスのオーケストレーション。\r\n- **Interfaces**: `generate(folder: Uri, model: IObjectModel)`\r\n- **Dependencies**: `IGeneratorBuilder`, `vscode.workspace.fs`\r\n\r\n### `TypeModel` (`src/CodeComponents/CodeGenerator.ts`)\r\n- **Purpose**: 言語固有のプリミティブ型マッピングの提供。\r\n- **Interfaces**: `getTypesForLang(lang: string)`\r\n\r\n## Data Models\r\n\r\n### Generator Options\r\n```typescript\r\ninterface GeneratorOptions {\r\n  language: string;\r\n  outputDir: string;\r\n  overwrite: boolean;\r\n}\r\n```\r\n\r\n## Error Handling\r\n1. **Scenario: サポート外言語の指定**\r\n   - **Handling**: `generateCodeFiles` 内で例外をスロー。\r\n   - **User Impact**: VS Code エラーメッセージとして表示。\r\n\r\n## Testing Strategy\r\n- **Unit Testing**: \r\n  - 言語ごとの Builder で生成される文字列の比較テスト。\r\n  - `TypeModel` のマッピング検証。\r\n",
+  "fileStats": {
+    "size": 2152,
+    "lines": 64,
+    "lastModified": "2026-01-19T04:19:26.605Z"
+  },
+  "comments": []
+}

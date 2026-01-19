@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1768796401985_k6fbwhsak",
+  "approvalId": "approval_1768796401954_dmbwalap5",
+  "approvalTitle": "Granular Tasks: Data Persistence (Template Compliant)",
+  "version": 1,
+  "timestamp": "2026-01-19T04:20:01.985Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# Tasks - Data Persistence\r\n\r\n- [ ] 1. Implement saveJson message handler\r\n  - File: `src/extension.ts`\r\n  - Implement the `msg.command === 'saveJson'` case. Show `vscode.window.showSaveDialog`.\r\n  - Purpose: Allow users to specify a save location and persist the diagram.\r\n  - _Leverage: VS Code FileSystem API._\r\n  - _Requirements: 1.1_\r\n  - _Prompt: Role: VS Code Extension Developer | Task: Implement the saveJson command in src/extension.ts. Use showSaveDialog to let users pick a file path, then write the JSON content using workspace.fs.writeFile. | Success: Diagram files are successfully saved to the chosen location._\r\n\r\n- [ ] 2. Implement loadJson message handler\r\n  - File: `src/extension.ts`\r\n  - Implement `msg.command === 'loadJson'` using `showOpenDialog`.\r\n  - Purpose: Allow users to open existing diagram files.\r\n  - _Leverage: `workspace.fs.readFile`_\r\n  - _Requirements: 1.1_\r\n  - _Prompt: Role: VS Code Extension Developer | Task: Implement the loadJson command in src/extension.ts. Use showOpenDialog, read the file bytes, and send the parsed JSON back to the webview via loadedJson message. | Success: Diagram files are loaded and correctly rendered in the webview._\r\n\r\n- [ ] 3. Create Model Migration Logic\r\n  - File: `media/main.js` (Class Editor) or `media.workflow/workflow.js` (Workflow)\r\n  - Implement a `migrateModel` function that adds missing IDs and default fields.\r\n  - Purpose: Maintain backward compatibility with older save formats.\r\n  - _Leverage: Standard JavaScript object manipulation._\r\n  - _Requirements: 2.1_\r\n  - _Prompt: Role: Frontend Developer | Task: Implement migrateModel(obj) to ensure loaded JSON data matches the current internal structure. Assign unique IDs to classes if missing, and initialize empty arrays for attributes/operations. | Success: Legacy files load correctly without causing runtime errors._\r\n\r\n- [ ] 4. Implement Auto-discovery of diagram.json\r\n  - File: `src/extension.ts` (activate)\r\n  - Search for `**/diagram.json` in the current workspace folders on activation.\r\n  - Purpose: Improve UX by pre-loading current workspace diagrams.\r\n  - _Leverage: `vscode.workspace.findFiles`_\r\n  - _Requirements: (Vision)_\r\n  - _Prompt: Role: VS Code Extension Developer | Task: Upon activation, search for diagram.json files in the workspace. If found, automatically prompt or send the data to the webview to streamline the start process. | Success: The extension automatically detects and loads the existing workspace diagram._\r\n",
+  "fileStats": {
+    "size": 2492,
+    "lines": 34,
+    "lastModified": "2026-01-19T04:19:47.578Z"
+  },
+  "comments": []
+}

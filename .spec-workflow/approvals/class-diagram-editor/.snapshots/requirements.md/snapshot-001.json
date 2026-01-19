@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1768796393722_kkx6e97wv",
+  "approvalId": "approval_1768796393716_kihiw4934",
+  "approvalTitle": "Granular Requirements: Class Diagram Editor (Template Compliant)",
+  "version": 1,
+  "timestamp": "2026-01-19T04:19:53.722Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# Requirements - Class Diagram Editor\r\n\r\n## Introduction\r\nVS Code Webview 上で UML ライクなクラス図を視覚的に編集するためのコンポーネント。設計からコード生成への橋渡しとなる視覚的インターフェースを提供します。\r\n\r\n## Alignment with Product Vision\r\n`product.md` で掲げた「直感的なモデリング体験」と「多言語ソースコードの雛形生成」を具体化する主要機能です。\r\n\r\n## Requirements\r\n\r\n### Requirement 1: クラス/インターフェースの描画と編集\r\n**User Story:** 開発者として、クラスやインターフェースをキャンバス上に追加・移動し、その名称を編集したい。これにより、設計の構造を素早く定義できる。\r\n\r\n#### Acceptance Criteria\r\n1. WHEN キャンバスをダブルクリック THEN 新しいクラスボックス SHALL 生成される。\r\n2. WHEN クラスボックスをドラッグ THEN その座標 (x, y) SHALL 更新され、接続されているリレーションも追従する。\r\n3. WHEN クラスボックスの名称エリアをダブルクリック THEN インラインエディタ SHALL 表示され、名称を変更できる。\r\n\r\n### Requirement 2: 属性と操作の定義\r\n**User Story:** 開発者として、クラスにプロパティやメソッドを追加したい。これにより、クラスの詳細な責任を定義できる。\r\n\r\n#### Acceptance Criteria\r\n1. WHEN クラス内の (+) ボタンをクリック THEN 新しいプロパティまたはメソッド SHALL 行として追加される。\r\n2. IF 属性の型が既存のクラス名と一致 THEN システム SHALL 関連（Association）を自動的に描画する候補とする。\r\n\r\n## Non-Functional Requirements\r\n\r\n### Code Architecture and Modularity\r\n- **Single Responsibility Principle**: `main.js` は描画ロジックとイベント管理に集中し、データ変換は別モジュールに委譲する。\r\n- **Modular Design**: 各 `classbox` は独立した DOM 要素として構築され、状態変更に応じて部分的に再レンダリング可能とする。\r\n\r\n### Performance\r\n- 100 以上のクラスが存在する場合でも、ドラッグ操作の遅延が 16ms (60fps) 以内に収まること。\r\n\r\n### Usability\r\n- VS Code のカラーテーマ（Dark/Light）に自動的に追従し、視認性を確保すること。\r\n",
+  "fileStats": {
+    "size": 2424,
+    "lines": 37,
+    "lastModified": "2026-01-19T04:18:37.103Z"
+  },
+  "comments": []
+}

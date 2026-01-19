@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/data-persistence/requirements.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-19T04:19:58.411Z",
+      "trigger": "initial",
+      "approvalId": "approval_1768796398385_7lrljnawg",
+      "approvalTitle": "Granular Requirements: Data Persistence (Template Compliant)"
+    }
+  ]
+}

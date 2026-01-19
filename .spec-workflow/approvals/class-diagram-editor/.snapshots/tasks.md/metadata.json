@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/class-diagram-editor/tasks.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-19T04:19:54.673Z",
+      "trigger": "initial",
+      "approvalId": "approval_1768796394665_rmwiddgu3",
+      "approvalTitle": "Granular Tasks: Class Diagram Editor (Template Compliant)"
+    }
+  ]
+}

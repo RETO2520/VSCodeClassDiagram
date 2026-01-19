@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/class-diagram-editor/design.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-19T04:19:54.190Z",
+      "trigger": "initial",
+      "approvalId": "approval_1768796394184_xwnvgty3g",
+      "approvalTitle": "Granular Design: Class Diagram Editor (Template Compliant)"
+    }
+  ]
+}
