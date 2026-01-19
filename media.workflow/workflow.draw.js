@@ -74,51 +74,23 @@ export function drawNode(node) {
   state.nodeMap.set(node.id, node);
 }
 
-export function appendEdgePath(points, edge, edgeIndex) {
-  const d = points.map((p, i) => (i === 0 ? `M${p.x},${p.y}` : `L${p.x},${p.y}`)).join(' ');
-  const path = document.createElementNS(svgNs, 'path'); path.setAttribute('d', d); path.setAttribute('class', 'edge');
-  edge._path = path; edge._pointsCache = points.slice();
-  edgesLayer.appendChild(path);
-  if (edge.condition !== undefined && edge.condition !== null) {
-    const midpt = helpers.computePolylineMidpoint(points);
-    const label = document.createElementNS(svgNs, 'text'); label.setAttribute('x', midpt.x); label.setAttribute('y', midpt.y - 8);
-    label.setAttribute('text-anchor', 'middle'); label.setAttribute('class', 'edge-label'); label.textContent = String(edge.condition);
-    label.style.pointerEvents = 'none'; edgesLayer.appendChild(label); edge._labelEl = label;
-  } else edge._labelEl = null;
-  const mid = points[1];
-  const handle = document.createElementNS(svgNs, 'circle'); handle.setAttribute('cx', mid.x); handle.setAttribute('cy', mid.y); handle.setAttribute('r', 6); handle.setAttribute('class', 'edge-handle');
+/**
+ * Computes the points for an edge (start, mid, end) based on terminal nodes and optional midpoint.
+ * @param {Object} edge 
+ * @returns {Array<{x:number, y:number}> | null}
+ */
+function getEdgePoints(edge) {
+  const from = state.nodeMap.get(edge.from);
+  const to = state.nodeMap.get(edge.to);
+  if (!from || !to) return null;
 
-  edgesLayer.appendChild(handle); edge._handleEl = handle;
-  edge._handleEl = handle; edge._path = path;
-  return {
-    path,
-    handle
-  };
-}
+  // If there's a midpoint, start/end boundary points should point toward it.
+  const startTarget = edge.mid ? edge.mid : to;
+  const endTarget = edge.mid ? edge.mid : from;
 
-export function drawEdges() {
-  edgesLayer.innerHTML = '';
-  (state.currentWorkflow.edges || []).forEach((e, idx) => {
-    const from = state.nodeMap.get(e.from), to = state.nodeMap.get(e.to);
-    if (!from || !to) return;
-    const start = helpers.boundaryPointTowards(from, e.mid ? e.mid : to);
-    const end = helpers.boundaryPointTowards(to, e.mid ? e.mid : from);
-    const mid = e.mid ? {
-      x: e.mid.x,
-      y: e.mid.y
-    } : {
-      x: (start.x + end.x) / 2,
-      y: (start.y + end.y) / 2
-    };
-    appendEdgePath([start, mid, end], e, idx);
-  });
-}
+  const start = helpers.boundaryPointTowards(from, startTarget);
+  const end = helpers.boundaryPointTowards(to, endTarget);
 
-export function updateEdgeVisual(edge) {
-  if (!edge) return;
-  const from = state.nodeMap.get(edge.from), to = state.nodeMap.get(edge.to); if (!from || !to) return;
-  const start = helpers.boundaryPointTowards(from, edge.mid ? edge.mid : to);
-  const end = helpers.boundaryPointTowards(to, edge.mid ? edge.mid : from);
   const mid = edge.mid ? {
     x: edge.mid.x,
     y: edge.mid.y
@@ -126,16 +98,81 @@ export function updateEdgeVisual(edge) {
     x: (start.x + end.x) / 2,
     y: (start.y + end.y) / 2
   };
-  const points = [start, mid, end];
+
+  return [start, mid, end];
+}
+
+export function appendEdgePath(points, edge, edgeIndex) {
+  const d = points.map((p, i) => (i === 0 ? `M${p.x},${p.y}` : `L${p.x},${p.y}`)).join(' ');
+  const path = document.createElementNS(svgNs, 'path');
+  path.setAttribute('d', d);
+  path.setAttribute('class', 'edge');
+
+  edge._path = path;
+  edge._pointsCache = points.slice();
+  edgesLayer.appendChild(path);
+
+  if (edge.condition !== undefined && edge.condition !== null) {
+    const midpt = helpers.computePolylineMidpoint(points);
+    const label = document.createElementNS(svgNs, 'text');
+    label.setAttribute('x', midpt.x);
+    label.setAttribute('y', midpt.y - 8);
+    label.setAttribute('text-anchor', 'middle');
+    label.setAttribute('class', 'edge-label');
+    label.textContent = String(edge.condition);
+    label.style.pointerEvents = 'none';
+    edgesLayer.appendChild(label);
+    edge._labelEl = label;
+  } else {
+    edge._labelEl = null;
+  }
+
+  const mid = points[1];
+  const handle = document.createElementNS(svgNs, 'circle');
+  handle.setAttribute('cx', mid.x);
+  handle.setAttribute('cy', mid.y);
+  handle.setAttribute('r', 6);
+  handle.setAttribute('class', 'edge-handle');
+
+  edgesLayer.appendChild(handle);
+  edge._handleEl = handle;
+
+  return { path, handle };
+}
+
+export function drawEdges() {
+  edgesLayer.innerHTML = '';
+  (state.currentWorkflow.edges || []).forEach((e, idx) => {
+    const points = getEdgePoints(e);
+    if (points) {
+      appendEdgePath(points, e, idx);
+    }
+  });
+}
+
+export function updateEdgeVisual(edge) {
+  if (!edge) return;
+  const points = getEdgePoints(edge);
+  if (!points) return;
+
+  const [start, mid, end] = points;
+
   if (edge._path) {
     const d = points.map((p, i) => (i === 0 ? `M${p.x},${p.y}` : `L${p.x},${p.y}`)).join(' ');
     edge._path.setAttribute('d', d);
   }
+
   if (edge._labelEl) {
     const midpt = helpers.computePolylineMidpoint(points);
-    edge._labelEl.setAttribute('x', midpt.x); edge._labelEl.setAttribute('y', midpt.y - 8);
+    edge._labelEl.setAttribute('x', midpt.x);
+    edge._labelEl.setAttribute('y', midpt.y - 8);
   }
-  if (edge._handleEl) { edge._handleEl.setAttribute('cx', mid.x); edge._handleEl.setAttribute('cy', mid.y); }
+
+  if (edge._handleEl) {
+    edge._handleEl.setAttribute('cx', mid.x);
+    edge._handleEl.setAttribute('cy', mid.y);
+  }
+
   edge._pointsCache = points;
 }
 

@@ -16,7 +16,7 @@
   - _要件: 1.1_
   - _プロンプト: Role: SVG 専門家 | Task: workflow.draw.js の drawNode() を実装し、'process' (矩形), 'decision' (菱形), 'start/end' (楕円) の形状をサポートしてください。形状の中に適切なラベルを追加してください。 | Success: すべてのノードタイプが正しいスタイリングでレンダリングされる。_
 
-- [ ] 3. 中間点を考慮したエッジパスロジックの実装
+- [x] 3. 中間点を考慮したエッジパスロジックの実装 (完了)
   - ファイル: `media.workflow/workflow.draw.js`
   - 1つの中間点（mid）を持つポリラインをサポートするために `appendEdgePath` と `updateEdgeVisual` を実装する。
   - 目的: 柔軟な接続線を可能にする。
