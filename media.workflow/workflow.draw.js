@@ -20,29 +20,57 @@ export function clearAllNodes() { nodesLayer.innerHTML = ''; state.nodeMap.clear
 
 export function drawNode(node) {
   if (state.nodeMap.has(node.id)) return;
-  node.type = node.type || 'process'; node.label = node.label || node.id;
-  const g = document.createElementNS(svgNs, 'g'); g.classList.add('node'); g.setAttribute('transform', `translate(${node.x},${node.y})`); g.dataset.id = node.id;
-  let shape; let width = 140; let height = 40;
+  node.type = node.type || 'process';
+  node.label = node.label || node.id;
+
+  const g = document.createElementNS(svgNs, 'g');
+  g.classList.add('node');
+  g.classList.add(`type-${node.type}`);
+  g.setAttribute('transform', `translate(${node.x},${node.y})`);
+  g.dataset.id = node.id;
+
+  let shape;
+  let width = 140;
+  let height = 40;
+
   if (node.type === 'process') {
     shape = helpers.createRect(svgNs, width, height);
+  } else if (node.type === 'decision') {
+    width = 120;
+    height = 80;
+    shape = helpers.createDiamond(svgNs, width, height);
+  } else if (node.type === 'start' || node.type === 'end') {
+    width = 100;
+    height = 50;
+    shape = helpers.createEllipse(svgNs, width / 2, height / 2);
+  } else {
+    // Default or unknown type
+    shape = helpers.createRect(svgNs, width, height);
   }
-  else if (node.type === 'decision') {
-    width = 120; height = 80; shape = helpers.createDiamond(svgNs, width, height);
-  }
-  else {
-    shape = helpers.createEllipse(svgNs, 60, 24); width = 120; height = 48;
-  }
+
   shape.setAttribute('class', 'shape');
   const text = document.createElementNS(svgNs, 'text');
   text.setAttribute('x', 0);
-  text.setAttribute('y', 6);
+  text.setAttribute('y', 4); // Approximately center vertically
   text.setAttribute('text-anchor', 'middle');
   text.textContent = node.label;
-  g.appendChild(shape); g.appendChild(text);
-  const handle = document.createElementNS(svgNs, 'circle'); handle.setAttribute('r', 6); handle.setAttribute('cx', width / 2 + 8); handle.setAttribute('cy', 0); handle.setAttribute('class', 'handle');
+
+  g.appendChild(shape);
+  g.appendChild(text);
+
+  // Connection handle for edges
+  const handle = document.createElementNS(svgNs, 'circle');
+  handle.setAttribute('r', 6);
+  handle.setAttribute('cx', width / 2 + 8);
+  handle.setAttribute('cy', 0);
+  handle.setAttribute('class', 'handle');
   g.appendChild(handle);
+
   nodesLayer.appendChild(g);
-  node._width = width; node._height = height; node._g = g; node._textEl = text;
+  node._width = width;
+  node._height = height;
+  node._g = g;
+  node._textEl = text;
   state.nodeMap.set(node.id, node);
 }
 

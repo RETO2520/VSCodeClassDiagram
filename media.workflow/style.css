@@ -86,6 +86,36 @@ button:focus {
     fill: var(--node-fill);
     stroke: var(--stroke);
     stroke-width: 1.5;
+    transition: filter 0.2s, stroke 0.2s;
+}
+
+.node.type-start ellipse {
+    fill: #27ae60;
+    stroke: #2ecc71;
+}
+
+.node.type-end ellipse {
+    fill: #c0392b;
+    stroke: #e74c3c;
+}
+
+.node.type-decision polygon {
+    fill: #2980b9;
+    stroke: #3498db;
+}
+
+.node.type-loop rect {
+    fill: #8e44ad;
+    stroke: #9b59b6;
+}
+
+.node.type-call rect {
+    fill: #d35400;
+    stroke: #e67e22;
+}
+
+.node:hover .shape {
+    filter: brightness(1.2);
 }
 
 .node text {
