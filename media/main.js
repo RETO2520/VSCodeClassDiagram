@@ -173,238 +173,357 @@
 
 
     function render() {
-        // ensure svg size matches container scrollable area
         svg.setAttribute('width', container.clientWidth);
         svg.setAttribute('height', container.clientHeight);
-
         canvas.innerHTML = '';
         drawDefs();
 
-        // build name lists
         const classNames = model.classes.map(c => c.name).filter(n => !!n);
         const classEntries = model.classes.map(c => ({ id: c.id, name: c.name }));
-        //const primitives = ['int', 'string', 'bool', 'double', 'float', 'void', 'object'];
-        const primitives = primitiveTypes;
-
-        const typeOptionsAll = primitives.concat(classNames);
-        //const baseOptions = ['None'].concat(classNames);
+        const typeOptionsAll = primitiveTypes.concat(classNames);
 
         for (const cls of model.classes) {
-            const el = document.createElement('div');
-            el.className = 'classbox';
-            el.style.left = cls.x + 'px';
-            el.style.top = cls.y + 'px';
-            el.style.width = cls.width + 'px';
-            el.dataset.id = cls.id;
-
-            // namebar
-            const namebar = document.createElement('div'); namebar.className = 'namebar';
-            const leftGroup = document.createElement('div'); leftGroup.className = 'leftGroup';
-
-            // kind select
-            const kind = document.createElement('select');
-            ['class', 'abstract', 'interface'].forEach(k => { const o = document.createElement('option'); o.value = k; o.innerText = k; kind.appendChild(o); });
-            kind.value = cls.isInterface ? 'interface' : (cls.isAbstract ? 'abstract' : 'class');
-            kind.addEventListener('change', () => { if (kind.value === 'interface') { cls.isInterface = true; cls.isAbstract = false; } else if (kind.value === 'abstract') { cls.isInterface = false; cls.isAbstract = true; } else { cls.isInterface = false; cls.isAbstract = false; } render(); });
-            leftGroup.appendChild(kind);
-
-            // name area
-            const nameText = document.createElement('div');
-            nameText.className = 'nameText';
-            //nameText.style.color = 'black';
-            if (editingNameId === cls.id) {
-                const inp = document.createElement('input'); inp.type = 'text'; inp.value = editingDraft; inp.style.minWidth = '30px';
-                nameText.appendChild(inp);
-                setTimeout(() => inp.focus(), 0);
-                inp.addEventListener('keydown', (ev) => {
-                    if (ev.key === 'Enter') {
-                        cls.name = inp.value.trim() || 'Unnamed';
-                        editingNameId = null;
-                        editingDraft = '';
-                        //cleanupReferencesById(cls.id);
-                        render();
-                    }
-                    else if (ev.key === 'Escape') { editingNameId = null; editingDraft = ''; render(); }
-                    else { editingDraft = inp.value; } // do not re-render on every key
-                });
-                inp.addEventListener('blur', () => { // keep focus until Enter or Escape: re-focus
-                    setTimeout(() => { if (editingNameId === cls.id) inp.focus(); }, 0);
-                });
-            } else {
-                nameText.innerText = cls.name;
-                nameText.addEventListener('dblclick', (ev) => { editingNameId = cls.id; editingDraft = cls.name; render(); ev.stopPropagation(); });
-            }
-
-            // Interfaces button (to the right of the class name, as requested)
-            const interfacesBtn = document.createElement('button');
-            interfacesBtn.className = 'smallBtn interfacesBtn';
-            interfacesBtn.title = 'Interfaces';
-            interfacesBtn.innerText = 'Interfaces';
-            // stopPropagation so click doesn't start drag
-            interfacesBtn.addEventListener('click', (ev) => {
-                ev.stopPropagation();
-                showInterfacesPopup(cls, el);
-            });
-            leftGroup.appendChild(interfacesBtn);
-
-
-            leftGroup.appendChild(nameText);
-            namebar.appendChild(leftGroup);
-
-            // delete button (right)
-            const rightGroup = document.createElement('div');
-            const delBtn = document.createElement('button'); delBtn.className = 'deleteTop'; delBtn.innerText = '✕'; delBtn.title = 'Delete';
-            delBtn.addEventListener('click', () => {
-                const idx = model.classes.findIndex(x => x.id === cls.id);
-                if (idx >= 0) {
-                    model.classes.splice(idx, 1);
-                    cleanupReferencesById(cls.id);
-                    render();
-                    //cleanupReferences(deletedName);
-                }
-            });
-            rightGroup.appendChild(delBtn);
-            namebar.appendChild(rightGroup);
-
-            el.appendChild(namebar);
-
-            // body
-            const section = document.createElement('div'); section.className = 'section';
-
-            // base select (None + class names only)
-            const baseRow = document.createElement('div'); baseRow.className = 'row';
-            const baseLabel = document.createElement('label'); baseLabel.innerText = 'Base:';
-            //baseLabel.style.color = 'black';
-            const baseSelect = document.createElement('select');
-            // for (const t of baseOptions) {
-            //     const o = document.createElement('option');
-            //     o.value = t;
-            //     o.innerText = t;
-            //     baseSelect.appendChild(o);
-            // }
-            // "None" option with empty value
-            const noneOpt = document.createElement('option'); noneOpt.value = '';
-            noneOpt.innerText = 'None';
-            baseSelect.appendChild(noneOpt);
-            for (const entry of classEntries) {
-                // skip self to avoid selecting itself as base
-                if (entry.id === cls.id) continue;
-                const o = document.createElement('option'); o.value = entry.id; o.innerText = entry.name; baseSelect.appendChild(o);
-            }
-            //baseSelect.value = cls.baseClass || 'None';
-            baseSelect.value = cls.baseClassId || '';
-            baseSelect.addEventListener('change', () => {
-                //cls.baseClass = baseSelect.value; render();
-                const val = baseSelect.value;
-                cls.baseClassId = val ? val : null;
-                render();
-            });
-            baseRow.appendChild(baseLabel); baseRow.appendChild(baseSelect); section.appendChild(baseRow);
-
-            // attributes
-            const attrsDiv = document.createElement('div'); const attrsHeader = document.createElement('div');
-            attrsHeader.innerText = 'Attributes';
-            attrsHeader.className = 'row mini';
-            const addAttrBtn = document.createElement('button'); addAttrBtn.innerText = '+Attr'; addAttrBtn.className = 'mini'; addAttrBtn.addEventListener('click', () => { cls.attributes.push(newAttribute()); render(); });
-            attrsHeader.appendChild(addAttrBtn);
-            attrsDiv.appendChild(attrsHeader);
-            for (let i = 0; i < cls.attributes.length; i++) {
-                const a = cls.attributes[i];
-                const row = document.createElement('div'); row.className = 'row';
-                const nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.value = a.name || ''; nameIn.addEventListener('input', () => a.name = nameIn.value);
-                //nameIn.className = 'mini';
-                const typeIn = document.createElement('select');
-                typeIn.className = 'mini';
-                for (const t of typeOptionsAll) {
-                    const o = document.createElement('option');
-                    o.value = t; o.innerText = t; typeIn.appendChild(o);
-                }
-                typeIn.value = a.type || 'object';
-                typeIn.addEventListener('change', () => { a.type = typeIn.value; render(); });
-                const vis = document.createElement('select');['private', 'public', 'protected', 'internal'].forEach(v => { const o = document.createElement('option'); o.value = v; o.innerText = v; vis.appendChild(o); }); vis.value = a.visibility || 'private'; vis.addEventListener('change', () => a.visibility = vis.value);
-                vis.className = 'mini';
-                const mod = document.createElement('select');['None', 'abstract', 'virtual', 'override', 'static', 'aggregation', 'composition'].forEach(m => { const o = document.createElement('option'); o.value = m; o.innerText = m; mod.appendChild(o); }); mod.value = a.modifier || 'None'; mod.addEventListener('change', () => { a.modifier = mod.value; render(); });
-                mod.className = 'mini';
-                const rem = document.createElement('button'); rem.className = 'removeBtn'; rem.innerText = 'x'; rem.addEventListener('click', () => { cls.attributes.splice(i, 1); render(); });
-
-                row.appendChild(nameIn); row.appendChild(typeIn); row.appendChild(vis); row.appendChild(mod); row.appendChild(rem);
-                attrsDiv.appendChild(row);
-            }
-
-            section.appendChild(attrsDiv);
-
-            // operations
-            const opsDiv = document.createElement('div');
-
-            const opsHeader = document.createElement('div');
-            opsHeader.innerText = 'Operations';
-            opsHeader.className = 'row mini';
-            const addOpBtn = document.createElement('button'); addOpBtn.innerText = '+Op'; addOpBtn.className = 'mini'; addOpBtn.addEventListener('click', () => { cls.operations.push(newOperation()); render(); });
-            //opsHeader.style.color = 'black';
-            opsHeader.appendChild(addOpBtn);
-            opsDiv.appendChild(opsHeader);
-            for (let i = 0; i < cls.operations.length; i++) {
-                const o = cls.operations[i];
-                const row = document.createElement('div'); row.className = 'row';
-                const nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.value = o.name || ''; nameIn.addEventListener('input', () => o.name = nameIn.value);
-                const retIn = document.createElement('select'); for (const t of typeOptionsAll) { const opt = document.createElement('option'); opt.value = t; opt.innerText = t; retIn.appendChild(opt); } retIn.value = o.returnType || 'void'; retIn.addEventListener('change', () => o.returnType = retIn.value);
-                retIn.className = 'mini';
-                const vis = document.createElement('select');['private', 'public', 'protected', 'internal'].forEach(v => { const oo = document.createElement('option'); oo.value = v; oo.innerText = v; vis.appendChild(oo); }); vis.value = o.visibility || 'private'; vis.addEventListener('change', () => o.visibility = vis.value);
-                vis.className = 'mini';
-                const mod = document.createElement('select');['None', 'abstract', 'virtual', 'override', 'static', 'aggregation', 'composition'].forEach(m => { const oo = document.createElement('option'); oo.value = m; oo.innerText = m; mod.appendChild(oo); }); mod.value = o.modifier || 'None'; mod.addEventListener('change', () => { o.modifier = mod.value; render(); });
-                mod.className = 'mini';
-                const rem = document.createElement('button'); rem.className = 'removeBtn'; rem.innerText = 'x'; rem.addEventListener('click', () => { cls.operations.splice(i, 1); render(); });
-                row.appendChild(nameIn); row.appendChild(retIn); row.appendChild(vis); row.appendChild(mod); row.appendChild(rem);
-
-                const paramsDiv = document.createElement('div');
-                for (let p = 0; p < (o.parameters || []).length; p++) {
-                    const pi = o.parameters[p];
-                    const pRow = document.createElement('div'); pRow.className = 'row';
-                    const pn = document.createElement('input'); pn.type = 'text'; pn.value = pi.name || ''; pn.addEventListener('input', () => pi.name = pn.value);
-                    const pt = document.createElement('select'); for (const t of typeOptionsAll) { const opel = document.createElement('option'); opel.value = t; opel.innerText = t; pt.appendChild(opel); } pt.value = pi.type || 'int'; pt.addEventListener('change', () => { pi.type = pt.value; render(); });
-                    pt.className = 'mini';
-                    const prem = document.createElement('button'); prem.className = 'removeBtn'; prem.innerText = 'x'; prem.addEventListener('click', () => { o.parameters.splice(p, 1); render(); });
-                    pRow.appendChild(pn); pRow.appendChild(pt); pRow.appendChild(prem); paramsDiv.appendChild(pRow);
-                }
-                const addParamBtn = document.createElement('button'); addParamBtn.innerText = '+Param'; addParamBtn.className = 'row mini'; addParamBtn.addEventListener('click', () => { if (!o.parameters) o.parameters = []; o.parameters.push({ name: 'p', type: 'int' }); render(); });
-                paramsDiv.appendChild(addParamBtn);
-                opsDiv.appendChild(row);
-                opsDiv.appendChild(paramsDiv);
-            }
-
-            //opsDiv.appendChild(addOpBtn);
-            section.appendChild(opsDiv);
-
-            el.appendChild(section); canvas.appendChild(el);
-
-            // drag handling with guard for interactive elements and name editing
-            const namebarEl = namebar;
-            let isDragging = false, startX = 0, startY = 0, origX = 0, origY = 0;
-            namebarEl.addEventListener('pointerdown', (ev) => {
-                if (editingNameId === cls.id) return;
-                const tgt = ev.target;
-                if (tgt.closest && (tgt.closest('input') || tgt.closest('select') || tgt.closest('button') || tgt.closest('.nameText'))) return;
-                isDragging = true; startX = ev.clientX; startY = ev.clientY; origX = cls.x; origY = cls.y;
-                try {
-                    namebarEl.setPointerCapture(ev.pointerId);
-                } catch (e) {
-                    console.log(e);
-                }
-            });
-            window.addEventListener('pointermove', (ev) => {
-                if (!isDragging) return;
-                const dx = ev.clientX - startX, dy = ev.clientY - startY;
-                cls.x = origX + dx; cls.y = origY + dy;
-                const currEl = document.querySelector('.classbox[data-id="' + cls.id + '"]');
-                if (currEl) { currEl.style.left = cls.x + 'px'; currEl.style.top = cls.y + 'px'; }
-                // live update relations
-                drawRelations();
-            });
-            window.addEventListener('pointerup', (ev) => { if (isDragging) { isDragging = false; try { namebarEl.releasePointerCapture(ev.pointerId); } catch { } drawRelations(); } });
-        } // end for
-
-        // draw relations after DOM updated
+            renderClassBox(cls, typeOptionsAll, classEntries);
+        }
         drawRelations();
+    }
+
+    /**
+     * @param {Class} cls
+     * @param {string[]} typeOptionsAll
+     * @param {Array<{id:string, name:string}>} classEntries
+     */
+    function renderClassBox(cls, typeOptionsAll, classEntries) {
+        const el = document.createElement('div');
+        el.className = 'classbox';
+        el.style.left = cls.x + 'px';
+        el.style.top = cls.y + 'px';
+        el.style.width = cls.width + 'px';
+        el.dataset.id = cls.id;
+
+        const namebar = createNameBar(cls, el);
+        const section = createBodySection(cls, typeOptionsAll, classEntries);
+
+        el.appendChild(namebar);
+        el.appendChild(section);
+        canvas.appendChild(el);
+
+        initDragHandling(cls, el, namebar);
+    }
+
+    /**
+     * @param {Class} cls
+     * @param {HTMLElement} el - The classbox element
+     * @returns {HTMLElement}
+     */
+    function createNameBar(cls, el) {
+        const namebar = document.createElement('div');
+        namebar.className = 'namebar';
+        const leftGroup = document.createElement('div');
+        leftGroup.className = 'leftGroup';
+
+        // kind select
+        const kind = document.createElement('select');
+        ['class', 'abstract', 'interface'].forEach(k => {
+            const o = document.createElement('option');
+            o.value = k; o.innerText = k;
+            kind.appendChild(o);
+        });
+        kind.value = cls.isInterface ? 'interface' : (cls.isAbstract ? 'abstract' : 'class');
+        kind.addEventListener('change', () => {
+            if (kind.value === 'interface') { cls.isInterface = true; cls.isAbstract = false; }
+            else if (kind.value === 'abstract') { cls.isInterface = false; cls.isAbstract = true; }
+            else { cls.isInterface = false; cls.isAbstract = false; }
+            render();
+        });
+        leftGroup.appendChild(kind);
+
+        // name area
+        const nameText = document.createElement('div');
+        nameText.className = 'nameText';
+        if (editingNameId === cls.id) {
+            const inp = document.createElement('input');
+            inp.type = 'text'; inp.value = editingDraft; inp.style.minWidth = '30px';
+            nameText.appendChild(inp);
+            setTimeout(() => inp.focus(), 0);
+            inp.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter') {
+                    cls.name = inp.value.trim() || 'Unnamed';
+                    editingNameId = null; editingDraft = '';
+                    render();
+                }
+                else if (ev.key === 'Escape') { editingNameId = null; editingDraft = ''; render(); }
+                else { editingDraft = inp.value; }
+            });
+            inp.addEventListener('blur', () => {
+                setTimeout(() => { if (editingNameId === cls.id) inp.focus(); }, 0);
+            });
+        } else {
+            nameText.innerText = cls.name;
+            nameText.addEventListener('dblclick', (ev) => {
+                editingNameId = cls.id; editingDraft = cls.name;
+                render(); ev.stopPropagation();
+            });
+        }
+
+        // Interfaces button
+        const interfacesBtn = document.createElement('button');
+        interfacesBtn.className = 'smallBtn interfacesBtn';
+        interfacesBtn.title = 'Interfaces';
+        interfacesBtn.innerText = 'Interfaces';
+        interfacesBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            showInterfacesPopup(cls, el);
+        });
+
+        leftGroup.appendChild(interfacesBtn);
+        leftGroup.appendChild(nameText);
+        namebar.appendChild(leftGroup);
+
+        // delete button
+        const rightGroup = document.createElement('div');
+        const delBtn = document.createElement('button');
+        delBtn.className = 'deleteTop'; delBtn.innerText = '✕'; delBtn.title = 'Delete';
+        delBtn.addEventListener('click', () => {
+            const idx = model.classes.findIndex(x => x.id === cls.id);
+            if (idx >= 0) {
+                model.classes.splice(idx, 1);
+                cleanupReferencesById(cls.id);
+                render();
+            }
+        });
+        rightGroup.appendChild(delBtn);
+        namebar.appendChild(rightGroup);
+
+        return namebar;
+    }
+
+    /**
+     * @param {Class} cls
+     * @param {string[]} typeOptionsAll
+     * @param {Array<{id:string, name:string}>} classEntries
+     * @returns {HTMLElement}
+     */
+    function createBodySection(cls, typeOptionsAll, classEntries) {
+        const section = document.createElement('div');
+        section.className = 'section';
+
+        // base select
+        const baseRow = document.createElement('div');
+        baseRow.className = 'row';
+        const baseLabel = document.createElement('label');
+        baseLabel.innerText = 'Base:';
+        const baseSelect = document.createElement('select');
+
+        const noneOpt = document.createElement('option');
+        noneOpt.value = ''; noneOpt.innerText = 'None';
+        baseSelect.appendChild(noneOpt);
+
+        for (const entry of classEntries) {
+            if (entry.id === cls.id) continue;
+            const o = document.createElement('option');
+            o.value = entry.id; o.innerText = entry.name;
+            baseSelect.appendChild(o);
+        }
+        baseSelect.value = cls.baseClassId || '';
+        baseSelect.addEventListener('change', () => {
+            const val = baseSelect.value;
+            cls.baseClassId = val ? val : null;
+            render();
+        });
+        baseRow.appendChild(baseLabel);
+        baseRow.appendChild(baseSelect);
+        section.appendChild(baseRow);
+
+        section.appendChild(createAttributesSection(cls, typeOptionsAll));
+        section.appendChild(createOperationsSection(cls, typeOptionsAll));
+
+        return section;
+    }
+
+    /**
+     * @param {Class} cls
+     * @param {string[]} typeOptionsAll
+     * @returns {HTMLElement}
+     */
+    function createAttributesSection(cls, typeOptionsAll) {
+        const attrsDiv = document.createElement('div');
+        const attrsHeader = document.createElement('div');
+        attrsHeader.innerText = 'Attributes';
+        attrsHeader.className = 'row mini';
+        const addAttrBtn = document.createElement('button');
+        addAttrBtn.innerText = '+Attr'; addAttrBtn.className = 'mini';
+        addAttrBtn.addEventListener('click', () => { cls.attributes.push(newAttribute()); render(); });
+        attrsHeader.appendChild(addAttrBtn);
+        attrsDiv.appendChild(attrsHeader);
+
+        for (let i = 0; i < cls.attributes.length; i++) {
+            const a = cls.attributes[i];
+            const row = document.createElement('div'); row.className = 'row';
+            const nameIn = document.createElement('input');
+            nameIn.type = 'text'; nameIn.value = a.name || '';
+            nameIn.addEventListener('input', () => a.name = nameIn.value);
+
+            const typeIn = document.createElement('select');
+            typeIn.className = 'mini';
+            for (const t of typeOptionsAll) {
+                const o = document.createElement('option');
+                o.value = t; o.innerText = t; typeIn.appendChild(o);
+            }
+            typeIn.value = a.type || 'object';
+            typeIn.addEventListener('change', () => { a.type = typeIn.value; render(); });
+
+            const vis = document.createElement('select');
+            ['private', 'public', 'protected', 'internal'].forEach(v => {
+                const o = document.createElement('option');
+                o.value = v; o.innerText = v; vis.appendChild(o);
+            });
+            vis.value = a.visibility || 'private';
+            vis.addEventListener('change', () => a.visibility = vis.value);
+            vis.className = 'mini';
+
+            const mod = document.createElement('select');
+            ['None', 'abstract', 'virtual', 'override', 'static', 'aggregation', 'composition'].forEach(m => {
+                const o = document.createElement('option');
+                o.value = m; o.innerText = m; mod.appendChild(o);
+            });
+            mod.value = a.modifier || 'None';
+            mod.addEventListener('change', () => { a.modifier = mod.value; render(); });
+            mod.className = 'mini';
+
+            const rem = document.createElement('button');
+            rem.className = 'removeBtn'; rem.innerText = 'x';
+            rem.addEventListener('click', () => { cls.attributes.splice(i, 1); render(); });
+
+            row.appendChild(nameIn); row.appendChild(typeIn);
+            row.appendChild(vis); row.appendChild(mod); row.appendChild(rem);
+            attrsDiv.appendChild(row);
+        }
+        return attrsDiv;
+    }
+
+    /**
+     * @param {Class} cls
+     * @param {string[]} typeOptionsAll
+     * @returns {HTMLElement}
+     */
+    function createOperationsSection(cls, typeOptionsAll) {
+        const opsDiv = document.createElement('div');
+        const opsHeader = document.createElement('div');
+        opsHeader.innerText = 'Operations';
+        opsHeader.className = 'row mini';
+        const addOpBtn = document.createElement('button');
+        addOpBtn.innerText = '+Op'; addOpBtn.className = 'mini';
+        addOpBtn.addEventListener('click', () => { cls.operations.push(newOperation()); render(); });
+        opsHeader.appendChild(addOpBtn);
+        opsDiv.appendChild(opsHeader);
+
+        for (let i = 0; i < cls.operations.length; i++) {
+            const o = cls.operations[i];
+            const row = document.createElement('div'); row.className = 'row';
+            const nameIn = document.createElement('input');
+            nameIn.type = 'text'; nameIn.value = o.name || '';
+            nameIn.addEventListener('input', () => o.name = nameIn.value);
+
+            const retIn = document.createElement('select');
+            for (const t of typeOptionsAll) {
+                const opt = document.createElement('option');
+                opt.value = t; opt.innerText = t; retIn.appendChild(opt);
+            }
+            retIn.value = o.returnType || 'void';
+            retIn.addEventListener('change', () => o.returnType = retIn.value);
+            retIn.className = 'mini';
+
+            const vis = document.createElement('select');
+            ['private', 'public', 'protected', 'internal'].forEach(v => {
+                const oo = document.createElement('option');
+                oo.value = v; oo.innerText = v; vis.appendChild(oo);
+            });
+            vis.value = o.visibility || 'private';
+            vis.addEventListener('change', () => o.visibility = vis.value);
+            vis.className = 'mini';
+
+            const mod = document.createElement('select');
+            ['None', 'abstract', 'virtual', 'override', 'static', 'aggregation', 'composition'].forEach(m => {
+                const oo = document.createElement('option');
+                oo.value = m; oo.innerText = m; mod.appendChild(oo);
+            });
+            mod.value = o.modifier || 'None';
+            mod.addEventListener('change', () => { o.modifier = mod.value; render(); });
+            mod.className = 'mini';
+
+            const rem = document.createElement('button');
+            rem.className = 'removeBtn'; rem.innerText = 'x';
+            rem.addEventListener('click', () => { cls.operations.splice(i, 1); render(); });
+
+            row.appendChild(nameIn); row.appendChild(retIn);
+            row.appendChild(vis); row.appendChild(mod); row.appendChild(rem);
+
+            const paramsDiv = document.createElement('div');
+            for (let p = 0; p < (o.parameters || []).length; p++) {
+                const pi = o.parameters[p];
+                const pRow = document.createElement('div'); pRow.className = 'row';
+                const pn = document.createElement('input');
+                pn.type = 'text'; pn.value = pi.name || '';
+                pn.addEventListener('input', () => pi.name = pn.value);
+
+                const pt = document.createElement('select');
+                for (const t of typeOptionsAll) {
+                    const opel = document.createElement('option');
+                    opel.value = t; opel.innerText = t; pt.appendChild(opel);
+                }
+                pt.value = pi.type || 'int';
+                pt.addEventListener('change', () => { pi.type = pt.value; render(); });
+                pt.className = 'mini';
+
+                const prem = document.createElement('button');
+                prem.className = 'removeBtn'; prem.innerText = 'x';
+                prem.addEventListener('click', () => { o.parameters.splice(p, 1); render(); });
+                pRow.appendChild(pn); pRow.appendChild(pt); pRow.appendChild(prem);
+                paramsDiv.appendChild(pRow);
+            }
+            const addParamBtn = document.createElement('button');
+            addParamBtn.innerText = '+Param'; addParamBtn.className = 'row mini';
+            addParamBtn.addEventListener('click', () => {
+                if (!o.parameters) o.parameters = [];
+                o.parameters.push({ name: 'p', type: 'int' }); render();
+            });
+            paramsDiv.appendChild(addParamBtn);
+
+            opsDiv.appendChild(row);
+            opsDiv.appendChild(paramsDiv);
+        }
+        return opsDiv;
+    }
+
+    /**
+     * @param {Class} cls
+     * @param {HTMLElement} el
+     * @param {HTMLElement} namebar
+     */
+    function initDragHandling(cls, el, namebar) {
+        let isDragging = false, startX = 0, startY = 0, origX = 0, origY = 0;
+        namebar.addEventListener('pointerdown', (ev) => {
+            if (editingNameId === cls.id) return;
+            const tgt = ev.target;
+            if (tgt.closest && (tgt.closest('input') || tgt.closest('select') || tgt.closest('button') || tgt.closest('.nameText'))) return;
+            isDragging = true; startX = ev.clientX; startY = ev.clientY; origX = cls.x; origY = cls.y;
+            try { namebar.setPointerCapture(ev.pointerId); } catch (e) { console.log(e); }
+        });
+        window.addEventListener('pointermove', (ev) => {
+            if (!isDragging) return;
+            const dx = ev.clientX - startX, dy = ev.clientY - startY;
+            cls.x = origX + dx; cls.y = origY + dy;
+            el.style.left = cls.x + 'px'; el.style.top = cls.y + 'px';
+            drawRelations();
+        });
+        window.addEventListener('pointerup', (ev) => {
+            if (isDragging) {
+                isDragging = false;
+                try { namebar.releasePointerCapture(ev.pointerId); } catch { }
+                drawRelations();
+            }
+        });
     }
 
     // ---------- Relation computation & drawing ----------
