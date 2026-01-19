@@ -79,7 +79,7 @@ interface IPrimitiveTypeMap {
 }
 
 interface ICodeBuilder {
-    Build(outputFolder: vscode.Uri, model: IObjectModel): Promise<void>;
+    Build(outputFolder: vscode.Uri): Promise<void>;
 }
 
 export function pascalCase(s: string) {
@@ -225,8 +225,8 @@ export abstract class CodeBuilder implements ICodeBuilder {
     }
 
 
-    async Build(outputFolder: vscode.Uri, model: IObjectModel): Promise<void> {
-        for (const cls of model.classes) {
+    async Build(outputFolder: vscode.Uri): Promise<void> {
+        for (const cls of this.ObjectModel.classes) {
 
             const name = safeIdentifier(cls.name || 'Unnamed');
             const imports = this.generateImports(cls);  // 言語固有: インポート生成
@@ -530,11 +530,11 @@ export class CodeGenerator {
 
     }
 
-    async generate(outputFolder: vscode.Uri, model: IObjectModel) {
+    async generate(outputFolder: vscode.Uri) {
         if (!this._builder) {
             return null;
         }
-        await this._builder.Build(outputFolder, model);
+        await this._builder.Build(outputFolder);
     }
 
 

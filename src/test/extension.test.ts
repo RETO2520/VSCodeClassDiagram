@@ -51,7 +51,7 @@ suite('コード生成のテストケース', () => {
         await vscode.workspace.fs.createDirectory(outUri);
         const tm = new TypeModel();
         const b = new TypeScriptBuilder(model, tm);
-        await b.Build(outUri, model);
+        await b.Build(outUri);
 
         const holderUri = vscode.Uri.joinPath(outUri, 'Holder.ts');
         const thingUri = vscode.Uri.joinPath(outUri, 'Thing.ts');
@@ -170,12 +170,12 @@ suite('モデルのテストケース', () => {
 
         const mock = new MockBuilder() as any;
         const cg = new CodeGenerator(mock);
-        await cg.generate(vscode.Uri.parse('untitled:mock'), model as any);
+        await cg.generate(vscode.Uri.parse('untitled:mock'));
         assert.strictEqual(calls.called, true);
         assert.strictEqual(calls.args.model, model);
 
         const cg2 = new CodeGenerator(null);
-        const res = await cg2.generate(vscode.Uri.parse('untitled:mock'), model as any);
+        const res = await cg2.generate(vscode.Uri.parse('untitled:mock'));
         assert.strictEqual(res, null);
     });
 });

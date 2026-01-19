@@ -314,35 +314,35 @@ async function generateCodeFiles(model: IObjectModel, typeModel: TypeModel, logg
       {
         const csharpBuilder = new CSharpBuilder(model, typeModel, logger);
         const csharpGen = new CodeGenerator(csharpBuilder);
-        await csharpGen.generate(outFolder, model);
+        await csharpGen.generate(outFolder);
       }
       break;
     case 'typescript':
       {
         const typescriptBuilder = new TypeScriptBuilder(model, typeModel, logger);
         const typescriptGen = new CodeGenerator(typescriptBuilder);
-        await typescriptGen.generate(outFolder, model);
+        await typescriptGen.generate(outFolder);
       }
       break;
     case 'java':
       {
         const javaBuilder = new JavaBuilder(model, typeModel, logger);
         const javaGen = new CodeGenerator(javaBuilder);
-        await javaGen.generate(outFolder, model);
+        await javaGen.generate(outFolder);
       }
       break;
     case 'cpp':
       {
         const cppBuilder = new CppBuilder(model, typeModel, logger);
         const cppGen = new CodeGenerator(cppBuilder);
-        await cppGen.generate(outFolder, model);
+        await cppGen.generate(outFolder);
       }
       break;
     case 'rust':
       {
         const rustBuilder = new RustBuilder(model, typeModel, logger);
         const rustGen = new CodeGenerator(rustBuilder);
-        await rustGen.generate(outFolder, model);
+        await rustGen.generate(outFolder);
       }
       break;
     default: throw new Error('Unsupported language: ' + language);
