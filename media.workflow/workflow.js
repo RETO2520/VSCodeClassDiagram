@@ -6,7 +6,8 @@ import { initInteractions } from './workflow.interactions.js';
 import { initApi } from './workflow.api.js';
 
 (() => {
-	const vscode = acquireVsCodeApi?.();// eslint-disable-line no-undef
+	const vscode = (typeof acquireVsCodeApi !== 'undefined') ? acquireVsCodeApi() : null;
+
 	const svg = document.getElementById('canvas');
 	const nodesLayer = document.getElementById('nodes');
 	const edgesLayer = document.getElementById('edges');
@@ -17,11 +18,16 @@ import { initApi } from './workflow.api.js';
 	const contextMenu = document.getElementById('contextMenu');
 	const edgeContextMenu = document.getElementById('edgeContextMenu');
 	const createButtons = document.querySelectorAll('.createBtn');
-	// request workspace diagram on start
-	vscode.postMessage?.({
-		type: 'requestWorkspaceDiagram'
+
+	// 1. Initialize API and message handling first
+	initApi({
+		vscode,
+		setDiagram,
+		state,
+		filePathSpan
 	});
-	// initialize modules with element refs and helpers
+
+	// 2. Initialize Drawing module
 	initDrawing({
 		svg,
 		nodesLayer,
@@ -33,6 +39,8 @@ import { initApi } from './workflow.api.js';
 		createEllipse,
 		createDiamond
 	});
+
+	// 3. Initialize Interactions module
 	initInteractions({
 		svg,
 		nodesLayer,
@@ -49,12 +57,11 @@ import { initApi } from './workflow.api.js';
 		capitalize,
 		generateId
 	});
-	initApi({
-		vscode,
-		setDiagram,
-		state,
-		filePathSpan
-	});
 
-
+	// Request workspace diagram on start if vscode is available
+	if (vscode) {
+		vscode.postMessage({
+			type: 'requestWorkspaceDiagram'
+		});
+	}
 })();
