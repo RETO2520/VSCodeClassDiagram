@@ -7,6 +7,51 @@
     let editingNameId = null, editingDraft = '';
     let primitiveTypes = [];
 
+    /**
+     * @typedef {Object} Attribute
+     * @property {string} name
+     * @property {string} type
+     * @property {string} visibility - 'private' | 'public' | 'protected' | 'internal'
+     * @property {string} modifier - 'None' | 'abstract' | 'virtual' | 'override' | 'static' | 'aggregation' | 'composition'
+     */
+
+    /**
+     * @typedef {Object} Operation
+     * @property {string} name
+     * @property {string} returnType
+     * @property {string} visibility
+     * @property {string} modifier
+     * @property {Array} parameters
+     * @property {Object} [workflow]
+     */
+
+    /**
+     * @typedef {Object} Class
+     * @property {string} id
+     * @property {string} name
+     * @property {number} x
+     * @property {number} y
+     * @property {number} width
+     * @property {number} height
+     * @property {string|null} baseClassId
+     * @property {string[]} interfaces
+     * @property {boolean} isAbstract
+     * @property {boolean} isInterface
+     * @property {Attribute[]} attributes
+     * @property {Operation[]} operations
+     */
+
+    /** @returns {Attribute} */
+    function newAttribute(name = 'field', type = 'int') {
+        return { name, type, visibility: 'private', modifier: 'None' };
+    }
+
+    /** @returns {Operation} */
+    function newOperation(name = 'Op', returnType = 'void') {
+        return { name, returnType, visibility: 'private', modifier: 'None', parameters: [] };
+    }
+
+    /** @returns {Class} */
     function newClass(x = 20, y = 20) {
         return {
             id: cryptoRandomId(),
@@ -260,7 +305,7 @@
             const attrsDiv = document.createElement('div'); const attrsHeader = document.createElement('div');
             attrsHeader.innerText = 'Attributes';
             attrsHeader.className = 'row mini';
-            const addAttrBtn = document.createElement('button'); addAttrBtn.innerText = '+Attr'; addAttrBtn.className = 'mini'; addAttrBtn.addEventListener('click', () => { cls.attributes.push({ name: 'field', type: 'int', visibility: 'private', modifier: 'None' }); render(); });
+            const addAttrBtn = document.createElement('button'); addAttrBtn.innerText = '+Attr'; addAttrBtn.className = 'mini'; addAttrBtn.addEventListener('click', () => { cls.attributes.push(newAttribute()); render(); });
             attrsHeader.appendChild(addAttrBtn);
             attrsDiv.appendChild(attrsHeader);
             for (let i = 0; i < cls.attributes.length; i++) {
@@ -294,7 +339,7 @@
             const opsHeader = document.createElement('div');
             opsHeader.innerText = 'Operations';
             opsHeader.className = 'row mini';
-            const addOpBtn = document.createElement('button'); addOpBtn.innerText = '+Op'; addOpBtn.className = 'mini'; addOpBtn.addEventListener('click', () => { cls.operations.push({ name: 'Op', returnType: 'void', visibility: 'private', modifier: 'None', parameters: [] }); render(); });
+            const addOpBtn = document.createElement('button'); addOpBtn.innerText = '+Op'; addOpBtn.className = 'mini'; addOpBtn.addEventListener('click', () => { cls.operations.push(newOperation()); render(); });
             //opsHeader.style.color = 'black';
             opsHeader.appendChild(addOpBtn);
             opsDiv.appendChild(opsHeader);
