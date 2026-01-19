@@ -194,7 +194,7 @@ export function activate(context: vscode.ExtensionContext) {
       panel.webview.onDidReceiveMessage(async (msg) => {
         try {
           switch (msg.type) {
-            case "alart": {
+            case "alert": {
               vscode.window.showInformationMessage(msg.text);
               break;
             };

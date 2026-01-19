@@ -19,7 +19,7 @@ export function initInteractions(params) {
   btnSave.addEventListener('click', () => {
     if (!state.currentOpRef) {
       vscode.postMessage?.({
-        type: 'alart',
+        type: 'alert',
         text: 'No operation selected.'
       });
       //alert('No operation selected.');
@@ -29,7 +29,7 @@ export function initInteractions(params) {
     if (!cls) {
       //alert('Invalid operation reference.');
       vscode.postMessage?.({
-        type: 'alart',
+        type: 'alert',
         text: 'Invalid operation reference.'
       });
       return;
@@ -150,7 +150,7 @@ function rebuildOperationListFromDiagram() {
     if (!state.diagram.classes) state.diagram.classes = [];
     if (state.diagram.classes.length === 0) {
       vscode.postMessage?.({
-        type: 'alart',
+        type: 'alert',
         text: 'クラス図が存在しないため、新規に作成します。'
       });
       state.diagram.classes.push({

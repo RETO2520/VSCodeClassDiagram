@@ -12,7 +12,12 @@ export function initApi({ vscode, setDiagram: setDiagramFn, state: st, filePathS
                 break;
             case 'saveCompleted':
                 filePathSpan.textContent = msg.filePath;
+                // Use the alert mechanism instead of raw window.alert if possible, or keep it simple
                 alert('Save completed: ' + msg.filePath);
+                break;
+            case 'openCanceled':
+            case 'saveCanceled':
+                console.log('Operation canceled by user');
                 break;
             case 'error':
                 alert('Error: ' + msg.message);
