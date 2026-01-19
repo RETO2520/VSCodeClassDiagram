@@ -1,33 +1,21 @@
 # タスク - コード生成エンジン
 
-- [ ] 1. IGeneratorBuilder インターフェースの定義
+- [x] 1. IGeneratorBuilder への名称統一と基盤整備
   - ファイル: `src/CodeComponents/CodeGenerator.ts`
-  - `getFileName`, `buildClassHeader`, `buildAttribute`, `buildOperation`, `buildClassFooter` などのメソッドを定義する。
-  - 目的: 言語固有の Builder のためのコントラクト（規約）を形式化する。
-  - _活用: CodeGenerator パターン_
-  - _要件: 非機能要件 (アーキテクチャ)_
-  - _プロンプト: Role: TypeScript アーキテクト | Task: CodeGenerator.ts 内で、異なる言語のソースコード構築ステップを抽象化する堅牢な IGeneratorBuilder インターフェースを定義してください。 | Success: インターフェースが定義され、CodeGenerator クラスで正しく使用されている。_
+  - `ICodeBuilder` を `IGeneratorBuilder` にリネームし、`CodeBuilder` 抽象クラスの各ステップ（`generateImports` 等）が IGeneratorBuilder の責務として明確になるよう調整する。
+  - 目的: 設計ドキュメントとの用語の一致と、Builder パターンの形式化。
 
-- [ ] 2. TypeScriptBuilder の実装
+- [ ] 2. TypeScriptBuilder の詳細実装
   - ファイル: `src/CodeComponents/TypeScriptBuilder.ts`
-  - TypeScript 構文用の `IGeneratorBuilder` を実装したクラスを作成する。
-  - 目的: ターゲット言語として TypeScript をサポートする。
-  - _活用: TS 用の `TypeModel` マッピング_
-  - _要件: 1.1, 2.1_
-  - _プロンプト: Role: TypeScript 開発者 | Task: TypeScriptBuilder.ts で IGeneratorBuilder インターフェースを実装してください。クラス、インターフェース、メソッドが TypeScript の慣習に従うようにしてください。 | Success: Builder が .ts ファイルを正しく生成する。_
+  - 現状の実装をベースに、インターフェース、抽象クラス、型変換（int -> number 等）が仕様通りに動作することを確認・修正する。
+  - 目的: Requirement 1.1, 2.1 の達成。
 
-- [ ] 3. RustBuilder の実装
+- [ ] 3. RustBuilder の詳細実装
   - ファイル: `src/CodeComponents/RustBuilder.ts`
-  - Rust 構文（structs, traits, impls）用の `IGeneratorBuilder` を実装したクラスを作成する。
-  - 目的: ターゲット言語として Rust をサポートする。
-  - _活用: Rust 用の `TypeModel` マッピング_
-  - _要件: 1.1, 2.2_
-  - _プロンプト: Role: Rust 開発者 | Task: RustBuilder.ts で IGeneratorBuilder インターフェースを実装してください。UML クラスを Rust の struct と trait にマッピングしてください。'impl' ブロックの生成も処理してください。 | Success: Builder が .rs ファイルを正しく生成する。_
+  - Rust 固有の構文（snake_case のファイル名/フィールド名、struct, trait, impl）の実装を完了させる。
+  - 目的: Requirement 1.1, 2.2 の達成。
 
-- [ ] 4. 出力チャネルロガーの統合
-  - ファイル: `src/LoggerComponents/Logger.ts`, `src/extension.ts`
-  - すべての生成の進捗と警告が "Class Diagram Editor Log" に送信されるようにする。
-  - 目的: 長時間実行されるタスクの間、ユーザーに透明性を提供する。
-  - _活用: VS Code `OutputChannel` API_
-  - _要件: 1.3_
-  - _プロンプト: Role: VS Code 拡張機能開発者 | Task: Logger クラスを CodeGenerator ワークフローに統合し、ファイル作成ステータスや変換警告を記録してください。 | Success: ユーザーが出力タブで生成の進捗を確認できる。_
+- [ ] 4. ロギングの統合とエラーハンドリング（上書き確認）
+  - ファイル: `src/LoggerComponents/Logger.ts`, `src/CodeComponents/CodeGenerator.ts`
+  - 生成プロセスのログを「Class Diagram Editor Log」に出力し、ファイル上書き時のチェックロジック（Requirement 1.2）を検討・実装する。
+  - 目的: 要求事項 1.2, 1.3 の達成。

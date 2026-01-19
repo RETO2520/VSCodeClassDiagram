@@ -7,13 +7,13 @@ export class CSharpBuilder extends CodeBuilder {
 
     protected ownAttrs: { name: string, attr: IAttributeModel }[] = []
     protected inheritedAttrs: { name: string, attr: IAttributeModel }[] = []
-    protected generateImports(cls: IClassModel): string[] {
+    public generateImports(cls: IClassModel): string[] {
         const imports: string[] = [];
         imports.push('using System;');
         imports.push('');
         return imports;
     }
-    protected generateClassDeclaration(cls: IClassModel): string {
+    public generateClassDeclaration(cls: IClassModel): string {
         let modifiers = '';
         const name = safeIdentifier(cls.name || 'Unnamed');
         if (cls.isInterface) {
@@ -44,7 +44,7 @@ export class CSharpBuilder extends CodeBuilder {
         let declaration = `${modifiers} ${name}${baseClause}\n{`;
         return declaration;
     }
-    protected generateAttributes(cls: IClassModel): string[] {
+    public generateAttributes(cls: IClassModel): string[] {
         const attrs: string[] = [];
         const inherited = collectInheritedMembers(cls, this.ObjectModel, this.ClassMaps);
         const implementedProps = new Set((cls.attributes || []).map((a: any) => pascalCase(a.name || '')));
@@ -104,7 +104,7 @@ export class CSharpBuilder extends CodeBuilder {
         }
         return attrs;
     }
-    protected generateConstructor(cls: IClassModel): string[] {
+    public generateConstructor(cls: IClassModel): string[] {
         const constructorExp: string[] = [];
         const ownAttrs = Array.isArray(cls.attributes) ? cls.attributes : [];
         const name = safeIdentifier(cls.name || 'Unnamed');
@@ -137,7 +137,7 @@ export class CSharpBuilder extends CodeBuilder {
         }
         return constructorExp;
     }
-    protected generateOperations(cls: IClassModel): string[] {
+    public generateOperations(cls: IClassModel): string[] {
         const operations: string[] = [];
         const inherited = collectInheritedMembers(cls, this.ObjectModel, this.ClassMaps);
         const implementedSigs = new Set<string>((cls.operations || []).map((o: IOperationModel) => opSignatureKey(o)));
@@ -215,13 +215,13 @@ export class CSharpBuilder extends CodeBuilder {
         }
         return operations;
     }
-    protected getClassClosing(): string {
+    public getClassClosing(): string {
         return '}';
     }
-    protected getFileName(cls: IClassModel): string {
+    public getFileName(cls: IClassModel): string {
         return safeIdentifier(cls.name || 'Unnamed');
     }
-    protected getFileExtension(): string {
+    public getFileExtension(): string {
         return '.cs';
     }
 

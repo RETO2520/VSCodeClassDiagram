@@ -3,12 +3,12 @@ import { CodeBuilder, IObjectModel, IAttributeModel, IOperationModel, IParameter
 
 export class RustBuilder extends CodeBuilder {
 
-    protected generateImports(cls: IClassModel): string[] {
+    public generateImports(cls: IClassModel): string[] {
         // Rust has few automatic imports here; leave empty for now
         return [];
     }
 
-    protected generateClassDeclaration(cls: IClassModel): string {
+    public generateClassDeclaration(cls: IClassModel): string {
         const name = safeIdentifier(cls.name || 'Unnamed');
         if (cls.isInterface) {
             return `pub trait ${name} {`;
@@ -21,7 +21,7 @@ pub struct ${name} {`;
         return `pub struct ${name} {`;
     }
 
-    protected generateAttributes(cls: IClassModel): string[] {
+    public generateAttributes(cls: IClassModel): string[] {
         const lines: string[] = [];
         if (cls.isInterface) {
             // interface: no fields
@@ -42,7 +42,7 @@ pub struct ${name} {`;
         return lines;
     }
 
-    protected generateConstructor(cls: IClassModel): string[] {
+    public generateConstructor(cls: IClassModel): string[] {
         const lines: string[] = [];
         if (cls.isInterface) return lines;
         const name = safeIdentifier(cls.name || 'Unnamed');
@@ -73,7 +73,7 @@ pub struct ${name} {`;
         return lines;
     }
 
-    protected generateOperations(cls: IClassModel): string[] {
+    public generateOperations(cls: IClassModel): string[] {
         const lines: string[] = [];
 
         // interface methods -> trait signatures
@@ -121,15 +121,15 @@ pub struct ${name} {`;
         return lines;
     }
 
-    protected getClassClosing(): string {
+    public getClassClosing(): string {
         return '';
     }
 
-    protected getFileName(cls: IClassModel): string {
+    public getFileName(cls: IClassModel): string {
         return safeIdentifier(cls.name || 'Unnamed');
     }
 
-    protected getFileExtension(): string {
+    public getFileExtension(): string {
         return '.rs';
     }
 

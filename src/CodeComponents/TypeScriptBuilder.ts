@@ -4,7 +4,7 @@ import console = require('node:console');
 
 
 export class TypeScriptBuilder extends CodeBuilder {
-    protected generateImports(cls: IClassModel): string[] {
+    public generateImports(cls: IClassModel): string[] {
         const importsValue = new Set<string>(); // needs normal import (value)
         const importsTypeOnly = new Set<string>(); // can be import type
 
@@ -74,7 +74,7 @@ export class TypeScriptBuilder extends CodeBuilder {
 
         return imports;
     }
-    protected generateClassDeclaration(cls: IClassModel): string {
+    public generateClassDeclaration(cls: IClassModel): string {
         let modifiers = '';
         const name = safeIdentifier(cls.name || 'Unnamed');
         const bases: string[] = [];
@@ -108,25 +108,25 @@ export class TypeScriptBuilder extends CodeBuilder {
             return `${modifiers} ${name}${baseClause}${interfaceClause} {`;
         }
     }
-    protected generateAttributes(cls: IClassModel): string[] {
+    public generateAttributes(cls: IClassModel): string[] {
         const aa = this.analyzeAttribute(cls);
         return [...aa.owns, ...aa.inherits]
     }
-    protected generateConstructor(cls: IClassModel): string[] {
+    public generateConstructor(cls: IClassModel): string[] {
         const aa = this.analyzeAttribute(cls);  // 再利用
         return this.analyzeConstructor(cls, aa.ownAttrs, aa.inheritedAttrs);
     }
-    protected generateOperations(cls: IClassModel): string[] {
+    public generateOperations(cls: IClassModel): string[] {
         const ao = this.analyzeOperatetion(cls);
         return [...ao.owns, ...ao.inherits];
     }
-    protected getClassClosing(): string {
+    public getClassClosing(): string {
         return '}';
     }
-    protected getFileName(cls: IClassModel): string {
+    public getFileName(cls: IClassModel): string {
         return safeIdentifier(cls.name || 'Unnamed');
     }
-    protected getFileExtension(): string {
+    public getFileExtension(): string {
         return '.ts';
     }
 

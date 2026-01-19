@@ -78,8 +78,16 @@ interface IPrimitiveTypeMap {
     [key: string]: ILanguageTypeModel;
 }
 
-interface ICodeBuilder {
+export interface IGeneratorBuilder {
     Build(outputFolder: vscode.Uri): Promise<void>;
+    generateImports(cls: IClassModel): string[];
+    generateClassDeclaration(cls: IClassModel): string;
+    generateAttributes(cls: IClassModel): string[];
+    generateConstructor(cls: IClassModel): string[];
+    generateOperations(cls: IClassModel): string[];
+    getClassClosing(): string;
+    getFileName(cls: IClassModel): string;
+    getFileExtension(): string;
 }
 
 export function pascalCase(s: string) {
@@ -210,7 +218,7 @@ export function collectInheritedMembers(cls: IClassModel, model: IObjectModel, o
     };
 }
 
-export abstract class CodeBuilder implements ICodeBuilder {
+export abstract class CodeBuilder implements IGeneratorBuilder {
     TypeModel: TypeModel;
     protected ObjectModel: IObjectModel;
     protected ClassMaps: { nameToClass: Record<string, IClassModel>, idToClass: Record<string, IClassModel> };
@@ -254,14 +262,14 @@ export abstract class CodeBuilder implements ICodeBuilder {
         }
     }
     // 抽象メソッド: 言語固有の実装をサブクラスで定義
-    protected abstract generateImports(cls: IClassModel): string[];
-    protected abstract generateClassDeclaration(cls: IClassModel): string;
-    protected abstract generateAttributes(cls: IClassModel): string[];
-    protected abstract generateConstructor(cls: IClassModel): string[];
-    protected abstract generateOperations(cls: IClassModel): string[];
-    protected abstract getClassClosing(): string;
-    protected abstract getFileName(cls: IClassModel): string;
-    protected abstract getFileExtension(): string;
+    public abstract generateImports(cls: IClassModel): string[];
+    public abstract generateClassDeclaration(cls: IClassModel): string;
+    public abstract generateAttributes(cls: IClassModel): string[];
+    public abstract generateConstructor(cls: IClassModel): string[];
+    public abstract generateOperations(cls: IClassModel): string[];
+    public abstract getClassClosing(): string;
+    public abstract getFileName(cls: IClassModel): string;
+    public abstract getFileExtension(): string;
 
     protected getAttributes() {
 
@@ -524,8 +532,8 @@ export class TypeModel {
 export class CodeGenerator {
 
 
-    private _builder: ICodeBuilder | null = null;
-    constructor(builder: ICodeBuilder | null = null) {
+    private _builder: IGeneratorBuilder | null = null;
+    constructor(builder: IGeneratorBuilder | null = null) {
         this._builder = builder;
 
     }
