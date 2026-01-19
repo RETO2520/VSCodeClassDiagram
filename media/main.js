@@ -703,7 +703,6 @@
     }
 
     function drawRelations() {
-        // clear existing lines but keep defs
         // remove all children except <defs>
         while (svg.childNodes.length > 1) svg.removeChild(svg.lastChild);
 
@@ -716,58 +715,87 @@
             const start = lineRectIntersection(fromRect, fromRect.cx, fromRect.cy, toRect.cx, toRect.cy);
             const end = lineRectIntersection(toRect, toRect.cx, toRect.cy, fromRect.cx, fromRect.cy);
 
-            // build path (straight line). Optionally could add midpoints to route around boxes.
-            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            //path.setAttribute('d', 'M ' + start.x + ' ' + start.y + ' L ' + end.x + ' ' + end.y);
-            if (r.type === 'Dependency') {
-                // draw from target edge to source edge so arrow points to source (reverse)
-                path.setAttribute('d', 'M ' + end.x + ' ' + end.y + ' L ' + start.x + ' ' + start.y);
-            } else {
-                // normal direction: from source -> target
-                path.setAttribute('d', 'M ' + start.x + ' ' + start.y + ' L ' + end.x + ' ' + end.y);
-            }
-            path.setAttribute('fill', 'none');
-
-            path.style.stroke = 'var(--vscode-foreground)';
-            if (r.type === 'Composition') {
-                //path.setAttribute('stroke', 'black');
-                path.setAttribute('stroke-width', '1.2');
-                // diamond at whole side -> we treat the declaring class as "from", so diamond at start
-                path.setAttribute('marker-start', 'url(#diamondFilledStart)');
-                path.setAttribute('stroke-dasharray', ''); // solid
-            } else if (r.type === 'Aggregation') {
-                //path.setAttribute('stroke', 'black');
-                path.setAttribute('stroke-width', '1.2');
-                path.setAttribute('marker-start', 'url(#diamondHollowStart)');
-                path.setAttribute('stroke-dasharray', ''); // solid
-            } else if (r.type === 'Association') {
-                //path.setAttribute('stroke', 'black');
-                path.setAttribute('stroke-width', '1');
-                path.setAttribute('marker-end', 'url(#arrow)');
-                path.setAttribute('stroke-dasharray', ''); // solid
-            } else if (r.type === 'Dependency') {
-                //path.setAttribute('stroke', 'gray');
-                path.setAttribute('stroke-width', '1');
-                path.setAttribute('marker-end', 'url(#arrow)');
-                path.setAttribute('stroke-dasharray', '4 3'); // dashed
-            } else if (r.type === 'Inheritance') {
-                //path.setAttribute('stroke', 'black');
-                path.setAttribute('stroke-width', '1.5');
-                path.setAttribute('marker-end', 'url(#tri)');
-                path.setAttribute('stroke-dasharray', ''); // solid
-            } else if (r.type === 'Interface') {
-                //path.setAttribute('stroke', 'black');
-                path.setAttribute('stroke-width', '1.2');
-                path.setAttribute('marker-end', 'url(#tri)');
-                path.setAttribute('stroke-dasharray', '6 4'); // dashed
-            } else {
-                // fallback
-                //path.setAttribute('stroke', 'black');
-                path.setAttribute('stroke-width', '1');
-            }
-
+            const path = createRelationElement(r, start, end);
             svg.appendChild(path);
         }
+    }
+
+    /**
+     * @typedef {Object} RelationStyle
+     * @property {string} stroke
+     * @property {string} strokeWidth
+     * @property {string} markerStart
+     * @property {string} markerEnd
+     * @property {string} strokeDasharray
+     */
+
+    /**
+     * @param {string} type
+     * @returns {RelationStyle}
+     */
+    function getRelationStyle(type) {
+        const style = {
+            stroke: 'var(--vscode-foreground)',
+            strokeWidth: '1',
+            markerStart: '',
+            markerEnd: '',
+            strokeDasharray: ''
+        };
+
+        switch (type) {
+            case 'Composition':
+                style.strokeWidth = '1.2';
+                style.markerStart = 'url(#diamondFilledStart)';
+                break;
+            case 'Aggregation':
+                style.strokeWidth = '1.2';
+                style.markerStart = 'url(#diamondHollowStart)';
+                break;
+            case 'Association':
+                style.markerEnd = 'url(#arrow)';
+                break;
+            case 'Dependency':
+                style.markerEnd = 'url(#arrow)';
+                style.strokeDasharray = '4 3';
+                break;
+            case 'Inheritance':
+                style.strokeWidth = '1.5';
+                style.markerEnd = 'url(#tri)';
+                break;
+            case 'Interface':
+                style.strokeWidth = '1.2';
+                style.markerEnd = 'url(#tri)';
+                style.strokeDasharray = '6 4';
+                break;
+        }
+        return style;
+    }
+
+    /**
+     * @param {Object} r - Relation object
+     * @param {{x:number, y:number}} start
+     * @param {{x:number, y:number}} end
+     * @returns {SVGPathElement}
+     */
+    function createRelationElement(r, start, end) {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const style = getRelationStyle(r.type);
+
+        // Dependency points toward the source in this implementation's logic
+        if (r.type === 'Dependency') {
+            path.setAttribute('d', `M ${end.x} ${end.y} L ${start.x} ${start.y}`);
+        } else {
+            path.setAttribute('d', `M ${start.x} ${start.y} L ${end.x} ${end.y}`);
+        }
+
+        path.setAttribute('fill', 'none');
+        path.style.stroke = style.stroke;
+        path.setAttribute('stroke-width', style.strokeWidth);
+        if (style.markerStart) path.setAttribute('marker-start', style.markerStart);
+        if (style.markerEnd) path.setAttribute('marker-end', style.markerEnd);
+        if (style.strokeDasharray) path.setAttribute('stroke-dasharray', style.strokeDasharray);
+
+        return path;
     }
 
     // ---------- Interfaces popup ----------
