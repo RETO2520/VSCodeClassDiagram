@@ -234,32 +234,81 @@ export abstract class CodeBuilder implements IGeneratorBuilder {
 
 
     async Build(outputFolder: vscode.Uri): Promise<void> {
+        this.logger?.info(`Starting code generation for language in: ${outputFolder.fsPath}`);
+        this.logger?.show(true);
+
+        let overwriteAll = false;
+        let skipAll = false;
+
         for (const cls of this.ObjectModel.classes) {
+            const fileName = `${this.getFileName(cls)}${this.getFileExtension()}`;
+            const fileUri = vscode.Uri.joinPath(outputFolder, fileName);
 
-            const name = safeIdentifier(cls.name || 'Unnamed');
-            const imports = this.generateImports(cls);  // 言語固有: インポート生成
-            const classDeclaration = this.generateClassDeclaration(cls);  // 言語固有: クラス宣言
-            const attributes = this.generateAttributes(cls);  // 言語固有: 属性生成
-            const constructor = this.generateConstructor(cls);  // 言語固有: コンストラクタ生成
-            const operations = this.generateOperations(cls);  // 言語固有: 操作生成
+            let fileExists = false;
+            try {
+                await vscode.workspace.fs.stat(fileUri);
+                fileExists = true;
+            } catch {
+                fileExists = false;
+            }
 
-            // コード組み立て（共通）
+            if (fileExists) {
+                if (skipAll) {
+                    this.logger?.info(`Skipping existing file (Skip All): ${fileName}`);
+                    continue;
+                }
+                if (!overwriteAll) {
+                    const result = await vscode.window.showWarningMessage(
+                        `File '${fileName}' already exists. Overwrite?`,
+                        { modal: true },
+                        'Yes',
+                        'Yes to All',
+                        'No',
+                        'No to All'
+                    );
+
+                    if (result === 'No') {
+                        this.logger?.info(`User skipped file: ${fileName}`);
+                        continue;
+                    } else if (result === 'No to All') {
+                        skipAll = true;
+                        this.logger?.info(`User skipped file and all subsequent existing files: ${fileName}`);
+                        continue;
+                    } else if (result === 'Yes to All') {
+                        overwriteAll = true;
+                        this.logger?.info(`User opted to overwrite all remaining files.`);
+                    } else if (result === undefined) {
+                        this.logger?.warn(`Generation cancelled for ${fileName}`);
+                        continue;
+                    }
+                    // 'Yes' falls through to generation
+                }
+            }
+
+            this.logger?.info(`Generating class: ${cls.name || 'Unnamed'} -> ${fileName}`);
+
+            const imports = this.generateImports(cls);
+            const classDeclaration = this.generateClassDeclaration(cls);
+            const attributes = this.generateAttributes(cls);
+            const constructor = this.generateConstructor(cls);
+            const operations = this.generateOperations(cls);
+
             let sb: string[] = [];
             if (imports.length > 0) {
                 sb.push(...imports);
-                sb.push('');  // 空白行
+                sb.push('');
             }
             sb.push(classDeclaration);
             sb.push(...attributes);
             sb.push(...constructor);
             sb.push(...operations);
-            sb.push(this.getClassClosing());  // 言語固有: クラス閉じ（例: '}'）
+            sb.push(this.getClassClosing());
 
             const text = sb.join('\n');
-
-            const fileUri = vscode.Uri.joinPath(outputFolder, `${this.getFileName(cls)}${this.getFileExtension()}`);  // 言語固有: 拡張子
             await vscode.workspace.fs.writeFile(fileUri, Buffer.from(text, 'utf8'));
+            this.logger?.info(`Successfully wrote: ${fileName}`);
         }
+        this.logger?.info('Code generation completed.');
     }
     // 抽象メソッド: 言語固有の実装をサブクラスで定義
     public abstract generateImports(cls: IClassModel): string[];

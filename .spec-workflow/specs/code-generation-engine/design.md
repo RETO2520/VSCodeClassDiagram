@@ -25,9 +25,11 @@ graph TD
     C -->|TS| D[TypeScriptBuilder]
     C -->|Java| E[JavaBuilder]
     C -->|Rust| F[RustBuilder]
+    C -->|Go| H[GoBuilder]
     D --- G[IGeneratorBuilder Interface]
     E --- G
     F --- G
+    H --- G
 ```
 
 ## Components and Interfaces

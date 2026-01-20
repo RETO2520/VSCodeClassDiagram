@@ -15,7 +15,7 @@
   - Rust 固有の構文（snake_case のファイル名/フィールド名、struct, trait, impl）の実装を完了させる。
   - 目的: Requirement 1.1, 2.2 の達成。
 
-- [ ] 4. ロギングの統合とエラーハンドリング（上書き確認）
+- [x] 4. ロギングの統合とエラーハンドリング（上書き確認）
   - ファイル: `src/LoggerComponents/Logger.ts`, `src/CodeComponents/CodeGenerator.ts`
   - 生成プロセスのログを「Class Diagram Editor Log」に出力し、ファイル上書き時のチェックロジック（Requirement 1.2）を検討・実装する。
   - 目的: 要求事項 1.2, 1.3 の達成。

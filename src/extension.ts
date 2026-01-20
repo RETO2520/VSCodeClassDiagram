@@ -135,7 +135,7 @@ export function activate(context: vscode.ExtensionContext) {
               try {
                 //await generateCSharpFiles(msg.payload, outFolder);
                 await generateCodeFiles(model, tm, logger, outFolder, language);
-                vscode.window.showInformationMessage(`${language.toUpperCase()} files generated`);
+                vscode.window.showInformationMessage(`${language.toUpperCase()} Code generation completed.`);
               } catch (e: unknown) {
                 if (e instanceof Error) {
                   vscode.window.showErrorMessage('Generate failed: ' + e.message);

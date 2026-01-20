@@ -1,7 +1,7 @@
 # Requirements - Code Generation Engine
 
 ## Introduction
-クラス図データ（JSON）を解析し、各種プログラミング言語（TypeScript, Java, C#, C++, Rust）のソースコードファイルを生成するコアエンジン。設計意図を直接動くコードに変換します。
+クラス図データ（JSON）を解析し、各種プログラミング言語（TypeScript, Java, C#, C++, Rust, Go）のソースコードファイルを生成するコアエンジン。設計意図を直接動くコードに変換します。
 
 ## Alignment with Product Vision
 `product.md` の核心である「多言語ソースコードの雛形自動生成」を担当します。
@@ -22,6 +22,8 @@
 #### Acceptance Criteria
 1. IF ターゲット言語が TypeScript THEN `int` SHALL `number` に変換される。
 2. IF ターゲット言語が Rust THEN `string` SHALL `String` または `&str` (設定による) に変換される。
+3. IF ターゲット言語が Go THEN `int` SHALL `int` (または `int32`/`int64`)、`string` SHALL `string` に変換される。
+4. IF ターゲット言語が Go THEN ファイル名 SHALL `snake_case.go` に変換され、パッケージ名 SHALL `main` またはフォルダ名から派生したものになる。
 
 ## Non-Functional Requirements
 
