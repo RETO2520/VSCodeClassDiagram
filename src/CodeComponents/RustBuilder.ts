@@ -4,8 +4,14 @@ import { CodeBuilder, IObjectModel, IAttributeModel, IOperationModel, IParameter
 export class RustBuilder extends CodeBuilder {
 
     public generateImports(cls: IClassModel): string[] {
-        // Rust has few automatic imports here; leave empty for now
-        return [];
+        const imports = new Set<string>();
+
+        // Basic requirement: types from other classes need to be imported if we were doing a module per class.
+        // For simplicity in this engine, we assume all are in the same crate or submodules.
+        // However, we can collect referenced names to see if any standard traits or types are needed.
+
+        // Example: if we use Vec, it's in prelude. if we use HashMap, we need 'use std::collections::HashMap;'
+        return Array.from(imports);
     }
 
     public generateClassDeclaration(cls: IClassModel): string {
@@ -13,27 +19,26 @@ export class RustBuilder extends CodeBuilder {
         if (cls.isInterface) {
             return `pub trait ${name} {`;
         }
-        // struct for classes (abstract treated same as struct with comment)
+
+        // Rust structs don't support inheritance. 
+        // If it's abstract, we still use a struct but might not implement all methods.
         if (cls.isAbstract) {
-            return `// abstract
-pub struct ${name} {`;
+            return `#[derive(Debug, Default)]\npub struct ${name} {`;
         }
-        return `pub struct ${name} {`;
+        return `#[derive(Debug, Default)]\npub struct ${name} {`;
     }
 
     public generateAttributes(cls: IClassModel): string[] {
         const lines: string[] = [];
         if (cls.isInterface) {
-            // interface: no fields
-            //lines.push('}');
             return lines;
         }
 
-        // emit fields
         if (Array.isArray(cls.attributes)) {
             for (const a of cls.attributes) {
-                const fieldName = snakeCase(safeIdentifier(a.name || 'unnamed'));
-                const ty = this.TypeModel.mapTypeForLang(a.type || '', 'rust').name;
+                // Rust standard is snake_case for fields
+                const fieldName = snakeCase(a.name || 'unnamed');
+                const ty = this.TypeModel.mapTypeForLang(a.type || 'object', 'rust').name;
                 const vis = (a.visibility === 'public') ? 'pub ' : '';
                 lines.push(`    ${vis}${fieldName}: ${ty},`);
             }
@@ -45,15 +50,15 @@ pub struct ${name} {`;
     public generateConstructor(cls: IClassModel): string[] {
         const lines: string[] = [];
         if (cls.isInterface) return lines;
-        const name = safeIdentifier(cls.name || 'Unnamed');
 
-        // build params from attributes (no inheritance chaining for Rust)
+        const name = safeIdentifier(cls.name || 'Unnamed');
         const attrs = Array.isArray(cls.attributes) ? cls.attributes : [];
         const used = new Set<string>();
+
         const params = attrs.map(a => {
             const pName = snakeCase(this.makeParamName(a.name || 'param', used));
-            const ty = this.TypeModel.mapTypeForLang(a.type || '', 'rust').name;
-            return { pName, ty, propName: snakeCase(safeIdentifier(a.name || 'unnamed')) };
+            const ty = this.TypeModel.mapTypeForLang(a.type || 'object', 'rust').name;
+            return { pName, ty, propName: snakeCase(a.name || 'unnamed') };
         });
 
         const paramsSig = params.map(p => `${p.pName}: ${p.ty}`).join(', ');
@@ -68,19 +73,18 @@ pub struct ${name} {`;
         lines.push('        }');
         lines.push('    }');
         lines.push('}');
-        lines.push('');
 
         return lines;
     }
 
     public generateOperations(cls: IClassModel): string[] {
         const lines: string[] = [];
+        const name = safeIdentifier(cls.name || 'Unnamed');
 
-        // interface methods -> trait signatures
         if (cls.isInterface) {
             if (Array.isArray(cls.operations)) {
                 for (const o of cls.operations) {
-                    const sig = this.buildTraitMethodSignature(o);
+                    const sig = this.buildMethodSignature(o, false);
                     lines.push(`    ${sig};`);
                 }
             }
@@ -88,8 +92,6 @@ pub struct ${name} {`;
             return lines;
         }
 
-        // For classes: implement methods in impl block
-        const name = safeIdentifier(cls.name || 'Unnamed');
         lines.push('');
         lines.push(`impl ${name} {`);
 
@@ -97,27 +99,32 @@ pub struct ${name} {`;
             for (const o of cls.operations) {
                 if (this.isPrivateMemberInAbstractClass(o, cls)) continue;
                 if (this.isAbstractMemberInConcreteClass(o, cls)) continue;
-                const methodLines = this.buildMethod(o);
+
+                const methodLines = this.buildMethodImplementation(o);
                 for (const l of methodLines) lines.push(`    ${l}`);
             }
         }
 
-        // inherited abstract/interface methods -> stubs
+        // Handle interface implementations or abstract method overrides
+        // In Rust, these would ideally be in a separate `impl Trait for Struct` block, 
+        // but for this simple generator, we keep them in the main impl or as stubs.
         const inherited = collectInheritedMembers(cls, this.ObjectModel, this.ClassMaps);
-        const implementedSigs = new Set<string>((cls.operations || []).map(o => this.opKey(o)));
+        const implementedNames = new Set((cls.operations || []).map(o => snakeCase(o.name || '')));
+
         for (const [sig, info] of inherited.operations.entries()) {
-            const inheritedOp = info.op as IOperationModel;
+            const inheritedOp = info.op;
             const origin = info.originClass;
             const isAbstract = ((inheritedOp.modifier || '').toLowerCase().includes('abstract')) || (origin && origin.isInterface);
             if (!isAbstract) continue;
-            const key = this.opKey(inheritedOp);
-            if (implementedSigs.has(key)) continue;
-            const methodLines = this.buildMethod(inheritedOp, true);
+
+            const mName = snakeCase(inheritedOp.name || '');
+            if (implementedNames.has(mName)) continue;
+
+            const methodLines = this.buildMethodImplementation(inheritedOp);
             for (const l of methodLines) lines.push(`    ${l}`);
         }
 
         lines.push('}');
-        lines.push('');
         return lines;
     }
 
@@ -126,54 +133,33 @@ pub struct ${name} {`;
     }
 
     public getFileName(cls: IClassModel): string {
-        return safeIdentifier(cls.name || 'Unnamed');
+        // Rust files are typically snake_case
+        return snakeCase(cls.name || 'Unnamed');
     }
 
     public getFileExtension(): string {
         return '.rs';
     }
 
-    // ---- helpers ----
-    private mapToRustType(t: string): string {
-        if (!t) return '()';
-        const low = t.toLowerCase();
-        if (low === 'int' || low === 'integer') return 'i32';
-        if (low === 'long') return 'i64';
-        if (low === 'float') return 'f32';
-        if (low === 'double') return 'f64';
-        if (low === 'string' || low === 'char') return 'String';
-        if (low === 'bool' || low === 'boolean') return 'bool';
-        if (low === 'void') return '()';
-        if (low === 'object') return '()';
-        // generics: List<T> -> Vec<T>
-        const listMatch = t.match(/^List<(.+)>$/);
-        if (listMatch) {
-            const inner = listMatch[1].trim();
-            return `Vec<${this.mapToRustType(inner)}> `;
-        }
-        // fallback: use as-is (assume it's a type name)
-        return safeIdentifier(t);
+    private buildMethodSignature(o: IOperationModel, isPublic: boolean): string {
+        const mName = snakeCase(o.name || 'method');
+        const params = (Array.isArray(o.parameters) ? o.parameters.map(p => `${snakeCase(p.name || 'p')}: ${this.TypeModel.mapTypeForLang(p.type || 'object', 'rust').name}`).join(', ') : '');
+        const retType = this.TypeModel.mapTypeForLang(o.returnType || 'void', 'rust').name;
+        const ret = (retType !== '()') ? ` -> ${retType}` : '';
+        const vis = isPublic ? 'pub ' : '';
+        return `${vis}fn ${mName}(&self${params ? ', ' + params : ''})${ret}`;
     }
 
-    private buildTraitMethodSignature(o: IOperationModel): string {
-        const name = safeIdentifier(o.name || 'method');
-        const params = (Array.isArray(o.parameters) ? o.parameters.map(p => `${safeIdentifier(p.name || 'p')}: ${this.TypeModel.mapTypeForLang(p.type || '', 'rust').name}`).join(', ') : '');
-        const ret = (o.returnType && o.returnType !== 'void') ? `-> ${this.TypeModel.mapTypeForLang(o.returnType || '', 'rust').name}` : '';
-        return `fn ${name}(${params}) ${ret}`.trim();
-    }
+    private buildMethodImplementation(o: IOperationModel): string[] {
+        const isPublic = o.visibility === 'public';
+        const sig = this.buildMethodSignature(o, isPublic);
+        const retType = this.TypeModel.mapTypeForLang(o.returnType || 'void', 'rust').name;
+        const body = (retType !== '()') ? 'unimplemented!()' : '// TODO';
 
-    private buildMethod(o: IOperationModel, isStub: boolean = false): string[] {
-        const name = safeIdentifier(o.name || 'method');
-        const params = (Array.isArray(o.parameters) ? o.parameters.map(p => `${safeIdentifier(p.name || 'p')}: ${this.TypeModel.mapTypeForLang(p.type || '', 'rust').name}`).join(', ') : '');
-        const ret = (o.returnType && o.returnType !== 'void') ? `-> ${this.TypeModel.mapTypeForLang(o.returnType || '', 'rust').name}` : '';
-        const sig = `pub fn ${name}(&self${params ? ', ' + params : ''}) ${ret} {`;
-        const body = o.returnType && o.returnType !== 'void' ? `unimplemented!()` : `// TODO`;
-        return [sig, `        ${body}`, '    }'];
+        return [
+            `${sig} {`,
+            `        ${body}`,
+            '    }'
+        ];
     }
-
-    private opKey(op: IOperationModel): string {
-        const params = (op.parameters || []).map(p => (p.type || '')).join(',');
-        return `${op.name || 'unnamed'}(${params})`;
-    }
-
 }

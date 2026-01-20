@@ -10,7 +10,7 @@
   - 現状の実装をベースに、インターフェース、抽象クラス、型変換（int -> number 等）が仕様通りに動作することを確認・修正する。
   - 目的: Requirement 1.1, 2.1 の達成。
 
-- [ ] 3. RustBuilder の詳細実装
+- [x] 3. RustBuilder の詳細実装
   - ファイル: `src/CodeComponents/RustBuilder.ts`
   - Rust 固有の構文（snake_case のファイル名/フィールド名、struct, trait, impl）の実装を完了させる。
   - 目的: Requirement 1.1, 2.2 の達成。
