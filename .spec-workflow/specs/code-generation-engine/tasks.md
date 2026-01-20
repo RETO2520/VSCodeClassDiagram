@@ -5,7 +5,7 @@
   - `ICodeBuilder` を `IGeneratorBuilder` にリネームし、`CodeBuilder` 抽象クラスの各ステップ（`generateImports` 等）が IGeneratorBuilder の責務として明確になるよう調整する。
   - 目的: 設計ドキュメントとの用語の一致と、Builder パターンの形式化。
 
-- [ ] 2. TypeScriptBuilder の詳細実装
+- [x] 2. TypeScriptBuilder の詳細実装
   - ファイル: `src/CodeComponents/TypeScriptBuilder.ts`
   - 現状の実装をベースに、インターフェース、抽象クラス、型変換（int -> number 等）が仕様通りに動作することを確認・修正する。
   - 目的: Requirement 1.1, 2.1 の達成。

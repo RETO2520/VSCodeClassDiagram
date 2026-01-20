@@ -176,7 +176,7 @@ export class TypeScriptBuilder extends CodeBuilder {
             }
 
             if (a.modifier !== 'abstract') {
-                sb.ownAttrs.push({ name: t, attr: a });
+                sb.ownAttrs.push({ name: prop, attr: a });
             }
             sb.owns.push(`  ${vis} ${modifierText}${prop}${virtualModifier}: ${t};`);
         }
@@ -202,16 +202,16 @@ export class TypeScriptBuilder extends CodeBuilder {
         return sb;
     }
 
-    analyzeConstructor(cls: IClassModel, ownAttributs: { name: string, attr: IAttributeModel }[], inheritedAttributs: { name: string, attr: IAttributeModel }[]): string[] {
+    analyzeConstructor(cls: IClassModel, ownAttributes: { name: string, attr: IAttributeModel }[], inheritedAttributes: { name: string, attr: IAttributeModel }[]): string[] {
 
         let constructorText: string[] = [];
         if (cls.isInterface) return constructorText;
 
-        const ownAttrs = Array.isArray(cls.attributes) ? cls.attributes : [];
+        // ownAttributes.name is the property name (already fixed in analyzeAttribute)
+        // inheritedAttributes.name is also the property name
 
-        const implementedPropNames = new Set((ownAttrs || []).map(a => (a.name || '')));
-        const baseAttrsToPass = inheritedAttributs.filter(x => !implementedPropNames.has(x.name)).map(x => x.attr);
-        const targetAttrsToPass = ownAttributs.filter(x => !implementedPropNames.has(x.name)).map(x => x.attr);
+        const baseAttrsToPass = inheritedAttributes.map(x => x.attr);
+        const targetAttrsToPass = ownAttributes.map(x => x.attr);
 
         const usedParamNames = new Set<string>();
         const baseParams = this.buildParamListForAttributes(baseAttrsToPass, 'typescript', usedParamNames);
@@ -220,7 +220,9 @@ export class TypeScriptBuilder extends CodeBuilder {
         const paramsSignature = allParams.map(p => `${p.paramName}: ${p.typeName}`).join(', ');
 
         let hasBase = false;
-        if (cls.baseClass !== 'None' || (cls.baseClassId && this.ClassMaps.idToClass[cls.baseClassId])) {
+        if (cls.baseClass && cls.baseClass !== 'None') {
+            hasBase = true;
+        } else if (cls.baseClassId && this.ClassMaps.idToClass[cls.baseClassId]) {
             hasBase = true;
         }
 
@@ -233,11 +235,8 @@ export class TypeScriptBuilder extends CodeBuilder {
         if (hasBase) {
             constructorText.push(`    super(${baseArgList});`);
         }
-        // initialise own properties
-        for (const p of baseParams) {
-            const propName = safeIdentifier(p.propName);
-            constructorText.push(`    this.${propName} = ${p.paramName};`);
-        }
+
+        // initialize own properties
         for (const p of targetParams) {
             const propName = safeIdentifier(p.propName);
             constructorText.push(`    this.${propName} = ${p.paramName};`);
@@ -323,12 +322,12 @@ export class TypeScriptBuilder extends CodeBuilder {
         return out;
     }
     filterOutBuiltins(setIn: Set<string>, tm: TypeModel) {
-        const builtinTs = new Set(['number', 'string', 'boolean', 'void', 'any', 'object', 'unknown', 'never', 'null', 'undefined']);
+        const builtinTs = new Set(['number', 'string', 'boolean', 'void', 'any', 'object', 'unknown', 'never', 'null', 'undefined', 'Array', 'Set', 'Map', 'Record', 'Promise', 'Error', 'Date', 'RegExp']);
 
         for (const name of Array.from(setIn)) {
             const lower = name.toLowerCase();
             // map common primitive names that might be used in model (string,int,bool)
-            if (['int', 'integer', 'bool', 'boolean', 'double', 'float', 'string', 'object', 'void'].includes(lower)) {
+            if (['int', 'integer', 'bool', 'boolean', 'double', 'float', 'string', 'object', 'void', 'char'].includes(lower)) {
                 setIn.delete(name);
                 continue;
             }
