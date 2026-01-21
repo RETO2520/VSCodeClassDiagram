@@ -24,10 +24,10 @@
   - _要件: 1.2_
   - _プロンプト: Role: グラフィックスプログラマー | Task: エッジモデルのオプションの 'mid' ポイントをサポートするように、エッジの描画をリファクタリングしてください。ノード間の最適な境界出入り口ポイントを計算してください。 | Success: 中間点が存在する場合、エッジが2セグメントのポリラインとして描画される。_
 
-- [x] 4. 拡張機能メッセージング API の接続 (完了)
-  - ファイル: `media.workflow/workflow.interactions.js`
-  - 保存・読込操作のために `vscode.postMessage` 呼び出しを実装する。
-  - 目的: 図面データを拡張機能ホストと同期する。
-  - _活用: `media.workflow/workflow.api.js`_
-  - _要件: 1.3_
-  - _プロンプト: Role: VS Code 拡張機能開発者 | Task: interactions.js に保存ロジックを実装し、現在の状態を収集して 'saveFile' メッセージを VS Code ホストに送信してください。UI を再描画するために 'fileLoaded' メッセージを処理してください。 | Success: データが拡張機能ホストとの間で正しく永続化される。_
+- [ ] 5. WorkflowAst への変換ロジックの実装
+  - ファイル: `media.workflow/workflow.api.js`, `media.workflow/workflow.utils.js` (新規)
+  - 現在のグラフ構造から `workflow-node-conversion` 仕様の `WorkflowAst` へ変換するロジックを実装する。
+  - 目的: エディタで設計したロジックをコード生成可能にする。
+  - _活用: `WorkflowAst` インターフェース定義_
+  - _要件: 4.1_
+  - _プロンプト: Role: アルゴリズムエンジニア | Task: 現在の nodes と edges を再帰的に走査し、`WorkflowAst` 形式の JSON を生成する `convertToAst(workflow)` 関数を実装してください。'start' ノードを起点とし、分岐やループの構造を正しくネストさせてください。 | Success: 生成された JSON が `WorkflowAst` スキーマに適合し、各言語ビルダーに入力可能な形式であること。_

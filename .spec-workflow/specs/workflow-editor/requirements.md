@@ -23,6 +23,21 @@
 1. WHEN 接続エッジ上をクリック THEN 中間点（Midpoint）ハンドルが表示される。
 2. WHEN 中間点ハンドルをドラッグ THEN エッジのパス SHALL 追従して変形し、座標が保存される。
 
+### Requirement 3: 変換互換性のあるノードタイプ
+**User Story:** 開発者として、図面上で定義したロジックを正確にコード変換できるように、標準的な制御構造に対応するノードを使用したい。
+
+#### Acceptance Criteria
+1. **アクションノード**: 代入や関数呼び出しなどの 1 ステートメントを表現できなければならない。
+2. **分岐ノード**: エッジの `condition` に基づいて `if-else` 構造を構築可能でなければならない。
+3. **ループノード**: 繰り返し処理（`while` 構造）を表現するノードをサポートしなければならない。
+4. **終了（Return）ノード**: 戻り値を保持し、関数の終了を表現できなければならない。
+
+### Requirement 4: 言語中立な AST の出力
+**User Story:** 開発者として、エディタで保存した内容が `workflow-node-conversion` 仕様で定義された `WorkflowAst` 形式で出力され、各言語ビルダーで処理可能であることを期待する。
+
+#### Acceptance Criteria
+1. 保存時、エディタはノードとエッジのグラフ構造を、`WorkflowAst`（`variables` および `body`）へ変換して出力しなければならない。
+
 ## Non-Functional Requirements
 
 ### Code Architecture and Modularity

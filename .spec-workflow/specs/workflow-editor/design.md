@@ -41,6 +41,8 @@ graph TD
 ## Data Models
 
 ### Workflow Model
+エディタ内部で保持する永続化・描画用のデータ構造。
+
 ```typescript
 interface Workflow {
   nodes: WorkflowNode[];
@@ -49,7 +51,8 @@ interface Workflow {
 
 interface WorkflowNode {
   id: string;
-  type: 'start' | 'end' | 'process' | 'decision';
+  // Node Conversion 仕様に準拠
+  type: 'start' | 'end' | 'process' | 'decision' | 'loop' | 'call';
   label: string;
   x: number;
   y: number;
@@ -59,9 +62,20 @@ interface WorkflowEdge {
   from: string; // Node ID
   to: string;   // Node ID
   mid?: { x: number, y: number };
-  condition?: string;
+  condition?: string; // Decision ノードからの分岐条件
 }
 ```
+
+### AST Conversion
+保存処理時に、上記 `Workflow` モデルから `workflow-node-conversion` で定義された `WorkflowAst` 形式へ変換するロジックを実装します。
+
+1. **グラフ走査:** `start` ノードからエッジを辿り、シーケンスを構築。
+2. **ノードマッピング:**
+   - `process` -> `IActionNode`
+   - `decision` -> `IIfNode`
+   - `loop` -> `IWhileNode`
+   - `end` -> `IReturnNode`
+3. **変数抽出:** ノードのラベルやプロパティから変数を抽出し、`WorkflowAst.variables` を構築。
 
 ## Testing Strategy
 - **Unit Testing**: 状態遷移 (`workflow.state.js`) の単体テスト。
