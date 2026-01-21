@@ -196,6 +196,7 @@ export function activate(context: vscode.ExtensionContext) {
           switch (msg.type) {
             case "alert": {
               vscode.window.showInformationMessage(msg.text);
+              logger.info(msg.text);
               break;
             };
 

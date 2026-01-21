@@ -18,26 +18,29 @@ export function initInteractions(params) {
   }));
   btnSave.addEventListener('click', () => {
     if (!state.currentOpRef) {
-      vscode.postMessage?.({
-        type: 'alert',
-        text: 'No operation selected.'
-      });
-      //alert('No operation selected.');
+      vscode.postMessage?.({ type: 'alert', text: 'No operation selected.' });
       return;
     }
     const cls = state.diagram.classes[state.currentOpRef.classIndex];
     if (!cls) {
-      //alert('Invalid operation reference.');
-      vscode.postMessage?.({
-        type: 'alert',
-        text: 'Invalid operation reference.'
-      });
+      vscode.postMessage?.({ type: 'alert', text: 'Invalid operation reference.' });
       return;
     }
     const ops = cls.operations || [];
-    ops[state.currentOpRef.opIndex] = ops[state.currentOpRef.opIndex] || {
-    };
-    ops[state.currentOpRef.opIndex].workflow = state.currentWorkflow;
+    const op = ops[state.currentOpRef.opIndex] || {};
+    ops[state.currentOpRef.opIndex] = op;
+
+    // Save visual workflow
+    op.workflow = JSON.parse(JSON.stringify(state.currentWorkflow));
+
+    // Save generated AST for code generation
+    try {
+      op.workflowAst = params.convertToAst(state.currentWorkflow);
+    } catch (e) {
+      //console.error('AST Conversion failed', e);
+      vscode.postMessage?.({ type: 'alert', text: 'AST Conversion failed: ' + e.message });
+    }
+
     vscode.postMessage?.({
       type: 'saveFile',
       content: JSON.stringify(state.diagram, null, 2)
@@ -393,7 +396,7 @@ function addNodeNextTo(node, type) {
     from: node.id,
     to: newNode.id
   };
-  if (node.type === 'decision') {
+  if (node.type === 'decision' || node.type === 'loop') {
     const outs = state.currentWorkflow.edges.filter(e => e.from === node.id);
     const hasFalse = outs.some(e => String(e.condition).toLowerCase() === 'false');
     const hasTrue = outs.some(e => String(e.condition).toLowerCase() === 'true');

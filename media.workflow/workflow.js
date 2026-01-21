@@ -1,5 +1,5 @@
 // ...existing code...
-import { getSvgPoint, computePolylineMidpoint, boundaryPointTowards, capitalize, generateId, createRect, createEllipse, createDiamond } from './workflow.utils.js';
+import { getSvgPoint, computePolylineMidpoint, boundaryPointTowards, capitalize, generateId, createRect, createEllipse, createDiamond, convertToAst } from './workflow.utils.js';
 import { state, setDiagram } from './workflow.state.js';
 import { initDrawing } from './workflow.draw.js';
 import { initInteractions } from './workflow.interactions.js';
@@ -55,7 +55,8 @@ import { initApi } from './workflow.api.js';
 		vscode,
 		getSvgPoint,
 		capitalize,
-		generateId
+		generateId,
+		convertToAst
 	});
 
 	// Request workspace diagram on start if vscode is available
