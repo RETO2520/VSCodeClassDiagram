@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/workflow-node-conversion/requirements.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-21T08:12:56.772Z",
+      "trigger": "initial",
+      "approvalId": "approval_1768983176722_c388otreb",
+      "approvalTitle": "Requirements for Workflow Node-to-Code Conversion"
+    }
+  ]
+}
