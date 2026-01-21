@@ -147,6 +147,7 @@ function rebuildOperationListFromDiagram() {
     const ops = cls.operations || [];
     for (let oi = 0; oi < ops.length; ++oi) {
       const op = ops[oi];
+      if (op.modifier === 'abstract') continue;
       const label = `${cls.name || 'Class'}.${op.name || ('op' + oi)}`;
       const opt = document.createElement('option'); opt.value = `${ci}:${oi}`; opt.textContent = label; operationSelect.appendChild(opt);
     }
@@ -257,7 +258,7 @@ function enableEdgeCreate(getSvgPoint) {
           from: fromNode.id,
           to: tgtNode.id
         };
-        if (fromNode.type === 'decision') {
+        if (fromNode.type === 'decision' || fromNode.type === 'loop') {
           const outs = state.currentWorkflow.edges.filter(ex => ex.from === fromNode.id);
           const hasFalse = outs.some(ex => String(ex.condition).toLowerCase() === 'false');
           const hasTrue = outs.some(ex => String(ex.condition).toLowerCase() === 'true');
