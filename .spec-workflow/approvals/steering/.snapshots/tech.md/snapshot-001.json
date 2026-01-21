@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1768981704509_u0dq8xewu",
+  "approvalId": "approval_1768981704443_secpmdfqi",
+  "approvalTitle": "Updated Tech Stack for Workflow Support",
+  "version": 1,
+  "timestamp": "2026-01-21T07:48:24.509Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# Tech Stack - VSCode Class Diagram & Workflow Editor\r\n\r\n## 1. Core Technologies\r\n- **Runtime**: Visual Studio Code Extension Host.\r\n- **Languages**: \r\n  - Extension: **TypeScript** (CommonJS).\r\n  - Webview: **HTML5**, **CSS3**, **Vanilla JavaScript**.\r\n- **Compiler**: TypeScript (`tsc`).\r\n\r\n## 2. Frameworks & Libraries\r\n- **VS Code API**: 核心的なインターフェース提供。\r\n- **Webview API**: 図面描画用の HTML/JS 実行環境。\r\n- **ESLint**: コード品質管理。\r\n\r\n## 3. Development Standards\r\n- **Coding Style**: TypeScript 準拠。\r\n- **Webview Implementation**: 外部ライブラリ（React/Vue等）を最小限に抑え、Vanilla JS による軽量かつ高速な描画を維持する。\r\n- **Workflow Conversion**:\r\n  - **Data Model**: ワークフローエディタは、各言語に依存しない中立なデータモデル（`TypeModel` 或いは抽象構文木に近い形式）を構築する。\r\n  - **Separation of Concerns**: エディタ側はロジックの構造定義に専念し、実際のソースコード出力は `CodeBuilder` インターフェースを実装した各言語専用のクラス（TypeScriptBuilder, RustBuilder 等）が担当する。\r\n- **CommonJS**: 現在の `package.json` に基づき、CommonJS 形式を採用。\r\n\r\n## 4. Test Strategy\r\n- **Extension Testing**: `@vscode/test-cli` および `@vscode/test-electron` を使用した統合テスト。\r\n- **Unit Testing**: \r\n  - Node.js 環境でのスクリプトテスト（`src/test/js`）。\r\n  - 各言語ビルダーの生成ロジックに対する単体テスト（Mock化された `TypeModel` を入力とする）。\r\n",
+  "fileStats": {
+    "size": 1655,
+    "lines": 28,
+    "lastModified": "2026-01-21T07:48:11.774Z"
+  },
+  "comments": []
+}

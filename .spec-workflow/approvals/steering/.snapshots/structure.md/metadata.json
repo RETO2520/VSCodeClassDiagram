@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/steering/structure.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-21T07:48:24.564Z",
+      "trigger": "initial",
+      "approvalId": "approval_1768981704519_xwenotgc2",
+      "approvalTitle": "Updated Project Structure for Workflow Support"
+    }
+  ]
+}

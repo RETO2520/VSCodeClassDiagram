@@ -12,7 +12,7 @@
 │   ├── workflow.*.js    # 機能ごとに分割されたモジュール
 │   └── index.html
 ├── src/                 # Extension ソースコード
-│   ├── CodeComponents/  # コード生成ロジック
+│   ├── CodeComponents/  # コード生成ロジック（各言語 Builder 含む）
 │   ├── LoggerComponents/# ログ出力管理
 │   ├── extension.ts     # エントリーポイント
 │   └── test/            # テストコード
@@ -21,13 +21,19 @@
 ```
 
 ## 2. Module Responsibilities
-- **Frontend (Webview)**: ユーザーの操作を受け取り、図面をメモリ上で管理。Extension Host へデータを送信。
-- **Backend (Extension Host)**: メッセージハンドリング、ファイルシステムへのアクセス、多言語コード生成ロジックの実行。
-- **Code Generation Engine**: `diagram.json` の構造を解析し、各言語の構文木（または文字列）に変換。
+- **Frontend (Webview)**: 
+  - ユーザーの操作を受け取り、図面をメモリ上で管理。
+  - ワークフローエディタでは、ロジック構造を各言語に依存しない中立なデータモデル（TypeModel）として構築し、Extension Host へ送信する。
+- **Backend (Extension Host)**: 
+  - メッセージハンドリング、ファイルシステムへのアクセス。
+  - Webview から受け取ったデータモデルを各言語 Builder に渡し、ソースコード生成を実行する。
+- **Code Generation Engine (`src/CodeComponents/`)**: 
+  - `diagram.json` およびワークフロー由来の `TypeModel` を解析する。
+  - 言語固有の構文（TypeScript, Rust 等）への変換を担当する `CodeBuilder` 群を管理する。
 
 ## 3. Conventions
 - **Naming**: 
   - ファイル名: kebab-case または小文字。
   - Webview 資材: `media/` および `media.workflow/` で分離。
-- **Data Flow**: Webview から Extension への一方通行のリクエストが基本となる。
+- **Data Flow**: Webview (TypeModel 構築) -> Extension (各言語 Builder によるコード変換) -> File System の流れを基本とする。
 - **Artifacts**: 仕様書は `.spec-workflow` フォルダ内で一括管理する。

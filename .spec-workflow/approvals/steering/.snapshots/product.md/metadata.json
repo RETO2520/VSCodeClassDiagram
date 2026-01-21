@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/steering/product.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-21T07:47:14.920Z",
+      "trigger": "initial",
+      "approvalId": "approval_1768981634843_ts8fbwfa6",
+      "approvalTitle": "Updated Product Vision for Workflow Support (Explicit Path)"
+    }
+  ]
+}

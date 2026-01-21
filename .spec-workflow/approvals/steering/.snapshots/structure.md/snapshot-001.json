@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1768981704564_4mpq3f5cr",
+  "approvalId": "approval_1768981704519_xwenotgc2",
+  "approvalTitle": "Updated Project Structure for Workflow Support",
+  "version": 1,
+  "timestamp": "2026-01-21T07:48:24.564Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# Project Structure - VSCode Class Diagram & Workflow Editor\r\n\r\n## 1. Directory Layout\r\n```text\r\n.\r\n├── .spec-workflow/      # 仕様管理（Requirements, Design, Steering）\r\n├── media/               # クラス図エディタ用の Webview 資材\r\n│   ├── index.html\r\n│   ├── style.css\r\n│   └── main.js\r\n├── media.workflow/      # ワークフローエディタ用の Webview 資材\r\n│   ├── workflow.*.js    # 機能ごとに分割されたモジュール\r\n│   └── index.html\r\n├── src/                 # Extension ソースコード\r\n│   ├── CodeComponents/  # コード生成ロジック（各言語 Builder 含む）\r\n│   ├── LoggerComponents/# ログ出力管理\r\n│   ├── extension.ts     # エントリーポイント\r\n│   └── test/            # テストコード\r\n├── out/                 # コンパイル済み JS（Git 管理外）\r\n└── package.json         # パッケージ定義・コマンド登録\r\n```\r\n\r\n## 2. Module Responsibilities\r\n- **Frontend (Webview)**: \r\n  - ユーザーの操作を受け取り、図面をメモリ上で管理。\r\n  - ワークフローエディタでは、ロジック構造を各言語に依存しない中立なデータモデル（TypeModel）として構築し、Extension Host へ送信する。\r\n- **Backend (Extension Host)**: \r\n  - メッセージハンドリング、ファイルシステムへのアクセス。\r\n  - Webview から受け取ったデータモデルを各言語 Builder に渡し、ソースコード生成を実行する。\r\n- **Code Generation Engine (`src/CodeComponents/`)**: \r\n  - `diagram.json` およびワークフロー由来の `TypeModel` を解析する。\r\n  - 言語固有の構文（TypeScript, Rust 等）への変換を担当する `CodeBuilder` 群を管理する。\r\n\r\n## 3. Conventions\r\n- **Naming**: \r\n  - ファイル名: kebab-case または小文字。\r\n  - Webview 資材: `media/` および `media.workflow/` で分離。\r\n- **Data Flow**: Webview (TypeModel 構築) -> Extension (各言語 Builder によるコード変換) -> File System の流れを基本とする。\r\n- **Artifacts**: 仕様書は `.spec-workflow` フォルダ内で一括管理する。\r\n",
+  "fileStats": {
+    "size": 2267,
+    "lines": 40,
+    "lastModified": "2026-01-21T07:48:22.651Z"
+  },
+  "comments": []
+}
