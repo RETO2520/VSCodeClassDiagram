@@ -142,7 +142,9 @@ export function initInteractions(params) {
 function rebuildOperationListFromDiagram() {
   operationSelect.innerHTML = '';
   for (let ci = 0; ci < (state.diagram.classes || []).length; ++ci) {
-    const cls = state.diagram.classes[ci]; const ops = cls.operations || [];
+    const cls = state.diagram.classes[ci];
+    if (cls.isInterface) continue;
+    const ops = cls.operations || [];
     for (let oi = 0; oi < ops.length; ++oi) {
       const op = ops[oi];
       const label = `${cls.name || 'Class'}.${op.name || ('op' + oi)}`;

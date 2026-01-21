@@ -96,7 +96,7 @@ export class RustBuilder extends CodeBuilder {
 
         if (Array.isArray(cls.operations)) {
             for (const o of cls.operations) {
-                if (this.isPrivateMemberInAbstractClass(o, cls)) continue;
+
                 if (this.isAbstractMemberInConcreteClass(o, cls)) continue;
 
                 const methodLines = this.buildMethodImplementation(o);

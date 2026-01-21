@@ -157,9 +157,7 @@ export class CSharpBuilder extends CodeBuilder {
                     continue;
                 }
 
-                if (this.isPrivateMemberInAbstractClass(op, cls)) {
-                    continue;
-                }
+
                 if (this.isAbstractMemberInConcreteClass(op, cls)) {
                     continue;
                 }

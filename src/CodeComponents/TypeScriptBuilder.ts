@@ -302,9 +302,6 @@ export class TypeScriptBuilder extends CodeBuilder {
             const modOp = emit ? (o.modifier + ' ') : '';
             const paramsStr = (Array.isArray(o.parameters) ? o.parameters.map((p: IParameterModel) => `${safeIdentifier(p.name || 'p')}: ${this.TypeModel.mapTypeForLang(p.type || 'any', 'typescript').name}`).join(', ') : '');
 
-            if (this.isPrivateMemberInAbstractClass(o, cls)) {
-                continue;
-            }
 
             if (this.isAbstractMemberInConcreteClass(o, cls)) {
                 continue;

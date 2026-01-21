@@ -85,9 +85,7 @@ export class JavaBuilder extends CodeBuilder {
                 if (this.isAbstractMemberInConcreteClass(o, cls)) {
                     continue;
                 }
-                if (this.isPrivateMemberInAbstractClass(o, cls)) {
-                    continue;
-                }
+
                 const ret = this.TypeModel.mapTypeForLang(o.returnType || 'void', 'java').name;
                 const methodName = safeIdentifier(o.name || 'method');
                 const vis = o.visibility || 'private';

@@ -458,6 +458,25 @@ export abstract class CodeBuilder implements IGeneratorBuilder {
         return false;
     }
 
+    // 共通ヘルパ: 抽象クラス内の属性区画がprivateであるか
+    protected isPrivateAttributeInAbstractClass(member: IAttributeModel, cls: IClassModel): boolean {
+        if (!member || !cls) return false;
+        if (cls.isAbstract && member.visibility === 'private') {
+            this.logger?.warn(`Warning: member ${member.name} is private in abstract class ${cls.name}; skipping.`);
+            return true;
+        }
+        return false;
+    }
+
+    // 共通ヘルパ: 抽象クラス内の操作区画がprivateであるか
+    protected isPrivateOperationInAbstractClass(member: IOperationModel, cls: IClassModel): boolean {
+        if (!member || !cls) return false;
+        if (cls.isAbstract && member.visibility === 'private') {
+            this.logger?.warn(`Warning: member ${member.name} is private in abstract class ${cls.name}; skipping.`);
+            return true;
+        }
+        return false;
+    }
 
     // 共通ヘルパ: 抽象クラス内のprivateメンバであるか
     protected isPrivateMemberInAbstractClass(member: IAttributeModel | IOperationModel, cls: IClassModel): boolean {
