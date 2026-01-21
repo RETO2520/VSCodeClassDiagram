@@ -24,7 +24,7 @@
   - _要件: 1.2_
   - _プロンプト: Role: グラフィックスプログラマー | Task: エッジモデルのオプションの 'mid' ポイントをサポートするように、エッジの描画をリファクタリングしてください。ノード間の最適な境界出入り口ポイントを計算してください。 | Success: 中間点が存在する場合、エッジが2セグメントのポリラインとして描画される。_
 
-- [ ] 5. WorkflowAst への変換ロジックの実装
+- [x] 5. WorkflowAst への変換ロジックの実装
   - ファイル: `media.workflow/workflow.api.js`, `media.workflow/workflow.utils.js` (新規)
   - 現在のグラフ構造から `workflow-node-conversion` 仕様の `WorkflowAst` へ変換するロジックを実装する。
   - 目的: エディタで設計したロジックをコード生成可能にする。
