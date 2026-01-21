@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { CodeBuilder, IObjectModel, IAttributeModel, IOperationModel, safeIdentifier, typeName, pascalCase, collectInheritedMembers, buildClassMaps, opSignatureKey, IParameterModel, IClassModel, camelCase } from './CodeGenerator';
+import { CodeBuilder, IObjectModel, IAttributeModel, IOperationModel, safeIdentifier, typeName, pascalCase, collectInheritedMembers, buildClassMaps, opSignatureKey, IParameterModel, IClassModel, camelCase, WorkflowAst, IActionNode, IIfNode, IWhileNode, IReturnNode } from './CodeGenerator';
 import console = require('node:console');
 
 
@@ -173,10 +173,17 @@ export class CSharpBuilder extends CodeBuilder {
                     } else {
                         operations.push(`    ${vis} ${mod}${ret} ${method}(${params})`);
                         operations.push('    {');
-                        if (ret !== 'void') {
-                            operations.push('        throw new NotImplementedException();');
+                        if (op.workflowAst) {
+                            const wfLines = this.generateWorkflow(op.workflowAst);
+                            for (const l of wfLines) {
+                                operations.push(l);
+                            }
                         } else {
-                            operations.push('        // TODO');
+                            if (ret !== 'void') {
+                                operations.push('        throw new NotImplementedException();');
+                            } else {
+                                operations.push('        // TODO');
+                            }
                         }
                         operations.push('    }');
                     }
@@ -225,5 +232,51 @@ export class CSharpBuilder extends CodeBuilder {
         return '.cs';
     }
 
+    public generateWorkflow(ast: WorkflowAst): string[] {
+        const lines: string[] = [];
+        // 変数定義
+        for (const v of ast.variables) {
+            const t = this.TypeModel.mapTypeForLang(v.type, 'csharp').name;
+            const init = v.initialValue ? ` = ${v.initialValue}` : '';
+            lines.push(`${this.getIndent(2)}${t} ${safeIdentifier(v.name)}${init};`);
+        }
+        if (ast.variables.length > 0) lines.push('');
 
+        // ボディ
+        lines.push(...this.buildWfNodes(ast.body, 2));
+        return lines;
+    }
+
+    protected generateAction(node: IActionNode, indent: number): string[] {
+        return [`${this.getIndent(indent)}${node.statement};`];
+    }
+
+    protected generateIf(node: IIfNode, indent: number): string[] {
+        const lines: string[] = [];
+        lines.push(`${this.getIndent(indent)}if (${node.condition})`);
+        lines.push(`${this.getIndent(indent)}{`);
+        lines.push(...this.buildWfNodes(node.then, indent + 1));
+        if (node.else && node.else.length > 0) {
+            lines.push(`${this.getIndent(indent)}}`);
+            lines.push(`${this.getIndent(indent)}else`);
+            lines.push(`${this.getIndent(indent)}{`);
+            lines.push(...this.buildWfNodes(node.else, indent + 1));
+        }
+        lines.push(`${this.getIndent(indent)}}`);
+        return lines;
+    }
+
+    protected generateWhile(node: IWhileNode, indent: number): string[] {
+        const lines: string[] = [];
+        lines.push(`${this.getIndent(indent)}while (${node.condition})`);
+        lines.push(`${this.getIndent(indent)}{`);
+        lines.push(...this.buildWfNodes(node.body, indent + 1));
+        lines.push(`${this.getIndent(indent)}}`);
+        return lines;
+    }
+
+    protected generateReturn(node: IReturnNode, indent: number): string[] {
+        const val = node.value ? ` ${node.value}` : '';
+        return [`${this.getIndent(indent)}return${val};`];
+    }
 }

@@ -1,6 +1,6 @@
 # タスク一覧: ワークフロー変換エンジン
 
-- [ ] 1. src/CodeComponents/CodeGenerator.ts でのコアインターフェースの定義 <!-- id: 1 -->
+- [x] 1. src/CodeComponents/CodeGenerator.ts でのワークフロー AST インインターフェースの定義 <!-- id: 1 -->
   - File: e:/Project/VSCodeExtensions/VSCodeClassDiagram/src/CodeComponents/CodeGenerator.ts
   - ワークフローデータ構造（`WorkflowAst`, `WfAstNode` など）の TypeScript インターフェースを定義する
   - `IIfNode`, `IWhileNode`, `IActionNode`, `IReturnNode`, `ISequenceNode` などの具体的なノード型を実装する
@@ -10,6 +10,7 @@
   - _Prompt: Role: 型システムとインターフェースに特化したTypeScript開発者 | Task: design.md の設計に従い、CodeGenerator.ts にワークフロー AST インターフェースを定義してください。If, While, Action, Return, Sequence の各ノードタイプを網羅し、WorkflowAst への統合を行ってください。 | Restrictions: 既存の IClassModel や IOperationModel との整合性を維持し、エクスポートを適切に行ってください。 | Success: すべてのインターフェースがエラーなくコンパイルされ、設計通りのデータ構造が表現されていること。_
 
 - [ ] 2. IGeneratorBuilder と CodeBuilder のワークフロー対応 <!-- id: 2 -->
+- [x] 2. CodeGenerator.ts 内の IGeneratorBuilder と CodeBuilder の拡張 <!-- id: 2 -->
   - File: e:/Project/VSCodeExtensions/VSCodeClassDiagram/src/CodeComponents/CodeGenerator.ts
   - `IGeneratorBuilder` に `generateWorkflow` メソッドを追加する
   - `CodeBuilder` 抽象クラスに、AST ノードを再帰的に処理するディスパッチャメソッドを追加する
@@ -18,7 +19,7 @@
   - _Requirements: 2_
   - _Prompt: Role: バックエンド開発者 | Task: IGeneratorBuilder インターフェースと CodeBuilder 抽象クラスを更新して、ワークフロー生成メソッドを追加してください。CodeBuilder には、各 WfAstNode タイプを識別して言語固有のメソッドへ振り分ける再帰的なロジックを実装してください。 | Restrictions: 既存の Build メソッドのシグネチャを変更せず、新しい抽象メソッドを適切に配置してください。 | Success: インターフェースが更新され、CodeBuilder のサブクラスでワークフロー生成を容易に実装できるようになること。_
 
-- [ ] 3. TypeScriptBuilder でのワークフローコード生成の実装 <!-- id: 3 -->
+- [x] 3. TypeScriptBuilder でのワークフロー生成の実装 <!-- id: 3 -->
   - File: e:/Project/VSCodeExtensions/VSCodeClassDiagram/src/CodeComponents/TypeScriptBuilder.ts
   - `generateWorkflow` を実装し、TypeScript 固有の制御構文（if, while 等）を出力する
   - インデント管理とセミコロンの付与を適切に行う
@@ -36,7 +37,7 @@
   - _Requirements: 2, 3_
   - _Prompt: Role: Rust 開発者 | Task: RustBuilder で `generateWorkflow` を実装してください。Rust の慣習（条件式に括弧を付けない、`snake_case` の使用等）に従い、正しい Rust 構文を出力してください。 | Success: WorkflowAst から Rust の慣習に則った正しいコードが生成されること。_
 
-- [ ] 5. CodeGenerator へのワークフロー統合 <!-- id: 5 -->
+- [x] 5. CodeGenerator.generate ロジックの更新 <!-- id: 5 -->
   - File: e:/Project/VSCodeExtensions/VSCodeClassDiagram/src/CodeComponents/CodeGenerator.ts
   - メインの `Build` ループ内で、各操作（Operation）がワークフローを持っているか確認するように更新する
   - ワークフローが存在する場合、ビルダーの `generateWorkflow` を呼び出してメソッドボディを生成する

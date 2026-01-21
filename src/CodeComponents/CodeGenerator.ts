@@ -40,7 +40,8 @@ export interface IOperationModel {
     visibility: string;
     modifier: string;
     parameters: IParameterModel[];
-    workflow: IWorkflowModel;
+    workflow?: IWorkflowModel;
+    workflowAst?: WorkflowAst; // 新しく追加
 }
 
 export interface IWorkflowModel {
@@ -61,6 +62,55 @@ export interface IWorkflowEdge {
     from: string;
     to: string;
     condition: boolean;
+}
+
+/**
+ * 言語中立なワークフロー抽象構文木 (AST)
+ */
+export interface WorkflowAst {
+    variables: IVariableModel[];
+    body: WfAstNode[];
+}
+
+export interface IVariableModel {
+    name: string;
+    type: string;
+    initialValue?: string;
+}
+
+export type WfAstNode =
+    | IActionNode
+    | IIfNode
+    | IWhileNode
+    | IReturnNode
+    | ISequenceNode;
+
+export interface IActionNode {
+    type: 'action';
+    statement: string; // 例: "count = count + 1"
+}
+
+export interface IIfNode {
+    type: 'if';
+    condition: string;
+    then: WfAstNode[];
+    else?: WfAstNode[];
+}
+
+export interface IWhileNode {
+    type: 'while';
+    condition: string;
+    body: WfAstNode[];
+}
+
+export interface IReturnNode {
+    type: 'return';
+    value?: string;
+}
+
+export interface ISequenceNode {
+    type: 'sequence';
+    nodes: WfAstNode[];
 }
 
 
@@ -85,6 +135,7 @@ export interface IGeneratorBuilder {
     generateAttributes(cls: IClassModel): string[];
     generateConstructor(cls: IClassModel): string[];
     generateOperations(cls: IClassModel): string[];
+    generateWorkflow(ast: WorkflowAst): string[];
     getClassClosing(): string;
     getFileName(cls: IClassModel): string;
     getFileExtension(): string;
@@ -429,7 +480,45 @@ export abstract class CodeBuilder implements IGeneratorBuilder {
         return false;
     }
 
+    public abstract generateWorkflow(ast: WorkflowAst): string[];
 
+    /**
+     * 再帰的にワークフローノードを処理するためのディスパッチャ
+     * 各言語固有のビルダーで、具体的なノード生成メソッドを実装する際に利用する
+     */
+    protected buildWfNodes(nodes: WfAstNode[], indent: number): string[] {
+        let lines: string[] = [];
+        for (const node of nodes) {
+            lines = lines.concat(this.buildWfNode(node, indent));
+        }
+        return lines;
+    }
+
+    protected buildWfNode(node: WfAstNode, indent: number): string[] {
+        switch (node.type) {
+            case 'action':
+                return this.generateAction(node, indent);
+            case 'if':
+                return this.generateIf(node, indent);
+            case 'while':
+                return this.generateWhile(node, indent);
+            case 'return':
+                return this.generateReturn(node, indent);
+            case 'sequence':
+                return this.buildWfNodes(node.nodes, indent);
+            default:
+                return [];
+        }
+    }
+
+    protected abstract generateAction(node: IActionNode, indent: number): string[];
+    protected abstract generateIf(node: IIfNode, indent: number): string[];
+    protected abstract generateWhile(node: IWhileNode, indent: number): string[];
+    protected abstract generateReturn(node: IReturnNode, indent: number): string[];
+
+    protected getIndent(level: number): string {
+        return '    '.repeat(level);
+    }
 }
 
 

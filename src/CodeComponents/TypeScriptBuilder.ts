@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { CodeBuilder, IObjectModel, IAttributeModel, safeIdentifier, shouldEmitModifier, TypeModel, buildClassMaps, collectInheritedMembers, opSignatureKey, IClassModel, IOperationModel, IParameterModel } from './CodeGenerator';
+import { CodeBuilder, IObjectModel, IAttributeModel, safeIdentifier, shouldEmitModifier, TypeModel, buildClassMaps, collectInheritedMembers, opSignatureKey, IClassModel, IOperationModel, IParameterModel, WorkflowAst, IActionNode, IIfNode, IWhileNode, IReturnNode } from './CodeGenerator';
 import console = require('node:console');
 
 
@@ -117,7 +117,7 @@ export class TypeScriptBuilder extends CodeBuilder {
         return this.analyzeConstructor(cls, aa.ownAttrs, aa.inheritedAttrs);
     }
     public generateOperations(cls: IClassModel): string[] {
-        const ao = this.analyzeOperatetion(cls);
+        const ao = this.analyzeOperation(cls);
         return [...ao.owns, ...ao.inherits];
     }
     public getClassClosing(): string {
@@ -129,9 +129,49 @@ export class TypeScriptBuilder extends CodeBuilder {
     public getFileExtension(): string {
         return '.ts';
     }
+    public generateWorkflow(ast: WorkflowAst): string[] {
+        const lines: string[] = [];
+        // 変数定義
+        for (const v of ast.variables) {
+            const t = this.TypeModel.mapTypeForLang(v.type, 'typescript').name;
+            const init = v.initialValue ? ` = ${v.initialValue}` : '';
+            lines.push(`    let ${v.name}: ${t}${init};`);
+        }
+        if (ast.variables.length > 0) lines.push('');
 
+        // ボディ
+        lines.push(...this.buildWfNodes(ast.body, 1));
+        return lines;
+    }
 
+    protected generateAction(node: any, indent: number): string[] {
+        return [`${this.getIndent(indent)}${node.statement};`];
+    }
 
+    protected generateIf(node: any, indent: number): string[] {
+        const lines: string[] = [];
+        lines.push(`${this.getIndent(indent)}if (${node.condition}) {`);
+        lines.push(...this.buildWfNodes(node.then, indent + 1));
+        if (node.else && node.else.length > 0) {
+            lines.push(`${this.getIndent(indent)}} else {`);
+            lines.push(...this.buildWfNodes(node.else, indent + 1));
+        }
+        lines.push(`${this.getIndent(indent)}}`);
+        return lines;
+    }
+
+    protected generateWhile(node: any, indent: number): string[] {
+        const lines: string[] = [];
+        lines.push(`${this.getIndent(indent)}while (${node.condition}) {`);
+        lines.push(...this.buildWfNodes(node.body, indent + 1));
+        lines.push(`${this.getIndent(indent)}}`);
+        return lines;
+    }
+
+    protected generateReturn(node: any, indent: number): string[] {
+        const val = node.value ? ` ${node.value}` : '';
+        return [`${this.getIndent(indent)}return${val};`];
+    }
     analyzeAttribute(cls: IClassModel): { owns: string[], inherits: string[], ownAttrs: { name: string, attr: IAttributeModel }[], inheritedAttrs: { name: string, attr: IAttributeModel }[] } {
 
         const inheritedAttrObjects: { name: string, attr: IAttributeModel }[] = [];
@@ -247,7 +287,7 @@ export class TypeScriptBuilder extends CodeBuilder {
         return constructorText;
     }
 
-    analyzeOperatetion(cls: IClassModel): { owns: string[], inherits: string[] } {
+    analyzeOperation(cls: IClassModel): { owns: string[], inherits: string[] } {
         let ownAttrs: string[] = [];
         let inheritedAttrs: string[] = [];
         let sb: { owns: string[], inherits: string[] } = { owns: ownAttrs, inherits: inheritedAttrs };
@@ -276,8 +316,15 @@ export class TypeScriptBuilder extends CodeBuilder {
                 sb.owns.push(`  ${method}(${paramsStr}): ${ret};`);
             } else {
                 sb.owns.push(`  ${vis} ${modOp}${method}(${paramsStr}): ${ret} {`);
-                if (ret !== 'void') sb.owns.push(`    throw new Error('Not implemented');`);
-                else sb.owns.push(`    // TODO`);
+                if (o.workflowAst) {
+                    const wfLines = this.generateWorkflow(o.workflowAst);
+                    for (const l of wfLines) {
+                        sb.owns.push(`  ${l}`);
+                    }
+                } else {
+                    if (ret !== 'void') sb.owns.push(`    throw new Error('Not implemented');`);
+                    else sb.owns.push(`    // TODO`);
+                }
                 sb.owns.push('  }');
             }
         }

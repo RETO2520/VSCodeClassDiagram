@@ -1,139 +1,139 @@
 # Tasks Document
 
-- [ ] 1. src/types/feature.ts にコアインターフェースを作成する
+- [ ] 1. Create core interfaces in src/types/feature.ts
   - File: src/types/feature.ts
-  - フィーチャデータ構造の TypeScript インターフェースを定義する
-  - base.ts から既存の基本インターフェースを拡張する
-  - Purpose: 機能実装の型安全性を確立する
+  - Define TypeScript interfaces for feature data structures
+  - Extend existing base interfaces from base.ts
+  - Purpose: Establish type safety for feature implementation
   - _Leverage: src/types/base.ts_
   - _Requirements: 1.1_
-  - _Prompt: Role: 型システムとインターフェースに特化したTypeScript開発者 | Task: 要件 1.1 に従って、src/types/base.ts から既存の基本インターフェースを拡張し、機能データ構造用の包括的な TypeScript インターフェースを作成します。 | Restrictions: 既存の基本インターフェースを変更せず、下位互換性を維持し、プロジェクトの命名規則に従う | Success: すべてのインターフェースはエラーなくコンパイルされ、基本型から適切に継承され、機能要件の完全な型カバレッジが実現されます。_
+  - _Prompt: Role: TypeScript Developer specializing in type systems and interfaces | Task: Create comprehensive TypeScript interfaces for the feature data structures following requirements 1.1, extending existing base interfaces from src/types/base.ts | Restrictions: Do not modify existing base interfaces, maintain backward compatibility, follow project naming conventions | Success: All interfaces compile without errors, proper inheritance from base types, full type coverage for feature requirements_
 
-- [ ] 2. src/models/FeatureModel.ts に基本モデルクラスを作成します。
+- [ ] 2. Create base model class in src/models/FeatureModel.ts
   - File: src/models/FeatureModel.ts
-  - BaseModel クラスを拡張して基本モデルを実装する
-  - 既存の検証ユーティリティを使用して検証方法を追加する
-  - Purpose: 機能のためのデータ層基盤を提供する
+  - Implement base model extending BaseModel class
+  - Add validation methods using existing validation utilities
+  - Purpose: Provide data layer foundation for feature
   - _Leverage: src/models/BaseModel.ts, src/utils/validation.ts_
   - _Requirements: 2.1_
-  - _Prompt: Role: Node.jsとデータモデリングの専門知識を持つバックエンド開発者 | Task: BaseModel を拡張し、要件 2.1 に従って検証を実装する基本モデル クラスを作成し、src/models/BaseModel.ts と src/utils/validation.ts の既存のパターンを活用します。 | Restrictions: 既存のモデルパターンに従い、検証ユーティリティをバイパスせず、一貫したエラー処理を維持する必要があります。 | Success: モデルは BaseModel を正しく拡張し、検証メソッドを実装およびテストし、プロジェクト アーキテクチャ パターンに従います。_
+  - _Prompt: Role: Backend Developer with expertise in Node.js and data modeling | Task: Create a base model class extending BaseModel and implementing validation following requirement 2.1, leveraging existing patterns from src/models/BaseModel.ts and src/utils/validation.ts | Restrictions: Must follow existing model patterns, do not bypass validation utilities, maintain consistent error handling | Success: Model extends BaseModel correctly, validation methods implemented and tested, follows project architecture patterns_
 
-- [ ] 3. FeatureModel.ts に特定のモデルメソッドを追加します。
+- [ ] 3. Add specific model methods to FeatureModel.ts
   - File: src/models/FeatureModel.ts (continue from task 2)
-  - 作成、更新、削除メソッドを実装する
-  - 外部キーの関係処理を追加する
-  - Purpose: CRUD操作のための完全なモデル機能
+  - Implement create, update, delete methods
+  - Add relationship handling for foreign keys
+  - Purpose: Complete model functionality for CRUD operations
   - _Leverage: src/models/BaseModel.ts_
   - _Requirements: 2.2, 2.3_
-  - _Prompt: Role: ORMとデータベース操作の専門知識を持つバックエンド開発者 | Task: 要件 2.2 および 2.3 に従って FeatureModel.ts に CRUD メソッドとリレーションシップ処理を実装し、src/models/BaseModel.ts のパターンを拡張します。 | Restrictions: 既存のリレーションシップパターンを遵守し、ベースモデル機能を重複せず、トランザクション整合性を維持する必要があります。 | Success: すべてのCRUD操作が正しく機能し、関係が適切に処理され、データベース操作はアトミックかつ効率的である_
+  - _Prompt: Role: Backend Developer with expertise in ORM and database operations | Task: Implement CRUD methods and relationship handling in FeatureModel.ts following requirements 2.2 and 2.3, extending patterns from src/models/BaseModel.ts | Restrictions: Must maintain transaction integrity, follow existing relationship patterns, do not duplicate base model functionality | Success: All CRUD operations work correctly, relationships are properly handled, database operations are atomic and efficient_
 
-- [ ] 4. FeatureModel.test.ts にモデル単体テストを追加します。
+- [ ] 4. Create model unit tests in tests/models/FeatureModel.test.ts
   - File: tests/models/FeatureModel.test.ts
-  - モデル検証とCRUDメソッドのテストを書く
-  - 既存のテストユーティリティとフィクスチャを使用する
-  - Purpose: モデルの信頼性を確保し、回帰を検出する
+  - Write tests for model validation and CRUD methods
+  - Use existing test utilities and fixtures
+  - Purpose: Ensure model reliability and catch regressions
   - _Leverage: tests/helpers/testUtils.ts, tests/fixtures/data.ts_
   - _Requirements: 2.1, 2.2_
-  - _Prompt: Role: ユニットテストとJest/Mochaフレームワークの専門知識を持つQAエンジニア | Task: 既存のテスト ユーティリティ (tests/helpers/testUtils.ts) とフィクスチャ (tests/fixtures/data.ts) を使用して、要件 2.1 と 2.2 をカバーする FeatureModel 検証と CRUD メソッドの包括的な単体テストを作成します。 | Restrictions: 必ず成功と失敗の両方のシナリオをテストし、外部依存関係を直接テストせず、テストの孤立を維持する必要があります。 | Success: すべてのモデルメソッドが適切なカバレッジでテストされ、境界ケースがカバーされ、テストは独立して一貫して実行されます。_
+  - _Prompt: Role: QA Engineer with expertise in unit testing and Jest/Mocha frameworks | Task: Create comprehensive unit tests for FeatureModel validation and CRUD methods covering requirements 2.1 and 2.2, using existing test utilities from tests/helpers/testUtils.ts and fixtures from tests/fixtures/data.ts | Restrictions: Must test both success and failure scenarios, do not test external dependencies directly, maintain test isolation | Success: All model methods are tested with good coverage, edge cases covered, tests run independently and consistently_
 
-- [ ] 5. src/services/IFeatureService.ts にサービスインターフェースを作成します。
+- [ ] 5. Create service interface in src/services/IFeatureService.ts
   - File: src/services/IFeatureService.ts
-  - メソッドシグネチャでサービス契約を定義する
-  - 基本サービスインターフェースパターンを拡張する
+  - Define service contract with method signatures
+  - Extend base service interface patterns
   - Purpose: Establish service layer contract for dependency injection
   - _Leverage: src/services/IBaseService.ts_
   - _Requirements: 3.1_
-  - _Prompt: Role: サービス指向アーキテクチャとTypeScriptインターフェースを専門とするソフトウェアアーキテクト | Task: 要件 3.1 に従ってサービス インターフェース コントラクトを設計し、依存性注入のために src/services/IBaseService.ts から基本サービス パターンを拡張します。 | Restrictions: インターフェース分離原則を維持し、内部実装詳細を露出せず、DIコンテナとの契約を維持する必要があります。 | Success: インターフェースは明確なメソッドシグネチャで定義され、基本サービスを適切に拡張し、必要なすべてのサービス操作をサポートします。_
+  - _Prompt: Role: Software Architect specializing in service-oriented architecture and TypeScript interfaces | Task: Design service interface contract following requirement 3.1, extending base service patterns from src/services/IBaseService.ts for dependency injection | Restrictions: Must maintain interface segregation principle, do not expose internal implementation details, ensure contract compatibility with DI container | Success: Interface is well-defined with clear method signatures, extends base service appropriately, supports all required service operations_
 
-- [ ] 6. src/services/FeatureService.ts に具体的なサービス実装を作成します。
+- [ ] 6. Implement feature service in src/services/FeatureService.ts
   - File: src/services/FeatureService.ts
-  - FeatureModelを使用して具体的なサービス実装を作成する
-  -既存のエラーユーティリティを使用してエラーハンドリングを追加する
-  - Purpose: 特定のビジネスロジックレイヤーを提供する
+  - Create concrete service implementation using FeatureModel
+  - Add error handling with existing error utilities
+  - Purpose: Provide business logic layer for feature operations
   - _Leverage: src/services/BaseService.ts, src/utils/errorHandler.ts, src/models/FeatureModel.ts_
   - _Requirements: 3.2_
-  - _Prompt: Role: サービス層アーキテクチャとビジネスロジックの専門知識を持つバックエンド開発者 | Task: 要件 3.2 に従って具体的な FeatureService を実装し、FeatureModel を使用し、src/utils/errorHandler.ts からの適切なエラー処理を備えた BaseService パターンを拡張します。 | Restrictions: インターフェース契約を正確に実装し、モデル検証をバイパスせず、データレイヤーとの分離を維持する必要があります。 | Success: サービスはすべてのインターフェースメソッドを正確に実装し、堅牢なエラーハンドリングを提供し、ビジネスロジックは適切にカプセル化され、テスト可能である_
+  - _Prompt: Role: Backend Developer with expertise in service layer architecture and business logic | Task: Implement concrete FeatureService following requirement 3.2, using FeatureModel and extending BaseService patterns with proper error handling from src/utils/errorHandler.ts | Restrictions: Must implement interface contract exactly, do not bypass model validation, maintain separation of concerns from data layer | Success: Service implements all interface methods correctly, robust error handling implemented, business logic is well-encapsulated and testable_
 
-- [ ] 7. src/utils/di.ts にサービス依存性注入を追加します。
+- [ ] 7. Add service dependency injection in src/utils/di.ts
   - File: src/utils/di.ts (modify existing)
-  - FeatureServiceを依存性注入コンテナに登録する
-  - サービスのライフタイムと依存関係を構成する
+  - Register FeatureService in dependency injection container
+  - Configure service lifetime and dependencies
   - Purpose: Enable service injection throughout application
-  - _Leverage: src/utils/di.ts 内の既存の DI 構成_
+  - _Leverage: existing DI configuration in src/utils/di.ts_
   - _Requirements: 3.1_
-  - _Prompt: Role: 依存性注入とIoCコンテナの専門知識を持つDevOpsエンジニア | Task: 要件 3.1 に従って DI コンテナに FeatureService を登録し、src/utils/di.ts の既存のパターンを使用して適切な有効期間と依存関係を構成します。 | Restrictions: 既存の DI コンテナ パターンに従い、循環依存関係を作成せず、サービス解決の効率を維持する必要があります。 | Success: FeatureServiceは適切に登録され、依存関係は正しく構成され、サービスの有効期間は使用目的に適切です。_
+  - _Prompt: Role: DevOps Engineer with expertise in dependency injection and IoC containers | Task: Register FeatureService in DI container following requirement 3.1, configuring appropriate lifetime and dependencies using existing patterns from src/utils/di.ts | Restrictions: Must follow existing DI container patterns, do not create circular dependencies, maintain service resolution efficiency | Success: FeatureService is properly registered and resolvable, dependencies are correctly configured, service lifetime is appropriate for use case_
 
-- [ ] 8. tests/services/FeatureService.test.ts にサービス単体テストを作成します。
+- [ ] 8. Create service unit tests in tests/services/FeatureService.test.ts
   - File: tests/services/FeatureService.test.ts
-  - FeatureServiceのメソッドをモック依存関係でテストする
-  - エラーハンドリングシナリオをテストする
-  - Purpose: サービスの信頼性と適切なエラー処理を確保する
+  - Write tests for service methods with mocked dependencies
+  - Test error handling scenarios
+  - Purpose: Ensure service reliability and proper error handling
   - _Leverage: tests/helpers/testUtils.ts, tests/mocks/modelMocks.ts_
   - _Requirements: 3.2, 3.3_
-  - _Prompt: Role: サービステストとモックフレームワークの専門知識を持つQAエンジニア | Task: tests/mocks/modelMocks.ts のモック依存関係とテスト ユーティリティを使用して、要件 3.2 と 3.3 をカバーする FeatureService メソッドの包括的な単体テストを作成します。 | Restrictions: 外部依存関係をすべてモックし、ビジネスロジックを孤立してテストし、フレームワークコードをテストしない必要があります。 | Success: FeatureServiceのすべてのメソッドが適切にモックされ、エラーシナリオがカバーされ、ビジネスロジックの正確性とエラーハンドリングが検証されること。_
+  - _Prompt: Role: QA Engineer with expertise in service testing and mocking frameworks | Task: Create comprehensive unit tests for FeatureService methods covering requirements 3.2 and 3.3, using mocked dependencies from tests/mocks/modelMocks.ts and test utilities | Restrictions: Must mock all external dependencies, test business logic in isolation, do not test framework code | Success: All service methods tested with proper mocking, error scenarios covered, tests verify business logic correctness and error handling_
 
-- [ ] 4. APIエンドポイントを作成する
-  - API構造を設計する
+- [ ] 4. Create API endpoints
+  - Design API structure
   - _Leverage: src/api/baseApi.ts, src/utils/apiUtils.ts_
   - _Requirements: 4.0_
-  - _Prompt: Role: RESTful 設計と Express.js を専門とする API アーキテクト | Task: src/api/baseApi.ts の既存のパターンと src/utils/apiUtils.ts のユーティリティを活用して、要件 4.0 に従って包括的な API 構造を設計します。 | Restrictions: REST 規則に従い、API のバージョン互換性を維持し、内部データ構造を直接公開しないでください。 | Success: API構造は適切に設計され、文書化されており、既存のパターンに従っており、適切なHTTPメソッドとステータスコードを使用して必要なすべての操作をサポートしています。_
+  - _Prompt: Role: API Architect specializing in RESTful design and Express.js | Task: Design comprehensive API structure following requirement 4.0, leveraging existing patterns from src/api/baseApi.ts and utilities from src/utils/apiUtils.ts | Restrictions: Must follow REST conventions, maintain API versioning compatibility, do not expose internal data structures directly | Success: API structure is well-designed and documented, follows existing patterns, supports all required operations with proper HTTP methods and status codes_
 
-- [ ] 4.1 ルーティングとミドルウェアを設定する
-  - アプリケーションルートを構成する
-  - 認証ミドルウェアを追加する
-  - エラーハンドリングミドルウェアを設定する
+- [ ] 4.1 Set up routing and middleware
+  - Configure application routes
+  - Add authentication middleware
+  - Set up error handling middleware
   - _Leverage: src/middleware/auth.ts, src/middleware/errorHandler.ts_
   - _Requirements: 4.1_
-  - _Prompt: Role: Express.js ミドルウェアとルーティングの専門知識を持つバックエンド開発者 | Task: 要件 4.1 に従ってアプリケーション ルートとミドルウェアを構成し、src/middleware/auth.ts からの認証と src/middleware/errorHandler.ts からのエラー処理を統合します。 | Restrictions: 中間ウェアの順序を維持し、セキュリティミドルウェアをバイパスせず、適切なエラー伝播を確保する必要があります。 | Success: ルートは正しいミドルウェアチェーンで適切に構成され、認証は正しく機能し、エラーはリクエストライフサイクル全体を通じて適切に処理されます。_
+  - _Prompt: Role: Backend Developer with expertise in Express.js middleware and routing | Task: Configure application routes and middleware following requirement 4.1, integrating authentication from src/middleware/auth.ts and error handling from src/middleware/errorHandler.ts | Restrictions: Must maintain middleware order, do not bypass security middleware, ensure proper error propagation | Success: Routes are properly configured with correct middleware chain, authentication works correctly, errors are handled gracefully throughout the request lifecycle_
 
-- [ ] 4.2 CRUD エンドポイントの実装
-  - API エンドポイントの作成
-  - リクエスト検証の追加
-  - API 集成テストの記述
+- [ ] 4.2 Implement CRUD endpoints
+  - Create API endpoints
+  - Add request validation
+  - Write API integration tests
   - _Leverage: src/controllers/BaseController.ts, src/utils/validation.ts_
   - _Requirements: 4.2, 4.3_
-  - _Prompt: Role: API開発と検証の専門知識を持つフルスタック開発者 | Task: 要件 4.2 および 4.3 に従って CRUD エンドポイントを実装し、BaseController パターンを拡張し、src/utils/validation.ts の検証ユーティリティを使用します。 | Restrictions: すべての入力を検証し、既存のコントローラーパターンに従い、適切なHTTPステータスコードとレスポンスを保証する必要があります。 | Success: すべてのCRUD操作が正しく機能し、リクエスト検証によって無効なデータが防止され、統合テストが合格し、すべてのエンドポイントをカバーします。_
+  - _Prompt: Role: Full-stack Developer with expertise in API development and validation | Task: Implement CRUD endpoints following requirements 4.2 and 4.3, extending BaseController patterns and using validation utilities from src/utils/validation.ts | Restrictions: Must validate all inputs, follow existing controller patterns, ensure proper HTTP status codes and responses | Success: All CRUD operations work correctly, request validation prevents invalid data, integration tests pass and cover all endpoints_
 
-- [ ] 5. フロントエンドコンポーネントを追加する
-  - コンポーネントアーキテクチャを計画する
+- [ ] 5. Add frontend components
+  - Plan component architecture
   - _Leverage: src/components/BaseComponent.tsx, src/styles/theme.ts_
   - _Requirements: 5.0_
-  - _Prompt: Role: Reactコンポーネントの設計とアーキテクチャの専門知識を持つフロントエンドアーキテクト | Task: src/components/BaseComponent.tsx の基本パターンと src/styles/theme.ts のテーマ システムを活用して、要件 5.0 に従った包括的なコンポーネント アーキテクチャを計画します。 | Restrictions: 既存のコンポーネントパターンに従い、設計システムの一貫性を維持し、コンポーネントの再利用性を確保する必要がある | Success: アーキテクチャは適切に計画され、文書化されており、コンポーネントは適切に編成され、既存のパターンとテーマシステムに従っています。_
+  - _Prompt: Role: Frontend Architect with expertise in React component design and architecture | Task: Plan comprehensive component architecture following requirement 5.0, leveraging base patterns from src/components/BaseComponent.tsx and theme system from src/styles/theme.ts | Restrictions: Must follow existing component patterns, maintain design system consistency, ensure component reusability | Success: Architecture is well-planned and documented, components are properly organized, follows existing patterns and theme system_
 
-- [ ] 5.1 基本的なUIコンポーネントを作成する
-  - コンポーネント構造を設定する
-  - 再利用可能なコンポーネントを実装する
-  - スタイリングとテーマを追加する
+- [ ] 5.1 Create base UI components
+  - Set up component structure
+  - Implement reusable components
+  - Add styling and theming
   - _Leverage: src/components/BaseComponent.tsx, src/styles/theme.ts_
   - _Requirements: 5.1_
-  - _Prompt: Role: Reactとコンポーネントアーキテクチャを専門とするフロントエンド開発者 | Task: 要件 5.1 に従って再利用可能な UI コンポーネントを作成し、BaseComponent パターンを拡張し、src/styles/theme.ts の既存のテーマ システムを使用します。 | Restrictions: 既存のテーマ変数を使用し、コンポーネント構成パターンに従い、アクセシビリティ準拠を確保する必要があります。 | Success: コンポーネントは再利用可能で、適切なテーマが設定され、既存のアーキテクチャに準拠し、アクセスしやすく、応答性に優れています。_
+  - _Prompt: Role: Frontend Developer specializing in React and component architecture | Task: Create reusable UI components following requirement 5.1, extending BaseComponent patterns and using existing theme system from src/styles/theme.ts | Restrictions: Must use existing theme variables, follow component composition patterns, ensure accessibility compliance | Success: Components are reusable and properly themed, follow existing architecture, accessible and responsive_
 
-- [ ] 5.2 機能固有のコンポーネントを実装する
-  - 機能固有のコンポーネントを作成する
-  - 状態管理を追加する
-  - APIエンドポイントに接続する
+- [ ] 5.2 Implement feature-specific components
+  - Create feature components
+  - Add state management
+  - Connect to API endpoints
   - _Leverage: src/hooks/useApi.ts, src/components/BaseComponent.tsx_
   - _Requirements: 5.2, 5.3_
-  - _Prompt: Role: 状態管理とAPI統合の専門知識を持つReact開発者 | Task: src/hooks/useApi.ts の API フックを使用し、BaseComponent パターンを拡張して、要件 5.2 および 5.3 に従って機能固有のコンポーネントを実装します。 | Restrictions: 既存の状態管理パターンを使用し、読み込みとエラー状態を適切に処理し、コンポーネントのパフォーマンスを維持する必要があります。 | Success: コンポーネントは適切な状態管理により完全に機能し、API 統合はスムーズに機能し、ユーザー エクスペリエンスは応答性が高く直感的です。_
+  - _Prompt: Role: React Developer with expertise in state management and API integration | Task: Implement feature-specific components following requirements 5.2 and 5.3, using API hooks from src/hooks/useApi.ts and extending BaseComponent patterns | Restrictions: Must use existing state management patterns, handle loading and error states properly, maintain component performance | Success: Components are fully functional with proper state management, API integration works smoothly, user experience is responsive and intuitive_
 
-- [ ] 6. インテグレーションとテスト
-  - インテグレーションアプローチを計画する
+- [ ] 6. Integration and testing
+  - Plan integration approach
   - _Leverage: src/utils/integrationUtils.ts, tests/helpers/testUtils.ts_
   - _Requirements: 6.0_
-  - _Prompt: Role: システム統合およびテスト戦略の専門知識を持つ統合エンジニア | Task: 要件 6.0 に従って、src/utils/integrationUtils.ts の統合ユーティリティとテスト ヘルパーを活用して、包括的な統合アプローチを計画します。 | Restrictions: すべてのシステムコンポーネントを考慮し、適切なテスト範囲を確保し、統合テストの信頼性を維持する必要があります。 | Success: 統合計画は包括的かつ実現可能であり、すべてのシステムコンポーネントが正しく連携し、統合ポイントは十分にテストされています。_
+  - _Prompt: Role: Integration Engineer with expertise in system integration and testing strategies | Task: Plan comprehensive integration approach following requirement 6.0, leveraging integration utilities from src/utils/integrationUtils.ts and test helpers | Restrictions: Must consider all system components, ensure proper test coverage, maintain integration test reliability | Success: Integration plan is comprehensive and feasible, all system components work together correctly, integration points are well-tested_
 
-- [ ] 6.1 エンドツーエンドテストを書く
-  - E2E テストフレームワークを設定する
-  - ユーザージャーニーテストを書く
-  - テスト自動化を追加する
+- [ ] 6.1 Write end-to-end tests
+  - Set up E2E testing framework
+  - Write user journey tests
+  - Add test automation
   - _Leverage: tests/helpers/testUtils.ts, tests/fixtures/data.ts_
-  - _Requirements: 全て_
-  - _Prompt: Role: E2EテストとCypressやPlaywrightなどのテストフレームワークの専門知識を持つQA自動化エンジニア | Task: すべての要件を網羅した包括的なエンドツーエンドのテストを実装し、テストユーティリティとフィクスチャを使用してテストフレームワークとユーザージャーニーテストを設定します。 | Restrictions: 実際のユーザーワークフローをテストし、テストが保守可能で信頼できることを確認する必要がありますが、実装の詳細はテストしません。 | Success: E2Eテストはすべての重要なユーザージャーニーをカバーし、テストはCI/CDパイプラインで確実に実行され、ユーザーエクスペリエンスはエンドツーエンドで検証されます。_
+  - _Requirements: All_
+  - _Prompt: Role: QA Automation Engineer with expertise in E2E testing and test frameworks like Cypress or Playwright | Task: Implement comprehensive end-to-end tests covering all requirements, setting up testing framework and user journey tests using test utilities and fixtures | Restrictions: Must test real user workflows, ensure tests are maintainable and reliable, do not test implementation details | Success: E2E tests cover all critical user journeys, tests run reliably in CI/CD pipeline, user experience is validated from end-to-end_
 
-- [ ] 6.2 最終統合とクリーンアップ
-  - すべてのコンポーネントを統合する
-  - 統合に関する問題を修正する
-  - コードとドキュメントをクリーンアップする
+- [ ] 6.2 Final integration and cleanup
+  - Integrate all components
+  - Fix any integration issues
+  - Clean up code and documentation
   - _Leverage: src/utils/cleanup.ts, docs/templates/_
-  - _Requirements: 全て_
-  - _Prompt: Role: コード品質とシステム統合の専門知識を持つシニア開発者 | Task: すべてのコンポーネントの最終的な統合を完了し、クリーンアップユーティリティとドキュメントテンプレートを使用して、すべての要件を網羅した包括的なクリーンアップを実行します。 | Restrictions: 既存の機能を壊さず、コード品質基準を満たし、ドキュメントの一貫性を維持する必要があります。 | Success: すべてのコンポーネントが完全に統合され、連携して動作し、コードはクリーンで適切に文書化されており、システムはすべての要件と品質基準を満たしています。_
+  - _Requirements: All_
+  - _Prompt: Role: Senior Developer with expertise in code quality and system integration | Task: Complete final integration of all components and perform comprehensive cleanup covering all requirements, using cleanup utilities and documentation templates | Restrictions: Must not break existing functionality, ensure code quality standards are met, maintain documentation consistency | Success: All components are fully integrated and working together, code is clean and well-documented, system meets all requirements and quality standards_

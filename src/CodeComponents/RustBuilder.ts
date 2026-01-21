@@ -1,5 +1,4 @@
-import * as vscode from 'vscode';
-import { CodeBuilder, IObjectModel, IAttributeModel, IOperationModel, IParameterModel, IClassModel, safeIdentifier, collectInheritedMembers, camelCase, snakeCase } from './CodeGenerator';
+import { CodeBuilder, IObjectModel, IAttributeModel, IOperationModel, IParameterModel, IClassModel, safeIdentifier, collectInheritedMembers, camelCase, snakeCase, WorkflowAst, IActionNode, IIfNode, IWhileNode, IReturnNode, WfAstNode } from './CodeGenerator';
 
 export class RustBuilder extends CodeBuilder {
 
@@ -128,6 +127,52 @@ export class RustBuilder extends CodeBuilder {
         return lines;
     }
 
+    public generateWorkflow(ast: WorkflowAst): string[] {
+        const lines: string[] = [];
+        // 変数定義
+        for (const v of ast.variables) {
+            const t = this.TypeModel.mapTypeForLang(v.type, 'rust').name;
+            const init = v.initialValue ? ` = ${v.initialValue}` : '';
+            // Rustでは変更可能にするために mut を付けるのが一般的
+            lines.push(`    let mut ${snakeCase(v.name)}: ${t}${init};`);
+        }
+        if (ast.variables.length > 0) lines.push('');
+
+        // ボディ
+        lines.push(...this.buildWfNodes(ast.body, 1));
+        return lines;
+    }
+
+    protected generateAction(node: IActionNode, indent: number): string[] {
+        return [`${this.getIndent(indent)}${node.statement};`];
+    }
+
+    protected generateIf(node: IIfNode, indent: number): string[] {
+        const lines: string[] = [];
+        // Rustでは条件式に括弧を付けないのが一般的
+        lines.push(`${this.getIndent(indent)}if ${node.condition} {`);
+        lines.push(...this.buildWfNodes(node.then, indent + 1));
+        if (node.else && node.else.length > 0) {
+            lines.push(`${this.getIndent(indent)}} else {`);
+            lines.push(...this.buildWfNodes(node.else, indent + 1));
+        }
+        lines.push(`${this.getIndent(indent)}}`);
+        return lines;
+    }
+
+    protected generateWhile(node: IWhileNode, indent: number): string[] {
+        const lines: string[] = [];
+        lines.push(`${this.getIndent(indent)}while ${node.condition} {`);
+        lines.push(...this.buildWfNodes(node.body, indent + 1));
+        lines.push(`${this.getIndent(indent)}}`);
+        return lines;
+    }
+
+    protected generateReturn(node: IReturnNode, indent: number): string[] {
+        const val = node.value ? ` ${node.value}` : '';
+        return [`${this.getIndent(indent)}return${val};`];
+    }
+
     public getClassClosing(): string {
         return '';
     }
@@ -154,11 +199,18 @@ export class RustBuilder extends CodeBuilder {
         const isPublic = o.visibility === 'public';
         const sig = this.buildMethodSignature(o, isPublic);
         const retType = this.TypeModel.mapTypeForLang(o.returnType || 'void', 'rust').name;
-        const body = (retType !== '()') ? 'unimplemented!()' : '// TODO';
+
+        let bodyLines: string[] = [];
+        if (o.workflowAst) {
+            bodyLines = this.generateWorkflow(o.workflowAst);
+        } else {
+            const body = (retType !== '()') ? 'unimplemented!()' : '// TODO';
+            bodyLines = [`        ${body}`];
+        }
 
         return [
             `${sig} {`,
-            `        ${body}`,
+            ...bodyLines,
             '    }'
         ];
     }
