@@ -23,7 +23,7 @@ export class CSharpBuilder extends CodeBuilder {
             modifiers = 'public abstract class';
         }
         else {
-            modifiers = 'public class';
+            modifiers = cls.isStruct ? 'public struct' : 'public class';
         }
         const bases: string[] = [];
         if (cls.baseClass && cls.baseClass !== 'None') bases.push(safeIdentifier(cls.baseClass));

@@ -173,7 +173,7 @@ function createOperationsSection(cls, typeOptionsAll) {
         vis.className = 'mini';
 
         const mod = document.createElement('select');
-        ['None', 'abstract', 'virtual', 'override', 'static', 'aggregation', 'composition'].forEach(m => {
+        ['None', 'abstract', 'virtual', 'override', 'static'].forEach(m => {
             const oo = document.createElement('option');
             oo.value = m; oo.innerText = m; mod.appendChild(oo);
         });

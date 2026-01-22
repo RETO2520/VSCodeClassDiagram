@@ -54,12 +54,26 @@
 
 #### RustBuilder
 - **generateClassDeclaration**: `struct` キーワードを使用（既存もstructだが、セマンティクスが変わる可能性がある）。
-- **generateAttributes**:
-    - `aggregation`: `Box<T>` (または `Option<Box<T>>`) でラップして生成。
     - `composition`: `T` (直接型) として生成。
     - `None` (デフォルト):
         - ターゲットがClass/Interfaceの場合: `Box<T>` (参照)
         - ターゲットがStruct/Primitiveの場合: `T` (値)
+
+#### CppBuilder
+- **generateClassDeclaration**: `struct` キーワードを使用。
+- **generateAttributes**:
+    - `aggregation`: `T*` (Raw Pointer) として生成。
+    - `composition`: `T` (直接埋め込み) として生成。
+
+#### CSharpBuilder
+- **generateClassDeclaration**: `struct` キーワードを使用。
+- **generateAttributes**:
+    - `aggregation`/`composition`: 標準のプロパティとして生成（C#のstructは値型なので、型定義に従う）。
+
+#### JavaBuilder
+- **generateClassDeclaration**: `class` キーワードを使用 (Javaではstructがないため)。
+- **generateAttributes**:
+    - `aggregation`/`composition`: 標準のフィールドとして生成。
 
 ## エラー処理
 

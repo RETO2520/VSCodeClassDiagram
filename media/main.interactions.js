@@ -18,16 +18,17 @@ export function createNameBar(cls, el) {
 
     // kind select
     const kind = document.createElement('select');
-    ['class', 'abstract', 'interface'].forEach(k => {
+    ['class', 'abstract', 'interface', 'struct'].forEach(k => {
         const o = document.createElement('option');
         o.value = k; o.innerText = k;
         kind.appendChild(o);
     });
-    kind.value = cls.isInterface ? 'interface' : (cls.isAbstract ? 'abstract' : 'class');
+    kind.value = cls.isInterface ? 'interface' : (cls.isStruct ? 'struct' : (cls.isAbstract ? 'abstract' : 'class'));
     kind.addEventListener('change', () => {
-        if (kind.value === 'interface') { cls.isInterface = true; cls.isAbstract = false; }
-        else if (kind.value === 'abstract') { cls.isInterface = false; cls.isAbstract = true; }
-        else { cls.isInterface = false; cls.isAbstract = false; }
+        if (kind.value === 'interface') { cls.isInterface = true; cls.isAbstract = false; cls.isStruct = false; }
+        else if (kind.value === 'abstract') { cls.isInterface = false; cls.isAbstract = true; cls.isStruct = false; }
+        else if (kind.value === 'struct') { cls.isInterface = false; cls.isAbstract = false; cls.isStruct = true; }
+        else { cls.isInterface = false; cls.isAbstract = false; cls.isStruct = false; }
         draw.render();
     });
     leftGroup.appendChild(kind);

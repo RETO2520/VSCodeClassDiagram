@@ -37,7 +37,7 @@ export class RustBuilder extends CodeBuilder {
             for (const a of cls.attributes) {
                 // Rust standard is snake_case for fields
                 const fieldName = snakeCase(a.name || 'unnamed');
-                const ty = this.TypeModel.mapTypeForLang(a.type || 'object', 'rust').name;
+                const ty = this.getRustType(a);
                 const vis = (a.visibility === 'public') ? 'pub ' : '';
                 lines.push(`    ${vis}${fieldName}: ${ty},`);
             }
@@ -56,7 +56,7 @@ export class RustBuilder extends CodeBuilder {
 
         const params = attrs.map(a => {
             const pName = snakeCase(this.makeParamName(a.name || 'param', used));
-            const ty = this.TypeModel.mapTypeForLang(a.type || 'object', 'rust').name;
+            const ty = this.getRustType(a);
             return { pName, ty, propName: snakeCase(a.name || 'unnamed') };
         });
 
@@ -74,6 +74,44 @@ export class RustBuilder extends CodeBuilder {
         lines.push('}');
 
         return lines;
+    }
+
+    private getRustType(a: IAttributeModel): string {
+        let ty = this.TypeModel.mapTypeForLang(a.type || 'object', 'rust').name;
+        const mod = (a.modifier || '').toLowerCase();
+        let isReference = false;
+
+        // Check explicit modifier
+        if (mod === 'aggregation') {
+            isReference = true;
+        } else if (mod === 'composition') {
+            isReference = false;
+        } else {
+            // Default logic based on target type
+            const target = this.ClassMaps.nameToClass[a.type];
+            if (target) {
+                // Class/Interface/Abstract -> Reference (Box)
+                // Struct -> Value (Direct)
+                if (!target.isStruct) {
+                    isReference = true;
+                }
+            } else {
+                // Primitive or unknown -> Value
+                isReference = false;
+            }
+        }
+
+        // Apply Box wrapping if reference
+        if (isReference) {
+            // Check if it is an interface (trait) -> dyn Trait
+            const target = this.ClassMaps.nameToClass[a.type];
+            if (target && target.isInterface) {
+                return `Box<dyn ${ty}>`;
+            }
+            return `Box<${ty}>`;
+        }
+
+        return ty;
     }
 
     public generateOperations(cls: IClassModel): string[] {

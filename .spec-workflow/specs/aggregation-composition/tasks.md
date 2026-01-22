@@ -32,7 +32,28 @@
   - _Requirements: 要件1, 要件3, 要件4, 要件5_
   - _Prompt: Role: Rustジェネレータ開発者 | Task: RustBuilder.tsを更新し、Aggregation属性は `Box<T>`、Composition属性は `T` として生成するようにしてください。 | Restrictions: Rustの借用/所有権ルールに従ったコードを生成すること。_
 
-- [ ] 5. 検証とクリーンアップ
+- [ ] 5. C++ジェネレータの更新
+  - File: src/CodeComponents/CppBuilder.ts
+  - Struct（構造体）生成と、Aggregation（`T*`）/ Composition（`T`）のロジックを実装します。
+  - Purpose: C++コード生成に所有権モデルを反映させる。
+  - _Leverage: src/CodeComponents/CppBuilder.ts_
+  - _Requirements: 要件1, 要件3, 要件4, 要件5_
+
+- [ ] 6. C#ジェネレータの更新
+  - File: src/CodeComponents/CSharpBuilder.ts
+  - Struct（`struct`）生成をサポートします。
+  - Purpose: C#コード生成に値型モデルを反映させる。
+  - _Leverage: src/CodeComponents/CSharpBuilder.ts_
+  - _Requirements: 要件1, 要件4_
+
+- [ ] 7. Javaジェネレータの更新
+  - File: src/CodeComponents/JavaBuilder.ts
+  - Aggregation/Compositionの扱いは標準フィールドですが、一貫性のためにロジックを確認/更新します。
+  - Purpose: 多言語サポートの整合性維持。
+  - _Leverage: src/CodeComponents/JavaBuilder.ts_
+  - _Requirements: 要件1_
+
+- [ ] 8. 検証とクリーンアップ
   - File: (None)
   - 手動テストを行い、生成されたコードが要件を満たしているか確認します。
   - Purpose: 実装の品質保証。

@@ -105,7 +105,8 @@ export class TypeScriptBuilder extends CodeBuilder {
         } else {
             baseClause = bases.length > 0 ? (' extends ' + bases.join(', ')) : '';
             interfaceClause = interfaces.length > 0 ? (' implements ' + interfaces.join(', ')) : '';
-            return `${modifiers} ${name}${baseClause}${interfaceClause} {`;
+            const structComment = cls.isStruct ? '/** struct */\n' : '';
+            return `${structComment}${modifiers} ${name}${baseClause}${interfaceClause} {`;
         }
     }
     public generateAttributes(cls: IClassModel): string[] {

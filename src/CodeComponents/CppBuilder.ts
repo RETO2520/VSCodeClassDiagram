@@ -49,15 +49,38 @@ export class CppBuilder extends CodeBuilder {
 
     public generateClassDeclaration(cls: IClassModel): string {
         const name = pascalCase(cls.name || 'Unnamed');
-        return `class ${name} {`;
+        const kind = cls.isStruct ? 'struct' : 'class';
+        return `${kind} ${name} {`;
     }
 
     public generateAttributes(cls: IClassModel): string[] {
         const lines: string[] = [];
         if (Array.isArray(cls.attributes)) {
             for (const a of cls.attributes) {
-                const t = this.TypeModel.mapTypeForLang(a.type || 'auto', 'cpp').name;
+                let t = this.TypeModel.mapTypeForLang(a.type || 'auto', 'cpp').name;
                 const prop = safeIdentifier(a.name || 'unnamed');
+
+                // Aggregation/Composition logic
+                const mod = (a.modifier || '').toLowerCase();
+                let isPtr = false;
+                if (mod === 'aggregation') {
+                    isPtr = true;
+                } else if (mod === 'composition') {
+                    isPtr = false;
+                } else {
+                    // Default logic
+                    // If target is class/interface -> aggregation (ptr)
+                    // If target is struct/primitive -> composition (value)
+                    const target = this.ClassMaps.nameToClass[a.type];
+                    if (target && !target.isStruct) {
+                        isPtr = true;
+                    }
+                }
+
+                if (isPtr) {
+                    t = `${t}*`;
+                }
+
                 lines.push(`  ${t} ${prop};`);
             }
         }

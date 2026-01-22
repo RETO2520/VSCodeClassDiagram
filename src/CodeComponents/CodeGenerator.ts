@@ -25,6 +25,7 @@ export interface IClassModel {
     interfaces: string[];
     isAbstract: boolean;
     isInterface: boolean;
+    isStruct?: boolean;
     attributes: IAttributeModel[];
     operations: IOperationModel[];
 }
