@@ -20,7 +20,7 @@
   - _Requirements: 問題1_
   - _Prompt: Role: 設計パターン専門家 | Task: switch 文をルーティングテーブルに置き換え、拡張性を向上 | Restrictions: 既存のメッセージ形式を維持 | Success: 新しいコマンド追加が1箇所の登録で完了する_
 
-- [ ] 3. ClassDiagramHandler の作成
+- [x] 3. ClassDiagramHandler の作成
   - File: src/handlers/ClassDiagramHandler.ts
   - classDiagram パネル作成とメッセージ処理を移行
   - FileService と MessageRouter を活用
