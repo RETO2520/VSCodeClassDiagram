@@ -60,7 +60,7 @@
   - _Requirements: 問題3_
   - _Prompt: Role: TypeScript/JSDoc 専門家 | Task: 既存コードから型を抽出し、d.ts ファイルを作成 | Restrictions: 実行時の動作に影響しない | Success: VSCode で型情報が表示される_
 
-- [ ] 7. main.state.js の JSDoc 強化
+- [x] 7. main.state.js の JSDoc 強化
   - File: media/main.state.js
   - @typedef で DiagramModel を定義
   - state オブジェクトに型アノテーション
