@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/aggregation-composition/tasks.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-22T04:57:35.036Z",
+      "trigger": "initial",
+      "approvalId": "approval_1769057854977_1i1qo0ki7",
+      "approvalTitle": "Aggregation/Composition機能のタスク (Tasks for Aggregation/Composition Support)"
+    }
+  ]
+}

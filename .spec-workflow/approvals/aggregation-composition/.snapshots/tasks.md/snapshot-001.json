@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1769057855036_w9cpz3jsy",
+  "approvalId": "approval_1769057854977_1i1qo0ki7",
+  "approvalTitle": "Aggregation/Composition機能のタスク (Tasks for Aggregation/Composition Support)",
+  "version": 1,
+  "timestamp": "2026-01-22T04:57:35.036Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# タスクドキュメント\r\n\r\n- [ ] 1. UIの更新: Structオプションと属性修飾子の追加\r\n  - File: media/main.interactions.js, media/main.draw.js\r\n  - クラスの種類に「Struct」を追加し、属性の修飾子に「Aggregation/Composition」を追加します。操作の修飾子からはこれらを除外または非表示にします。\r\n  - Purpose: ユーザーがStructや集約/コンポジションを選択できるようにする。\r\n  - _Leverage: media/main.interactions.js, media/main.draw.js_\r\n  - _Requirements: 要件1, 要件2_\r\n  - _Prompt: Role: フロントエンド開発者 | Task: main.interactions.jsを修正して「struct」オプションを追加し、main.draw.jsを修正して属性修飾子に「aggregation」「composition」を追加（操作修飾子からは除外）してください。 | Restrictions: 既存のイベントリスナーやUI構造を壊さないように注意すること。_\r\n\r\n- [ ] 2. モデルの更新: IClassModelへのisStruct追加\r\n  - File: src/CodeComponents/CodeGenerator.ts\r\n  - IClassModelインターフェースに `isStruct?: boolean` プロパティを追加します。\r\n  - Purpose: Structの状態をモデルとして保持する。\r\n  - _Leverage: src/CodeComponents/CodeGenerator.ts_\r\n  - _Requirements: 要件1_\r\n  - _Prompt: Role: TypeScript開発者 | Task: IClassModelインターフェースにisStructフラグを追加してください。 | Restrictions: 既存のプロパティとの整合性を保つこと。_\r\n\r\n- [ ] 3. TypeScriptジェネレータの更新\r\n  - File: src/CodeComponents/TypeScriptBuilder.ts\r\n  - Structの場合のクラス宣言生成、およびAggregation/Composition修飾子が付いた属性の生成ロジックを実装します。\r\n  - Purpose: TypeScriptコード生成においてStructと所有権セマンティクスを反映させる。\r\n  - _Leverage: src/CodeComponents/TypeScriptBuilder.ts_\r\n  - _Requirements: 要件1, 要件3, 要件4, 要件5_\r\n  - _Prompt: Role: TypeScriptジェネレータ開発者 | Task: isStructがtrueの場合はクラスとして生成し、属性のaggregation/composition修飾子（これらはTS構文上は標準プロパティだが）を適切に処理するロジックを実装してください。 | Restrictions: コンパイル可能な有効なTSコードを出力すること。_\r\n\r\n- [ ] 4. Rustジェネレータの更新\r\n  - File: src/CodeComponents/RustBuilder.ts\r\n  - Struct（構造体）としての生成と、Aggregation（`Box<T>`）/ Composition（`T`）の型マッピングロジックを実装します。\r\n  - Purpose: Rustコード生成において所有権モデルを正しく反映させる。\r\n  - _Leverage: src/CodeComponents/RustBuilder.ts_\r\n  - _Requirements: 要件1, 要件3, 要件4, 要件5_\r\n  - _Prompt: Role: Rustジェネレータ開発者 | Task: RustBuilder.tsを更新し、Aggregation属性は `Box<T>`、Composition属性は `T` として生成するようにしてください。 | Restrictions: Rustの借用/所有権ルールに従ったコードを生成すること。_\r\n\r\n- [ ] 5. 検証とクリーンアップ\r\n  - File: (None)\r\n  - 手動テストを行い、生成されたコードが要件を満たしているか確認します。\r\n  - Purpose: 実装の品質保証。\r\n  - _Leverage: (Manual Test)_\r\n  - _Requirements: All_\r\n  - _Prompt: Role: QAエンジニア | Task: UIでStructやAggregationを設定し、コード生成を行って出力が正しいか検証してください。_\r\n",
+  "fileStats": {
+    "size": 3543,
+    "lines": 42,
+    "lastModified": "2026-01-22T04:57:32.995Z"
+  },
+  "comments": []
+}

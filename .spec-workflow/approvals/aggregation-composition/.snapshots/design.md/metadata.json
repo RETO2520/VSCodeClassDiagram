@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/aggregation-composition/design.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-22T04:55:19.938Z",
+      "trigger": "initial",
+      "approvalId": "approval_1769057719871_949cba51m",
+      "approvalTitle": "Aggregation/Composition機能の設計 (Design for Aggregation/Composition Support)"
+    }
+  ]
+}

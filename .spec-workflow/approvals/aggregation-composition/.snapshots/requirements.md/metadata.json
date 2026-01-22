@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/aggregation-composition/requirements.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-22T02:03:42.265Z",
+      "trigger": "initial",
+      "approvalId": "approval_1769047422190_ytbtqw923",
+      "approvalTitle": "Requirements for Aggregation/Composition Support"
+    }
+  ]
+}
