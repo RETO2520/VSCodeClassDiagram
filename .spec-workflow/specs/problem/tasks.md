@@ -69,7 +69,7 @@
   - _Requirements: 問題3_
   - _Prompt: Role: JavaScript/JSDoc 専門家 | Task: state.model の構造を JSDoc で文書化 | Restrictions: 実行コードを変更しない | Success: state.model へのアクセスで型補完が効く_
 
-- [ ] 8. main.utils.js の JSDoc 強化
+- [x] 8. main.utils.js の JSDoc 強化
   - File: media/main.utils.js
   - すべての export 関数に @param と @returns を追加
   - newClass, newAttribute, newOperation の戻り値型を明記

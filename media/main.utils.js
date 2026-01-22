@@ -1,16 +1,32 @@
+/// <reference path="./types.d.ts" />
 import { state } from './main.state.js';
 
-/** @returns {object} */
+/**
+ * Create a new attribute
+ * @param {string} [name='field'] 
+ * @param {string} [type='int'] 
+ * @returns {Attribute}
+ */
 export function newAttribute(name = 'field', type = 'int') {
     return { name, type, visibility: 'private', modifier: 'None' };
 }
 
-/** @returns {object} */
+/**
+ * Create a new operation
+ * @param {string} [name='Op'] 
+ * @param {string} [returnType='void'] 
+ * @returns {Operation}
+ */
 export function newOperation(name = 'Op', returnType = 'void') {
     return { name, returnType, visibility: 'private', modifier: 'None', parameters: [] };
 }
 
-/** @returns {object} */
+/**
+ * Create a new class model
+ * @param {number} [x=20] 
+ * @param {number} [y=20] 
+ * @returns {ClassModel}
+ */
 export function newClass(x = 20, y = 20) {
     return {
         id: cryptoRandomId(),
@@ -27,8 +43,16 @@ export function newClass(x = 20, y = 20) {
     };
 }
 
+/**
+ * Generate a random ID (temporary implementation)
+ * @returns {string}
+ */
 export function cryptoRandomId() { return Math.random().toString(36).slice(2, 10); }
 
+/**
+ * Migrate model data to ensure all fields exist
+ * @returns {void}
+ */
 export function migrateModel() {
     const model = state.model;
     // build maps
@@ -47,6 +71,7 @@ export function migrateModel() {
         if (!Array.isArray(c.attributes)) c.attributes = [];
         if (!Array.isArray(c.operations)) c.operations = [];
 
+        // @ts-ignore
         c.interfaces = c.interfaces.map(it => {
             if (!it) return null;
             if (idToClass[it]) return it;
@@ -74,6 +99,10 @@ export function migrateModel() {
     }
 }
 
+/**
+ * Prepare model for export (resolve IDs to names for backward compat if needed)
+ * @returns {object}
+ */
 export function modelForExport() {
     const model = state.model;
     const idToName = {};
@@ -83,11 +112,17 @@ export function modelForExport() {
     for (const c of model.classes) {
         const cc = JSON.parse(JSON.stringify(c));
         cc.baseClass = c.baseClassId ? idToName[c.baseClassId] : 'None';
+        // @ts-ignore
         copy.classes.push(cc);
     }
     return copy;
 }
 
+/**
+ * Cleanup references when a class definition is deleted by ID
+ * @param {string} deletedId 
+ * @returns {void}
+ */
 export function cleanupReferencesById(deletedId) {
     const model = state.model;
     if (!deletedId) return;
@@ -115,6 +150,11 @@ export function cleanupReferencesById(deletedId) {
     }
 }
 
+/**
+ * Cleanup references when a class is deleted by name (legacy support)
+ * @param {string} deletedName 
+ * @returns {void}
+ */
 export function cleanupReferences(deletedName) {
     const model = state.model;
     if (!deletedName) return;
