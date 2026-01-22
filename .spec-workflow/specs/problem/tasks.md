@@ -11,7 +11,7 @@
   - _Requirements: 問題2_
   - _Prompt: Role: TypeScriptとVS Code API の専門家 | Task: extension.ts からファイル読み込み・保存のロジックを抽出し、再利用可能な FileService クラスを作成 | Restrictions: 既存のAPI互換性を維持 | Success: 両方のダイアグラムから FileService を利用でき、重複コードが削除される_
 
-- [ ] 2. MessageRouter の作成
+- [x] 2. MessageRouter の作成
   - File: src/messaging/MessageRouter.ts
   - コマンドベースのメッセージルーティングを実装
   - register, dispatch メソッドを実装
