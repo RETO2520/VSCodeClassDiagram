@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/problem/design.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-22T12:21:08.190Z",
+      "trigger": "initial",
+      "approvalId": "approval_1769084468116_3cv6unx9u",
+      "approvalTitle": "Problem Specification - Design Document"
+    }
+  ]
+}
