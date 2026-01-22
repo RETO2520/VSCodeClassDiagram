@@ -12,6 +12,36 @@ import * as interactions from './main.interactions.js';
         svg: document.getElementById('relationSvg')
     };
 
+    /**
+     * Adjust the relationSvg size to match the container's scrollable area.
+     * This ensures the SVG covers the entire content area, not just the visible viewport.
+     */
+    function adjustSvgSize() {
+        const container = dom.container;
+        const svg = dom.svg;
+
+        // Get the scrollable dimensions (total content size)
+        const scrollWidth = Math.max(container.scrollWidth, container.clientWidth);
+        const scrollHeight = Math.max(container.scrollHeight, container.clientHeight);
+
+        // Apply dimensions to SVG
+        svg.style.width = `${scrollWidth}px`;
+        svg.style.height = `${scrollHeight}px`;
+    }
+
+    // Expose adjustSvgSize for use after rendering
+    window.adjustSvgSize = adjustSvgSize;
+
+    // Adjust SVG size on window resize
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(adjustSvgSize, 100);
+    });
+
+    // Adjust SVG size when container scrolls (content overflow)
+    dom.container.addEventListener('scroll', adjustSvgSize);
+
     // Initialize modules with dependencies
     draw.initDrawing(dom, { utils, interactions });
     interactions.initInteractions(vscode, dom, { utils, draw });

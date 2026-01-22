@@ -24,6 +24,11 @@ export function render() {
         renderClassBox(cls, typeOptionsAll, classEntries);
     }
     drawRelations();
+
+    // Dynamically adjust SVG size to match the container's scrollable area
+    if (typeof window.adjustSvgSize === 'function') {
+        window.adjustSvgSize();
+    }
 }
 
 function renderClassBox(cls, typeOptionsAll, classEntries) {
