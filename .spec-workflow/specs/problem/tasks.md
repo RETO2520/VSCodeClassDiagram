@@ -38,7 +38,7 @@
   - _Requirements: 問題1_
   - _Prompt: Role: VS Code Extension 開発者 | Task: workflowDiagram 関連コードを専用ハンドラに移行 | Restrictions: 動作を変更しない | Success: 両ハンドラが同じインターフェースに準拠_
 
-- [ ] 5. extension.ts のリファクタリング
+- [x] 5. extension.ts のリファクタリング
   - File: src/extension.ts
   - ハンドラとサービスを利用する形に書き換え
   - activate 関数を50行以下に削減
