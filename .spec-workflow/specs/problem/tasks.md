@@ -2,7 +2,7 @@
 
 ## Phase 1: Extension モジュール分割 (問題1, 問題2対策)
 
-- [ ] 1. FileService の作成
+- [x] 1. FileService の作成
   - File: src/services/FileService.ts
   - ファイル読み込み・保存の共通ロジックを抽出
   - loadJson, saveJson, findWorkspaceDiagram メソッドを実装
