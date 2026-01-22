@@ -29,7 +29,7 @@
   - _Requirements: 問題1_
   - _Prompt: Role: VS Code Extension 開発者 | Task: classDiagram 関連コードを専用ハンドラに移行 | Restrictions: 動作を変更しない | Success: extension.ts が50行以下になる_
 
-- [ ] 4. WorkflowDiagramHandler の作成
+- [x] 4. WorkflowDiagramHandler の作成
   - File: src/handlers/WorkflowDiagramHandler.ts
   - workflowDiagram パネル作成とメッセージ処理を移行
   - ClassDiagramHandler と同様のパターン
