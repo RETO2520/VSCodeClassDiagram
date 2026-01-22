@@ -29,7 +29,7 @@ export function createNameBar(cls, el) {
         else if (kind.value === 'abstract') { cls.isInterface = false; cls.isAbstract = true; cls.isStruct = false; }
         else if (kind.value === 'struct') { cls.isInterface = false; cls.isAbstract = false; cls.isStruct = true; }
         else { cls.isInterface = false; cls.isAbstract = false; cls.isStruct = false; }
-        draw.render();
+        draw.requestRender();
     });
     leftGroup.appendChild(kind);
 
@@ -45,9 +45,9 @@ export function createNameBar(cls, el) {
             if (ev.key === 'Enter') {
                 cls.name = inp.value.trim() || 'Unnamed';
                 state.editingNameId = null; state.editingDraft = '';
-                draw.render();
+                draw.requestRender();
             }
-            else if (ev.key === 'Escape') { state.editingNameId = null; state.editingDraft = ''; draw.render(); }
+            else if (ev.key === 'Escape') { state.editingNameId = null; state.editingDraft = ''; draw.requestRender(); }
             else { state.editingDraft = inp.value; }
         });
         inp.addEventListener('blur', () => {
@@ -57,7 +57,7 @@ export function createNameBar(cls, el) {
         nameText.innerText = cls.name;
         nameText.addEventListener('dblclick', (ev) => {
             state.editingNameId = cls.id; state.editingDraft = cls.name;
-            draw.render(); ev.stopPropagation();
+            draw.requestRender(); ev.stopPropagation();
         });
     }
 
@@ -84,7 +84,7 @@ export function createNameBar(cls, el) {
         if (idx >= 0) {
             state.model.classes.splice(idx, 1);
             utils.cleanupReferencesById(cls.id);
-            draw.render();
+            draw.requestRender();
         }
     });
     rightGroup.appendChild(delBtn);
@@ -168,7 +168,7 @@ function showInterfacesPopup(cls, anchorEl) {
         const checked = Array.from(popup.querySelectorAll('input[type=checkbox]:checked')).map(x => x.value);
         cls.interfaces = checked;
         popup.remove();
-        draw.render();
+        draw.requestRender();
     });
 
     cancel.addEventListener('click', (ev) => { ev.stopPropagation(); popup.remove(); });

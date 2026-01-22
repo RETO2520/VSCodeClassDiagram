@@ -10,6 +10,18 @@ export function initDrawing(dom, refs) {
     interactions = refs.interactions;
 }
 
+let renderRequested = false;
+
+export function requestRender() {
+    if (!renderRequested) {
+        renderRequested = true;
+        requestAnimationFrame(() => {
+            render();
+            renderRequested = false;
+        });
+    }
+}
+
 export function render() {
     svg.setAttribute('width', container.clientWidth);
     svg.setAttribute('height', container.clientHeight);
@@ -73,7 +85,7 @@ function createBodySection(cls, typeOptionsAll, classEntries) {
     baseSelect.addEventListener('change', () => {
         const val = baseSelect.value;
         cls.baseClassId = val ? val : null;
-        render();
+        requestRender();
     });
     baseRow.appendChild(baseLabel);
     baseRow.appendChild(baseSelect);
@@ -92,7 +104,7 @@ function createAttributesSection(cls, typeOptionsAll) {
     attrsHeader.className = 'row mini';
     const addAttrBtn = document.createElement('button');
     addAttrBtn.innerText = '+Attr'; addAttrBtn.className = 'mini';
-    addAttrBtn.addEventListener('click', () => { cls.attributes.push(utils.newAttribute()); render(); });
+    addAttrBtn.addEventListener('click', () => { cls.attributes.push(utils.newAttribute()); requestRender(); });
     attrsHeader.appendChild(addAttrBtn);
     attrsDiv.appendChild(attrsHeader);
 
@@ -110,7 +122,7 @@ function createAttributesSection(cls, typeOptionsAll) {
             o.value = t; o.innerText = t; typeIn.appendChild(o);
         }
         typeIn.value = a.type || 'object';
-        typeIn.addEventListener('change', () => { a.type = typeIn.value; render(); });
+        typeIn.addEventListener('change', () => { a.type = typeIn.value; requestRender(); });
 
         const vis = document.createElement('select');
         ['private', 'public', 'protected', 'internal'].forEach(v => {
@@ -127,12 +139,12 @@ function createAttributesSection(cls, typeOptionsAll) {
             o.value = m; o.innerText = m; mod.appendChild(o);
         });
         mod.value = a.modifier || 'None';
-        mod.addEventListener('change', () => { a.modifier = mod.value; render(); });
+        mod.addEventListener('change', () => { a.modifier = mod.value; requestRender(); });
         mod.className = 'mini';
 
         const rem = document.createElement('button');
         rem.className = 'removeBtn'; rem.innerText = 'x';
-        rem.addEventListener('click', () => { cls.attributes.splice(i, 1); render(); });
+        rem.addEventListener('click', () => { cls.attributes.splice(i, 1); requestRender(); });
 
         row.appendChild(nameIn); row.appendChild(typeIn);
         row.appendChild(vis); row.appendChild(mod); row.appendChild(rem);
@@ -148,7 +160,7 @@ function createOperationsSection(cls, typeOptionsAll) {
     opsHeader.className = 'row mini';
     const addOpBtn = document.createElement('button');
     addOpBtn.innerText = '+Op'; addOpBtn.className = 'mini';
-    addOpBtn.addEventListener('click', () => { cls.operations.push(utils.newOperation()); render(); });
+    addOpBtn.addEventListener('click', () => { cls.operations.push(utils.newOperation()); requestRender(); });
     opsHeader.appendChild(addOpBtn);
     opsDiv.appendChild(opsHeader);
 
@@ -183,12 +195,12 @@ function createOperationsSection(cls, typeOptionsAll) {
             oo.value = m; oo.innerText = m; mod.appendChild(oo);
         });
         mod.value = o.modifier || 'None';
-        mod.addEventListener('change', () => { o.modifier = mod.value; render(); });
+        mod.addEventListener('change', () => { o.modifier = mod.value; requestRender(); });
         mod.className = 'mini';
 
         const rem = document.createElement('button');
         rem.className = 'removeBtn'; rem.innerText = 'x';
-        rem.addEventListener('click', () => { cls.operations.splice(i, 1); render(); });
+        rem.addEventListener('click', () => { cls.operations.splice(i, 1); requestRender(); });
 
         row.appendChild(nameIn); row.appendChild(retIn);
         row.appendChild(vis); row.appendChild(mod); row.appendChild(rem);
@@ -207,12 +219,12 @@ function createOperationsSection(cls, typeOptionsAll) {
                 opel.value = t; opel.innerText = t; pt.appendChild(opel);
             }
             pt.value = pi.type || 'int';
-            pt.addEventListener('change', () => { pi.type = pt.value; render(); });
+            pt.addEventListener('change', () => { pi.type = pt.value; requestRender(); });
             pt.className = 'mini';
 
             const prem = document.createElement('button');
             prem.className = 'removeBtn'; prem.innerText = 'x';
-            prem.addEventListener('click', () => { o.parameters.splice(p, 1); render(); });
+            prem.addEventListener('click', () => { o.parameters.splice(p, 1); requestRender(); });
             pRow.appendChild(pn); pRow.appendChild(pt); pRow.appendChild(prem);
             paramsDiv.appendChild(pRow);
         }
@@ -220,7 +232,7 @@ function createOperationsSection(cls, typeOptionsAll) {
         addParamBtn.innerText = '+Param'; addParamBtn.className = 'row mini';
         addParamBtn.addEventListener('click', () => {
             if (!o.parameters) o.parameters = [];
-            o.parameters.push({ name: 'p', type: 'int' }); render();
+            o.parameters.push({ name: 'p', type: 'int' }); requestRender();
         });
         paramsDiv.appendChild(addParamBtn);
 

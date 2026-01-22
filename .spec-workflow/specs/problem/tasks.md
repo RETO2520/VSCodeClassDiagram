@@ -82,7 +82,7 @@
 
 ## Phase 3: パフォーマンス最適化 (問題4対策)
 
-- [ ] 9. デバウンス付き requestRender の導入
+- [-] 9. デバウンス付き requestRender の導入
   - File: media/main.draw.js
   - requestRender() 関数を追加 (16ms デバウンス)
   - 直接の render() 呼び出しを requestRender() に置換
