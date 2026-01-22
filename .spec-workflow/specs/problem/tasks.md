@@ -51,7 +51,7 @@
 
 ## Phase 2: Webview 型安全性強化 (問題3対策)
 
-- [ ] 6. 型定義ファイルの作成
+- [x] 6. 型定義ファイルの作成
   - File: media/types.d.ts
   - ClassModel, DiagramModel, Attribute, Operation の型定義
   - グローバル変数の型定義 (window.adjustSvgSize 等)
