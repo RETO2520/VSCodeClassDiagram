@@ -13,8 +13,8 @@
     "packaging": "npx vsce package",
     "build": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "test:js": "node src/test/js/main.test.js",
-    "test": "vscode-test",
+    "test:js": "node src/test/js/main.test.js && node src/test/js/utils.test.js",
+    "test": "npm run test:js && vscode-test",
     "lint": "eslint . --ext .ts,.tsx"
   },
   "devDependencies": {
@@ -22,6 +22,7 @@
     "@eslint/js": "^9.39.2",
     "@stylistic/eslint-plugin": "^5.7.0",
     "@types/node": "^25.0.3",
+    "@types/sinon": "^21.0.0",
     "@types/vscode": "^1.104.0",
     "@typescript-eslint/eslint-plugin": "^8.53.0",
     "@typescript-eslint/parser": "^8.53.0",
@@ -31,6 +32,7 @@
     "eslint": "^9.39.2",
     "globals": "^17.0.0",
     "license-checker-rseidelsohn": "^4.4.2",
+    "sinon": "^21.0.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.53.0"

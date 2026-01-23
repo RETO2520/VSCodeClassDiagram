@@ -14,35 +14,76 @@ import { events } from './main.events.js';
     };
 
     /**
-     * Adjust the relationSvg size to match the container's scrollable area.
-     * This ensures the SVG covers the entire content area, not just the visible viewport.
+     * Adjust the relationSvg size to match the actual range of classes in the diagram.
+     * This ensures the SVG covers all boxes even if they are at negative coordinates or
+     * pushed far to the right/bottom, and adds a margin for relationship lines.
      */
     function adjustSvgSize() {
         const container = dom.container;
         const svg = dom.svg;
         if (!container || !svg) return;
 
-        // Get the scrollable dimensions (total content size)
-        const scrollWidth = Math.max(container.scrollWidth, container.clientWidth);
-        const scrollHeight = Math.max(container.scrollHeight, container.clientHeight);
+        // Default to container size
+        let minX = 0;
+        let minY = 0;
+        let maxX = container.clientWidth;
+        let maxY = container.clientHeight;
 
-        // Apply dimensions to SVG
-        svg.style.width = `${scrollWidth}px`;
-        svg.style.height = `${scrollHeight}px`;
+        // Expand to include all classes
+        if (state.model && state.model.classes && state.model.classes.length > 0) {
+            for (const cls of state.model.classes) {
+                minX = Math.min(minX, cls.x);
+                minY = Math.min(minY, cls.y);
+                // Use a default height estimate if not accurately available
+                const clsHeight = cls.height || 200;
+                maxX = Math.max(maxX, cls.x + (cls.width || 300));
+                maxY = Math.max(maxY, cls.y + clsHeight);
+            }
+        }
+
+        // Add some margin for relations, markers, and padding
+        const margin = 150;
+        minX -= margin;
+        minY -= margin;
+        maxX += margin;
+        maxY += margin;
+
+        const width = maxX - minX;
+        const height = maxY - minY;
+
+        // Apply dimensions and position to SVG
+        svg.style.width = `${width}px`;
+        svg.style.height = `${height}px`;
+        svg.style.left = `${minX}px`;
+        svg.style.top = `${minY}px`;
+
+        // Update viewBox to match the coordinate system of the classes
+        // This ensures SVG coordinates (x, y) match the class coordinates (cls.x, cls.y)
+        svg.setAttribute('viewBox', `${minX} ${minY} ${width} ${height}`);
     }
 
     // Expose adjustSvgSize for use after rendering
     window.adjustSvgSize = adjustSvgSize;
 
-    // Adjust SVG size on window resize
+    // Adjust SVG size on window resize (debounced)
     let resizeTimeout;
-    window.addEventListener('resize', () => {
+    const debouncedAdjustSize = () => {
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(adjustSvgSize, 100);
-    });
+    };
 
-    // Adjust SVG size when container scrolls (content overflow)
-    dom.container.addEventListener('scroll', adjustSvgSize);
+    window.addEventListener('resize', debouncedAdjustSize);
+
+    // Adjust SVG size when container scrolls (debounced)
+    dom.container.addEventListener('scroll', debouncedAdjustSize);
+
+    // Use ResizeObserver for more robust size tracking of the container itself
+    if (typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(() => {
+            adjustSvgSize();
+        });
+        ro.observe(dom.container);
+    }
 
     // Initialize modules with dependencies
     draw.initDrawing(vscode, dom, { utils, interactions });
@@ -54,7 +95,6 @@ import { events } from './main.events.js';
     });
     document.getElementById('addClass').addEventListener('click', () => {
         state.model.classes.push(utils.newClass(40 + state.model.classes.length * 30, 40 + state.model.classes.length * 20));
-        vscode.postMessage({ command: 'showAlert', text: `model length :  ${state.model.classes.length}` });
         events.emit('requestRender');
     });
     document.getElementById('saveJson').addEventListener('click', () => vscode.postMessage({ command: 'saveJson', payload: state.model }));

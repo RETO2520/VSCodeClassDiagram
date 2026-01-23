@@ -148,7 +148,7 @@
 
 ## Phase 6: テストカバレッジ向上 (問題7対策)
 
-- [ ] 15. main.utils.js の単体テスト作成
+- [x] 15. main.utils.js の単体テスト作成
   - File: src/test/js/utils.test.js
   - newClass, newAttribute, newOperation, migrateModel のテスト
   - 既存のテストパターンを参考
@@ -157,7 +157,7 @@
   - _Requirements: 問題7_
   - _Prompt: Role: QA エンジニア | Task: utils 関数の単体テストを作成 | Restrictions: Node.js 環境で実行可能 | Success: npm run test:js でテスト実行可能_
 
-- [ ] 16. FileService の単体テスト作成
+- [x] 16. FileService の単体テスト作成
   - File: src/test/FileService.test.ts
   - VS Code API のモック使用
   - loadJson, saveJson のテスト
@@ -170,7 +170,7 @@
 
 ## Phase 7: SVG サイズ調整改善 (問題8対策)
 
-- [ ] 17. adjustSvgSize の改善
+- [x] 17. adjustSvgSize の改善
   - File: media/main.js
   - クラスボックスの実際の範囲から SVG サイズを計算
   - null チェックと余白の追加
@@ -179,7 +179,7 @@
   - _Requirements: 問題8_
   - _Prompt: Role: SVG とレイアウト専門家 | Task: コンテンツベースのサイズ計算を実装 | Restrictions: パフォーマンスへの影響を最小限に | Success: 負の座標でもリレーション線が表示_
 
-- [ ] 18. scroll イベントのデバウンス
+- [x] 18. scroll イベントのデバウンス
   - File: media/main.js
   - adjustSvgSize 呼び出しをデバウンス (100ms)
   - ResizeObserver の活用を検討

@@ -15,7 +15,7 @@ export function initDrawing(vsc, dom, refs) {
 let renderRequested = false;
 
 export function requestRender() {
-    //vscode.postMessage?.({ command: 'showAlert', text: 'requestRender: ' + renderRequested });
+
     if (!renderRequested) {
         renderRequested = true;
         requestAnimationFrame(() => {
@@ -420,7 +420,6 @@ function lineRectIntersection(rect, x1, y1, x2, y2) {
 export function drawRelations() {
     while (svg.childNodes.length > 1) svg.removeChild(svg.lastChild);
     const rels = computeRelationsFromModel();
-    vscode.postMessage?.({ command: 'showAlert', text: 'drawRelations: ' + rels.length });
     for (const r of rels) {
         const fromRect = getBoxRectById(r.fromId);
         const toRect = getBoxRectById(r.toId);
