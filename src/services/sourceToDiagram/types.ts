@@ -108,9 +108,9 @@ export interface LayoutInfo {
  * ソースコード解析時の設定を指定する
  */
 export interface AnalyzeOptions {
-    /** 解析対象に含めるファイルパターンの配列（例: ['**/*.ts', '**/*.cs']） */
+    /** 解析対象に含めるファイルパターンの配列 */
     includePatterns?: string[];
-    /** 解析対象から除外するファイルパターンの配列（例: ['**/node_modules/**', '**/out/**']） */
+    /** 解析対象から除外するファイルパターンの配列 */
     excludePatterns?: string[];
     /** LSPを使用するかどうか（デフォルト: true） */
     useLsp?: boolean;
