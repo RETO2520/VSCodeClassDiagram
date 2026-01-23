@@ -1,8 +1,10 @@
 import { state } from './main.state.js';
+import { events } from './main.events.js';
 
-let utils, interactions, container, canvas, svg;
+let vscode, utils, interactions, container, canvas, svg;
 
-export function initDrawing(dom, refs) {
+export function initDrawing(vsc, dom, refs) {
+    vscode = vsc;
     container = dom.container;
     canvas = dom.canvas;
     svg = dom.svg;
@@ -13,6 +15,7 @@ export function initDrawing(dom, refs) {
 let renderRequested = false;
 
 export function requestRender() {
+    //vscode.postMessage?.({ command: 'showAlert', text: 'requestRender: ' + renderRequested });
     if (!renderRequested) {
         renderRequested = true;
         requestAnimationFrame(() => {
@@ -21,6 +24,9 @@ export function requestRender() {
         });
     }
 }
+
+// Subscribe to rendering requests from other modules
+events.on('requestRender', requestRender);
 
 export function render() {
     svg.setAttribute('width', container.clientWidth);
@@ -86,6 +92,7 @@ function createBodySection(cls, typeOptionsAll, classEntries) {
         const val = baseSelect.value;
         cls.baseClassId = val ? val : null;
         requestRender();
+        //events.emit('requestRender');
     });
     baseRow.appendChild(baseLabel);
     baseRow.appendChild(baseSelect);
@@ -104,7 +111,12 @@ function createAttributesSection(cls, typeOptionsAll) {
     attrsHeader.className = 'row mini';
     const addAttrBtn = document.createElement('button');
     addAttrBtn.innerText = '+Attr'; addAttrBtn.className = 'mini';
-    addAttrBtn.addEventListener('click', () => { cls.attributes.push(utils.newAttribute()); requestRender(); });
+    addAttrBtn.addEventListener('click', () => {
+        cls.attributes.push(utils.newAttribute());
+        requestRender();
+        //events.emit('requestRender');
+    });
+
     attrsHeader.appendChild(addAttrBtn);
     attrsDiv.appendChild(attrsHeader);
 
@@ -122,7 +134,11 @@ function createAttributesSection(cls, typeOptionsAll) {
             o.value = t; o.innerText = t; typeIn.appendChild(o);
         }
         typeIn.value = a.type || 'object';
-        typeIn.addEventListener('change', () => { a.type = typeIn.value; requestRender(); });
+        typeIn.addEventListener('change', () => {
+            a.type = typeIn.value;
+            requestRender();
+            //events.emit('requestRender');
+        });
 
         const vis = document.createElement('select');
         ['private', 'public', 'protected', 'internal'].forEach(v => {
@@ -139,12 +155,20 @@ function createAttributesSection(cls, typeOptionsAll) {
             o.value = m; o.innerText = m; mod.appendChild(o);
         });
         mod.value = a.modifier || 'None';
-        mod.addEventListener('change', () => { a.modifier = mod.value; requestRender(); });
+        mod.addEventListener('change', () => {
+            a.modifier = mod.value;
+            requestRender();
+            //events.emit('requestRender');
+        });
         mod.className = 'mini';
 
         const rem = document.createElement('button');
         rem.className = 'removeBtn'; rem.innerText = 'x';
-        rem.addEventListener('click', () => { cls.attributes.splice(i, 1); requestRender(); });
+        rem.addEventListener('click', () => {
+            cls.attributes.splice(i, 1);
+            requestRender();
+            //events.emit('requestRender');
+        });
 
         row.appendChild(nameIn); row.appendChild(typeIn);
         row.appendChild(vis); row.appendChild(mod); row.appendChild(rem);
@@ -160,7 +184,11 @@ function createOperationsSection(cls, typeOptionsAll) {
     opsHeader.className = 'row mini';
     const addOpBtn = document.createElement('button');
     addOpBtn.innerText = '+Op'; addOpBtn.className = 'mini';
-    addOpBtn.addEventListener('click', () => { cls.operations.push(utils.newOperation()); requestRender(); });
+    addOpBtn.addEventListener('click', () => {
+        cls.operations.push(utils.newOperation());
+        //requestRender();
+        events.emit('requestRender');
+    });
     opsHeader.appendChild(addOpBtn);
     opsDiv.appendChild(opsHeader);
 
@@ -195,12 +223,20 @@ function createOperationsSection(cls, typeOptionsAll) {
             oo.value = m; oo.innerText = m; mod.appendChild(oo);
         });
         mod.value = o.modifier || 'None';
-        mod.addEventListener('change', () => { o.modifier = mod.value; requestRender(); });
+        mod.addEventListener('change', () => {
+            o.modifier = mod.value;
+            requestRender();
+            //events.emit('requestRender');
+        });
         mod.className = 'mini';
 
         const rem = document.createElement('button');
         rem.className = 'removeBtn'; rem.innerText = 'x';
-        rem.addEventListener('click', () => { cls.operations.splice(i, 1); requestRender(); });
+        rem.addEventListener('click', () => {
+            cls.operations.splice(i, 1);
+            requestRender();
+            //events.emit('requestRender');
+        });
 
         row.appendChild(nameIn); row.appendChild(retIn);
         row.appendChild(vis); row.appendChild(mod); row.appendChild(rem);
@@ -219,12 +255,20 @@ function createOperationsSection(cls, typeOptionsAll) {
                 opel.value = t; opel.innerText = t; pt.appendChild(opel);
             }
             pt.value = pi.type || 'int';
-            pt.addEventListener('change', () => { pi.type = pt.value; requestRender(); });
+            pt.addEventListener('change', () => {
+                pi.type = pt.value;
+                requestRender();
+                //events.emit('requestRender');
+            });
             pt.className = 'mini';
 
             const prem = document.createElement('button');
             prem.className = 'removeBtn'; prem.innerText = 'x';
-            prem.addEventListener('click', () => { o.parameters.splice(p, 1); requestRender(); });
+            prem.addEventListener('click', () => {
+                o.parameters.splice(p, 1);
+                requestRender();
+                //events.emit('requestRender');
+            });
             pRow.appendChild(pn); pRow.appendChild(pt); pRow.appendChild(prem);
             paramsDiv.appendChild(pRow);
         }
@@ -232,7 +276,9 @@ function createOperationsSection(cls, typeOptionsAll) {
         addParamBtn.innerText = '+Param'; addParamBtn.className = 'row mini';
         addParamBtn.addEventListener('click', () => {
             if (!o.parameters) o.parameters = [];
-            o.parameters.push({ name: 'p', type: 'int' }); requestRender();
+            o.parameters.push({ name: 'p', type: 'int' });
+            requestRender();
+            //events.emit('requestRender');
         });
         paramsDiv.appendChild(addParamBtn);
 
@@ -374,6 +420,7 @@ function lineRectIntersection(rect, x1, y1, x2, y2) {
 export function drawRelations() {
     while (svg.childNodes.length > 1) svg.removeChild(svg.lastChild);
     const rels = computeRelationsFromModel();
+    vscode.postMessage?.({ command: 'showAlert', text: 'drawRelations: ' + rels.length });
     for (const r of rels) {
         const fromRect = getBoxRectById(r.fromId);
         const toRect = getBoxRectById(r.toId);

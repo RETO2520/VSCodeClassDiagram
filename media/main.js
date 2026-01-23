@@ -2,6 +2,7 @@ import { state, setModel, setPrimitiveTypes } from './main.state.js';
 import * as utils from './main.utils.js';
 import * as draw from './main.draw.js';
 import * as interactions from './main.interactions.js';
+import { events } from './main.events.js';
 
 (function () {
     const vscode = acquireVsCodeApi(); // eslint-disable-line no-undef
@@ -44,8 +45,8 @@ import * as interactions from './main.interactions.js';
     dom.container.addEventListener('scroll', adjustSvgSize);
 
     // Initialize modules with dependencies
-    draw.initDrawing(dom, { utils, interactions });
-    interactions.initInteractions(vscode, dom, { utils, draw });
+    draw.initDrawing(vscode, dom, { utils, interactions });
+    interactions.initInteractions(vscode, dom, { utils });
 
     // Toolbar event listeners (Identical to original)
     document.getElementById('langSelect').addEventListener('change', (event) => {
@@ -54,7 +55,7 @@ import * as interactions from './main.interactions.js';
     document.getElementById('addClass').addEventListener('click', () => {
         state.model.classes.push(utils.newClass(40 + state.model.classes.length * 30, 40 + state.model.classes.length * 20));
         vscode.postMessage({ command: 'showAlert', text: `model length :  ${state.model.classes.length}` });
-        draw.requestRender();
+        events.emit('requestRender');
     });
     document.getElementById('saveJson').addEventListener('click', () => vscode.postMessage({ command: 'saveJson', payload: state.model }));
     document.getElementById('loadJson').addEventListener('click', () => vscode.postMessage({ command: 'loadJson' }));
@@ -77,11 +78,11 @@ import * as interactions from './main.interactions.js';
                 case 'loadedJson':
                     setModel(msg.payload);
                     utils.migrateModel();
-                    draw.requestRender();
+                    events.emit('requestRender');
                     break;
                 case 'changedPrimitiveTypes':
                     setPrimitiveTypes(msg.primitiveTypes);
-                    draw.requestRender();
+                    events.emit('requestRender');
                     break;
                 default:
                     break;
@@ -96,14 +97,14 @@ import * as interactions from './main.interactions.js';
     if (state.model && state.model.classes.length === 0) {
         state.model.classes.push(utils.newClass(40, 40));
         utils.migrateModel();
-        draw.requestRender();
+        events.emit('requestRender');
     } else if (!state.model) {
         // Fallback for unexpected empty model
         state.model = { classes: [utils.newClass(40, 40)] };
         utils.migrateModel();
-        draw.requestRender();
+        events.emit('requestRender');
     } else {
         // Just render if already has classes (unlikely here but safe)
-        draw.requestRender();
+        events.emit('requestRender');
     }
 })();

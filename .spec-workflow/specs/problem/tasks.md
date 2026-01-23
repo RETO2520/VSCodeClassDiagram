@@ -126,7 +126,7 @@
 
 ## Phase 5: 循環依存解消 (問題6対策)
 
-- [ ] 13. EventEmitter モジュールの作成
+- [x] 13. EventEmitter モジュールの作成
   - File: media/main.events.js
   - on, emit, off メソッドを持つイベントシステム
   - モジュール間通信の中継点として機能
@@ -135,7 +135,7 @@
   - _Requirements: 問題6_
   - _Prompt: Role: モジュールアーキテクチャ専門家 | Task: 軽量なイベントシステムを実装 | Restrictions: 外部ライブラリを使用しない | Success: 循環依存なしでモジュールが通信可能_
 
-- [ ] 14. draw.js と interactions.js のリファクタリング
+- [x] 14. draw.js と interactions.js のリファクタリング
   - File: media/main.draw.js, media/main.interactions.js
   - 相互参照を EventEmitter 経由に変更
   - 初期化時の refs パターンを簡素化
