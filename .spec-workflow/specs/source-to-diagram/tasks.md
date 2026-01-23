@@ -2,7 +2,7 @@
 
 ## フェーズ1: データモデルとインターフェース定義
 
-- [ ] 1.1. 基本データ型インターフェースを定義する
+- [x] 1.1. 基本データ型インターフェースを定義する
   - File: src/services/sourceToDiagram/types.ts
   - ClassInfo、AttributeInfo、OperationInfo、ParameterInfoの基本インターフェースを定義する
   - Purpose: 解析層と変換層の間のデータ受け渡しに使用する基本型を提供する
