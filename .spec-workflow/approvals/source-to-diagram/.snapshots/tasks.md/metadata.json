@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/source-to-diagram/tasks.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-23T14:00:58.636Z",
+      "trigger": "initial",
+      "approvalId": "approval_1769176858554_s8gs8uxgk",
+      "approvalTitle": "Tasks for Source-to-Diagram JSON Generation"
+    }
+  ]
+}

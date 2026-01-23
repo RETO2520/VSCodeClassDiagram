@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/source-to-diagram/design.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-23T13:57:04.991Z",
+      "trigger": "initial",
+      "approvalId": "approval_1769176624903_t2bbyoyse",
+      "approvalTitle": "Design for Source-to-Diagram JSON Generation"
+    }
+  ]
+}
