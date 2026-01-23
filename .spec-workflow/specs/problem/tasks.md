@@ -82,7 +82,7 @@
 
 ## Phase 3: パフォーマンス最適化 (問題4対策)
 
-- [-] 9. デバウンス付き requestRender の導入
+- [x] 9. デバウンス付き requestRender の導入
   - File: media/main.draw.js
   - requestRender() 関数を追加 (16ms デバウンス)
   - 直接の render() 呼び出しを requestRender() に置換
@@ -91,7 +91,7 @@
   - _Requirements: 問題4_
   - _Prompt: Role: フロントエンドパフォーマンス専門家 | Task: デバウンス機能を追加し、render 呼び出しを最適化 | Restrictions: 視覚的な遅延を最小限に | Success: 連続入力時のちらつきが解消_
 
-- [ ] 10. イベントハンドラの render 呼び出し置換
+- [x] 10. イベントハンドラの render 呼び出し置換
   - File: media/main.draw.js, media/main.interactions.js
   - すべての render() 呼び出しを requestRender() に変更
   - 即時描画が必要な箇所は render() を維持
@@ -104,7 +104,7 @@
 
 ## Phase 4: エラーハンドリング強化 (問題5対策)
 
-- [ ] 11. main.js のエラーハンドリング追加
+- [x] 11. main.js のエラーハンドリング追加
   - File: media/main.js
   - メッセージ受信時の try-catch 追加
   - adjustSvgSize の null チェック追加
@@ -113,7 +113,7 @@
   - _Requirements: 問題5_
   - _Prompt: Role: 堅牢なコード専門家 | Task: エラー発生しうる箇所に適切なハンドリングを追加 | Restrictions: 正常系の動作を変更しない | Success: エラー時もUI がクラッシュしない_
 
-- [ ] 12. cryptoRandomId の改善
+- [x] 12. cryptoRandomId の改善
   - File: media/main.utils.js
   - 関数名を generateId に変更、または crypto.getRandomValues を使用
   - 既存の利用箇所を更新

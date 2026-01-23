@@ -19,6 +19,7 @@ import * as interactions from './main.interactions.js';
     function adjustSvgSize() {
         const container = dom.container;
         const svg = dom.svg;
+        if (!container || !svg) return;
 
         // Get the scrollable dimensions (total content size)
         const scrollWidth = Math.max(container.scrollWidth, container.clientWidth);
@@ -68,19 +69,26 @@ import * as interactions from './main.interactions.js';
 
     // Message handler (Identical to original)
     window.addEventListener('message', event => {
-        const msg = event.data;
-        switch (msg.command) {
-            case 'loadedJson':
-                setModel(msg.payload);
-                utils.migrateModel();
-                draw.requestRender();
-                break;
-            case 'changedPrimitiveTypes':
-                setPrimitiveTypes(msg.primitiveTypes);
-                draw.requestRender();
-                break;
-            default:
-                break;
+        try {
+            const msg = event.data;
+            if (!msg) return;
+
+            switch (msg.command) {
+                case 'loadedJson':
+                    setModel(msg.payload);
+                    utils.migrateModel();
+                    draw.requestRender();
+                    break;
+                case 'changedPrimitiveTypes':
+                    setPrimitiveTypes(msg.primitiveTypes);
+                    draw.requestRender();
+                    break;
+                default:
+                    break;
+            }
+        } catch (err) {
+            console.error('Error handling message:', err);
+            vscode.postMessage({ command: 'showAlert', text: 'Error in webview: ' + err.message });
         }
     });
 
@@ -93,7 +101,7 @@ import * as interactions from './main.interactions.js';
         // Fallback for unexpected empty model
         state.model = { classes: [utils.newClass(40, 40)] };
         utils.migrateModel();
-        draw.render();
+        draw.requestRender();
     } else {
         // Just render if already has classes (unlikely here but safe)
         draw.requestRender();

@@ -29,7 +29,7 @@ export function newOperation(name = 'Op', returnType = 'void') {
  */
 export function newClass(x = 20, y = 20) {
     return {
-        id: cryptoRandomId(),
+        id: generateId(),
         name: 'NewClass',
         x, y,
         width: 400,
@@ -44,10 +44,17 @@ export function newClass(x = 20, y = 20) {
 }
 
 /**
- * Generate a random ID (temporary implementation)
+ * Generate a random ID
  * @returns {string}
  */
-export function cryptoRandomId() { return Math.random().toString(36).slice(2, 10); }
+export function generateId() {
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+        const arr = new Uint32Array(2);
+        crypto.getRandomValues(arr);
+        return (arr[0].toString(36) + arr[1].toString(36)).slice(0, 10);
+    }
+    return Math.random().toString(36).slice(2, 12);
+}
 
 /**
  * Migrate model data to ensure all fields exist
@@ -59,7 +66,7 @@ export function migrateModel() {
     const nameToId = {};
     const idToClass = {};
     for (const c of model.classes || []) {
-        if (!c.id) c.id = cryptoRandomId(); // ensure id present
+        if (!c.id) c.id = generateId(); // ensure id present
         nameToId[c.name] = c.id;
         idToClass[c.id] = c;
     }
