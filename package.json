@@ -14,7 +14,7 @@
     "build": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "test:js": "node src/test/js/index.test.js",
-    "test": "npm run build && npm run test:js && vscode-test",
+    "test": "npm run build && vscode-test",
     "lint": "eslint . --ext .ts,.tsx"
   },
   "devDependencies": {

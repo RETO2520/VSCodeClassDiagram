@@ -16,7 +16,7 @@ import * as path from 'path';
 import type { IObjectModel, IClassModel } from '../CodeComponents/CodeGenerator';
 import assert from 'assert';
 suite('Extension Test Suite', () => {
-    vscode.window.showInformationMessage('Start all tests.');
+    console.log("Start Extension Test Suite test");
 
     test('Sample test', () => {
         console.log('Sample test');
@@ -27,7 +27,7 @@ suite('Extension Test Suite', () => {
 });
 
 suite('コード生成のテストケース', () => {
-    vscode.window.showInformationMessage('Start all tests.');
+    console.log("Start コード生成のテストケース test");
 
     test('TypeScriptBuilder generates files with imports and class declarations', async () => {
         const thing: IClassModel = {
@@ -69,8 +69,7 @@ suite('コード生成のテストケース', () => {
 });
 
 suite('モデルのテストケース', () => {
-    vscode.window.showInformationMessage('Start all tests.');
-    console.log("Start all test");
+    console.log("Start モデルのテストケース test");
     const base: IClassModel = {
         id: 'base', name: 'Base', x: 0, y: 0, width: 0, height: 0,
         baseClass: '', baseClassId: null as any, interfaces: [], isAbstract: false, isInterface: false,
