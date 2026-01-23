@@ -10,7 +10,7 @@
   - _Requirements: 要件3, 要件5_
   - _Prompt: Implement the task for spec source-to-diagram, first run spec-workflow-guide to get the workflow guide then implement the task: Role: TypeScript型システムの専門知識を持つ開発者 | Task: 要件3と要件5に従って、src/services/sourceToDiagram/types.tsにClassInfo、AttributeInfo、OperationInfo、ParameterInfoの基本インターフェースを定義します。VS Code API（vscode.Uri、vscode.Range）を適切に使用し、既存のIObjectModelインターフェース（src/CodeComponents/CodeGenerator.ts）への変換を考慮した構造にします。 | Restrictions: 既存のIObjectModelインターフェースを変更せず、下位互換性を維持する。型安全性を確保する | Success: すべての基本インターフェースはエラーなくコンパイルされ、VS Code APIを正しく使用し、型安全性が確保されています。_
 
-- [ ] 1.2. AnalyzeOptionsとLayoutInfoインターフェースを定義する
+- [x] 1.2. AnalyzeOptionsとLayoutInfoインターフェースを定義する
   - File: src/services/sourceToDiagram/types.ts（タスク1.1から継続）
   - AnalyzeOptions（解析オプション）とLayoutInfo（レイアウト情報）のインターフェースを追加する
   - Purpose: 解析時の設定とレイアウト情報の型定義を提供する

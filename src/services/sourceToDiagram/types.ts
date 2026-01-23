@@ -86,3 +86,37 @@ export interface ParameterInfo {
     defaultValue?: string;
 }
 
+/**
+ * レイアウト情報を表すインターフェース
+ * クラス図上のクラスの位置とサイズ情報を含む
+ */
+export interface LayoutInfo {
+    /** クラスのID（diagram.jsonのIClassModel.idに対応） */
+    classId: string;
+    /** X座標 */
+    x: number;
+    /** Y座標 */
+    y: number;
+    /** 幅 */
+    width: number;
+    /** 高さ */
+    height: number;
+}
+
+/**
+ * 解析オプションを表すインターフェース
+ * ソースコード解析時の設定を指定する
+ */
+export interface AnalyzeOptions {
+    /** 解析対象に含めるファイルパターンの配列（例: ['**/*.ts', '**/*.cs']） */
+    includePatterns?: string[];
+    /** 解析対象から除外するファイルパターンの配列（例: ['**/node_modules/**', '**/out/**']） */
+    excludePatterns?: string[];
+    /** LSPを使用するかどうか（デフォルト: true） */
+    useLsp?: boolean;
+    /** ASTを使用するかどうか（デフォルト: true） */
+    useAst?: boolean;
+    /** 最大ファイル数（パフォーマンス制限、未指定の場合は制限なし） */
+    maxFiles?: number;
+}
+
