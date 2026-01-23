@@ -6,8 +6,9 @@ const path = require('path');
 async function runTests() {
     try {
         // Use dynamic import to load ESM modules
-        const utilsPath = 'file://' + path.resolve(__dirname, '../../../media/main.utils.js').replace(/\\/g, '/');
-        const statePath = 'file://' + path.resolve(__dirname, '../../../media/main.state.js').replace(/\\/g, '/');
+        //const utilsPath = 'file:///' + path.resolve(__dirname, '../../../media/main.utils.js').replace(/\\/g, '/');
+        const utilsPath = path.resolve(__dirname, '../../../media/main.utils.js').replace(/\\/g, '/');
+        const statePath = path.resolve(__dirname, '../../../media/main.state.js').replace(/\\/g, '/');
 
         const utils = await import(utilsPath);
         const { state } = await import(statePath);
