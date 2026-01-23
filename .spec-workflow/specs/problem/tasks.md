@@ -193,8 +193,8 @@
 ## 検証計画
 
 ### 自動テスト
-- `npm run test` - 単体テストと統合テスト実行
-- `npm run test:js` - Webview ユーティリティのテスト
+- `npm run test` - 単体テストと統合テスト実行 (JS統合エントリポイント経由)
+- `npm run test:js` - Webview ユーティリティのテスト (src/test/js/index.js 経由)
 - `npm run lint` - コード品質チェック
 
 ### 手動検証

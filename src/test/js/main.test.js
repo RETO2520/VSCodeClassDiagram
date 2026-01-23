@@ -50,29 +50,37 @@ function computeRelationsFromModel(model) {
 }
 
 // --- Tests ---
-try {
-    const A = { id: 'a', name: 'A' };
-    const B = { id: 'b', name: 'B', baseClassId: 'a' };
-    const model = { classes: [A, B] };
+function runTests() {
+    console.log('--- Testing main.test.js (Legacy Relations) ---');
+    try {
+        const A = { id: 'a', name: 'A' };
+        const B = { id: 'b', name: 'B', baseClassId: 'a' };
+        const model = { classes: [A, B] };
 
-    const exported = modelForExport(model);
-    assert.strictEqual(exported.classes.length, 2);
-    const bExp = exported.classes.find(x => x.id === 'b');
-    assert.strictEqual(bExp.baseClass, 'A', 'baseClassId should be converted to baseClass name');
+        const exported = modelForExport(model);
+        assert.strictEqual(exported.classes.length, 2);
+        const bExp = exported.classes.find(x => x.id === 'b');
+        assert.strictEqual(bExp.baseClass, 'A', 'baseClassId should be converted to baseClass name');
 
-    // relation tests
-    const C = { id: 'c', name: 'C', attributes: [{ name: 'f', type: 'A', modifier: 'composition' }], operations: [{ name: 'op', returnType: 'B', parameters: [{ name: 'p', type: 'A' }] }] };
-    const model2 = { classes: [A, B, C] };
-    const rels = computeRelationsFromModel(model2);
-    // expect composition from C->A, dependency C->B (return), dependency C->A (param), inheritance B->A
-    const types = rels.map(r => r.type);
-    assert(types.includes('Composition'));
-    assert(types.includes('Dependency'));
-    assert(types.includes('Inheritance'));
+        // relation tests
+        const C = { id: 'c', name: 'C', attributes: [{ name: 'f', type: 'A', modifier: 'composition' }], operations: [{ name: 'op', returnType: 'B', parameters: [{ name: 'p', type: 'A' }] }] };
+        const model2 = { classes: [A, B, C] };
+        const rels = computeRelationsFromModel(model2);
+        // expect composition from C->A, dependency C->B (return), dependency C->A (param), inheritance B->A
+        const types = rels.map(r => r.type);
+        assert(types.includes('Composition'));
+        assert(types.includes('Dependency'));
+        assert(types.includes('Inheritance'));
 
-    console.log('JS tests passed');
-    process.exit(0);
-} catch (err) {
-    console.error('JS tests failed:', err && err.stack || err);
-    process.exit(1);
+        console.log('main.test.js passed! ✅');
+    } catch (err) {
+        console.error('main.test.js failed: ❌', err && err.stack || err);
+        throw err;
+    }
+}
+
+module.exports = { runTests };
+
+if (require.main === module) {
+    runTests();
 }

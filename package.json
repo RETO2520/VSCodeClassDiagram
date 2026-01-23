@@ -13,8 +13,8 @@
     "packaging": "npx vsce package",
     "build": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "test:js": "node src/test/js/main.test.js && node src/test/js/utils.test.js",
-    "test": "npm run test:js && vscode-test",
+    "test:js": "node src/test/js/index.test.js",
+    "test": "npm run build && npm run test:js && vscode-test",
     "lint": "eslint . --ext .ts,.tsx"
   },
   "devDependencies": {

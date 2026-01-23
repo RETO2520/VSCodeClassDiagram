@@ -2,7 +2,8 @@ const assert = require('assert');
 const path = require('path');
 
 // Helper to run ESM in a CJS environment
-(async () => {
+// Helper to run ESM in a CJS environment
+async function runTests() {
     try {
         // Use dynamic import to load ESM modules
         const utilsPath = 'file://' + path.resolve(__dirname, '../../../media/main.utils.js').replace(/\\/g, '/');
@@ -78,11 +79,19 @@ const path = require('path');
 
         assert.strictEqual(a.baseClassId, null, 'Reference to B should be cleared');
 
-        console.log('All main.utils.js tests passed! ✅');
-        process.exit(0);
+        console.log('main.utils.js tests passed! ✅');
     } catch (err) {
-        console.error('Tests failed ❌');
+        console.error('main.utils.js failed: ❌');
+        console.error(err);
+        throw err;
+    }
+}
+
+module.exports = { runTests };
+
+if (require.main === module) {
+    runTests().catch(err => {
         console.error(err);
         process.exit(1);
-    }
-})();
+    });
+}
