@@ -19,10 +19,11 @@ export class TypeScriptAstParser implements IAstParser {
      * @typescript-eslint/parserを動的にロードする
      */
     private async loadParser(): Promise<boolean> {
-        return false;
         if (this.parser) return true;
         try {
-            //this.parser = await import('@typescript-eslint/parser');
+            // タスク8.1: loadParserの不適切な早期リターンを修正（以前の実装では不完全だった可能性がある）
+            const parser = await import('@typescript-eslint/parser');
+            this.parser = parser;
             return true;
         } catch (error) {
             this.logger.warn(`Failed to load @typescript-eslint/parser: ${error}. AST parsing for TS/JS will be disabled.`);
@@ -94,11 +95,11 @@ export class TypeScriptAstParser implements IAstParser {
         };
 
         if (node.superClass) {
-            classInfo.baseClass = node.superClass.name || 'Unknown';
+            classInfo.baseClass = this.resolveName(node.superClass);
         }
 
         if (node.implements) {
-            classInfo.interfaces = node.implements.map((imp: any) => imp.expression.name);
+            classInfo.interfaces = node.implements.map((imp: any) => this.resolveName(imp.expression));
         }
 
         if (node.body && node.body.body) {
@@ -126,7 +127,7 @@ export class TypeScriptAstParser implements IAstParser {
         };
 
         if (node.extends) {
-            classInfo.interfaces = node.extends.map((ext: any) => ext.expression.name);
+            classInfo.interfaces = node.extends.map((ext: any) => this.resolveName(ext.expression));
         }
 
         if (node.body && node.body.body) {
@@ -210,6 +211,26 @@ export class TypeScriptAstParser implements IAstParser {
             mods.push('abstract');
         }
         return mods;
+    }
+
+    /**
+     * 名前を解決する（MemberExpressionなどの複雑な名前に対応）
+     * タスク8.2: メンバアクセス式などの複雑な名前にも対応
+     */
+    private resolveName(node: any): string {
+        if (!node) return 'Unknown';
+        if (node.type === 'Identifier') {
+            return node.name;
+        } else if (node.type === 'MemberExpression') {
+            const object = this.resolveName(node.object);
+            const property = this.resolveName(node.property);
+            return `${object}.${property}`;
+        } else if (node.type === 'TSQualifiedName') {
+            const left = this.resolveName(node.left);
+            const right = this.resolveName(node.right);
+            return `${left}.${right}`;
+        }
+        return 'Unknown';
     }
 
     private convertRange(loc: any): vscode.Range {

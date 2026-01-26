@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
+    "module": "node16",
     "target": "es2020",
     "outDir": "out",
     "lib": [
@@ -12,7 +12,8 @@
     "strict": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
-    "allowJs": true
+    "allowJs": true,
+    "moduleResolution": "node16"
   },
   "include": [
     "src"

@@ -348,4 +348,26 @@
   - Purpose: ユーザーシナリオ全体の動作を検証する
   - _Leverage: VS Code Extension Testing Framework、実際のTypeScriptファイル_
   - _Requirements: All_
-  - _Prompt: Implement the task for spec source-to-diagram, first run spec-workflow-guide to get the workflow guide then implement the task: Role: E2EテストとVS Code Extension Testing Frameworkの専門知識を持つQAエンジニア | Task: すべての要件を網羅したエンドツーエンドテストを作成します。src/test/commands/SourceToDiagramCommand.test.tsに、実際のVS Code環境でコマンドを実行し、diagram.jsonが正しく生成されることを検証するテストを実装します。生成されたdiagram.jsonをクラス図エディタで読み込んで表示できることも確認します。 | Restrictions: 実際のVS Code環境を使用し、ユーザーシナリオを正確に再現する。テストは独立して実行可能にする | Success: エンドツーエンドテストはすべての重要なユーザージャーニーをカバーし、コマンド実行からdiagram.json生成、クラス図エディタでの表示までが正しく動作することが検証されます。_
+  - _Prompt: Implement the task for spec source-to-diagram, first run spec-workflow-guide to get the workflow guide then implement the task: Role: E2EテストとVS Code Extension Testing Frameworkの専門知識を持つQAエンジニア | Task: すべての要件を網羅したエンドツーエンドテストを作成します。src/test/commands/SourceToDiagramCommand.test.tsに、実際のVS Code環境でコマンドを実行し、diagram.jsonが正しく生成されることを検証するテストを実装します。生成されたdiagram.jsonをクラス図エディタで読み込んで表示できることも確認します。 | Restrictions: 実際のVS Code環境を使用し、ユーザーシナリオを正確に再現する。テストは独立して実行可能にする | Success: エンドツーエンドテストはすべての重要なユーザージャーニーをカバーし、コマンド実行からdiagram.json生成、クラス図エディタでの表示までが正しく動作することが検証されます。
+
+## フェーズ8: 継承関係の抽出強化
+
+- [ ] 8.1. TypeScriptAstParserのロード機能を修正する
+  - File: src/services/sourceToDiagram/ast/typescript/TypescriptAstParser.ts
+  - loadParserメソッドの不適切な早期リターンを削除し、パーサーを正しくロードできるようにする
+  - Purpose: AST解析を有効化し、継承情報の取得を可能にする
+
+- [ ] 8.2. ASTからの継承関係（extends, implements）の抽出を強化する
+  - File: src/services/sourceToDiagram/ast/typescript/TypescriptAstParser.ts
+  - extractClassInfoおよびextractInterfaceInfoを修正し、メンバアクセス式などの複雑な名前にも対応する
+  - Purpose: 正確なbaseClassおよびinterfaces情報を取得する
+
+- [ ] 8.3. SourceAnalyzerでのLSPとASTの統合ロジックを改善する
+  - File: src/services/SourceAnalyzer.ts
+  - analyzeFileおよびmergeResultsを修正し、LSPの結果にASTから得られた継承情報を統合する
+  - Purpose: LSPのメンバ情報とASTの継承情報を組み合わせた完全なClassInfoを生成する
+
+- [ ] 8.4. 統合結果の検証テストを追加する
+  - File: src/test/services/SourceAnalyzer.test.ts
+  - 継承関係を含むコードに対して、正しくbaseClassIdやinterfacesが設定されることを検証するテストを追加する
+  - Purpose: 本修正の正しさを保証する

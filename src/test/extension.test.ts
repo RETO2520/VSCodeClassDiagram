@@ -15,6 +15,12 @@ import * as os from 'os';
 import * as path from 'path';
 import type { IObjectModel, IClassModel } from '../CodeComponents/CodeGenerator';
 import assert from 'assert';
+import { SourceAnalyzer } from '../services/SourceAnalyzer';
+import { ILspProvider } from '../services/sourceToDiagram/lsp/ILspProvider';
+import { Logger } from '../LoggerComponents/Logger';
+import { ClassInfo } from '../services/sourceToDiagram/types';
+import * as sinon from 'sinon';
+
 suite('Extension Test Suite', () => {
     console.log("Start Extension Test Suite test");
 
@@ -23,6 +29,98 @@ suite('Extension Test Suite', () => {
 
         assert.strictEqual(-1, [1, 2, 3].indexOf(5));
         assert.strictEqual(-1, [1, 2, 3].indexOf(0));
+    });
+});
+
+suite('SourceAnalyzer integration test', () => {
+    let sandbox: sinon.SinonSandbox;
+    let mockLspProvider: sinon.SinonStubbedInstance<ILspProvider>;
+    let mockLogger: sinon.SinonStubbedInstance<Logger>;
+    let sourceAnalyzer: SourceAnalyzer;
+
+    setup(() => {
+        sandbox = sinon.createSandbox();
+        mockLspProvider = {
+            isAvailable: sandbox.stub(),
+            getDocumentSymbols: sandbox.stub(),
+            getSemanticTokens: sandbox.stub()
+        } as any;
+        mockLogger = {
+            info: sandbox.stub(),
+            warn: sandbox.stub(),
+            error: sandbox.stub(),
+            debug: sandbox.stub()
+        } as any;
+        sourceAnalyzer = new SourceAnalyzer(mockLspProvider as any, mockLogger as any);
+    });
+
+    teardown(() => {
+        sandbox.restore();
+    });
+
+    test('mergeResults should integrate AST inheritance into LSP results', () => {
+        const lspResults: ClassInfo[] = [
+            {
+                name: 'MyClass',
+                kind: 'class',
+                interfaces: [],
+                location: { uri: vscode.Uri.file('/test.ts'), range: new vscode.Range(0, 0, 10, 0) },
+                attributes: [],
+                operations: []
+            }
+        ];
+
+        const astResults: ClassInfo[] = [
+            {
+                name: 'MyClass',
+                kind: 'class',
+                baseClass: 'BaseNamespace.BaseClass',
+                interfaces: ['Namespace.IInterface'],
+                location: { uri: vscode.Uri.file('/test.ts'), range: new vscode.Range(0, 0, 10, 0) },
+                attributes: [],
+                operations: []
+            }
+        ];
+
+        // @ts-ignore: Accessing private method for testing
+        const merged = sourceAnalyzer.mergeResults(lspResults, astResults);
+
+        assert.strictEqual(merged.length, 1);
+        assert.strictEqual(merged[0].name, 'MyClass');
+        assert.strictEqual(merged[0].baseClass, 'BaseNamespace.BaseClass');
+        assert.deepStrictEqual(merged[0].interfaces, ['Namespace.IInterface']);
+    });
+
+    test('mergeResults should not overwrite existing LSP inheritance info', () => {
+        const lspResults: ClassInfo[] = [
+            {
+                name: 'MyClass',
+                kind: 'class',
+                baseClass: 'ExistingBase',
+                interfaces: ['ExistingInterface'],
+                location: { uri: vscode.Uri.file('/test.ts'), range: new vscode.Range(0, 0, 10, 0) },
+                attributes: [],
+                operations: []
+            }
+        ];
+
+        const astResults: ClassInfo[] = [
+            {
+                name: 'MyClass',
+                kind: 'class',
+                baseClass: 'ASTBase',
+                interfaces: ['ASTInterface'],
+                location: { uri: vscode.Uri.file('/test.ts'), range: new vscode.Range(0, 0, 10, 0) },
+                attributes: [],
+                operations: []
+            }
+        ];
+
+        // @ts-ignore: Accessing private method for testing
+        const merged = sourceAnalyzer.mergeResults(lspResults, astResults);
+
+        assert.strictEqual(merged[0].baseClass, 'ExistingBase');
+        assert.deepStrictEqual(merged[0].interfaces, ['ExistingInterface']);
     });
 });
 

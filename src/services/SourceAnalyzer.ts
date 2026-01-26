@@ -27,7 +27,7 @@ export class SourceAnalyzer {
     public async analyzeFile(uri: vscode.Uri): Promise<ClassInfo[]> {
         this.logger.info(`Analyzing file: ${uri.fsPath}`);
 
-        let classes: ClassInfo[] = [];
+        let lspClasses: ClassInfo[] = [];
         const languageId = await this.getLanguageId(uri);
 
         // 1. LSPプロバイダーを使用して情報を取得
@@ -35,11 +35,11 @@ export class SourceAnalyzer {
             try {
                 const symbols = await this.lspProvider.getDocumentSymbols(uri);
                 if (symbols && symbols.length > 0) {
-                    classes = DocumentSymbolConverter.convertSymbols(symbols, uri);
+                    lspClasses = DocumentSymbolConverter.convertSymbols(symbols, uri);
 
                     const tokens = await this.lspProvider.getSemanticTokens(uri);
                     if (tokens) {
-                        SemanticTokensExtractor.extractAndApply(tokens, classes);
+                        SemanticTokensExtractor.extractAndApply(tokens, lspClasses);
                     }
                 }
             } catch (error) {
@@ -47,22 +47,20 @@ export class SourceAnalyzer {
             }
         }
 
-        // 2. LSPで情報が取得できない、または補完が必要な場合はAST解析を実行
-        // 現状はLSPで取得できてもASTで補完する方針（または完全にフォールバック）
-        if (classes.length === 0) {
-            const astParser = AstParserFactory.getParser(languageId);
-            if (astParser) {
-                try {
-                    const content = await this.readFileContent(uri);
-                    const astClasses = await astParser.parse(uri, content);
-                    classes = this.mergeResults(classes, astClasses);
-                } catch (error) {
-                    this.logger.error(`AST analysis failed for ${uri.fsPath}: ${error}`);
-                }
+        // 2. AST解析を実行（タスク8.3: 常にAST解析を行い、LSPの結果を補完する）
+        let astClasses: ClassInfo[] = [];
+        const astParser = AstParserFactory.getParser(languageId);
+        if (astParser) {
+            try {
+                const content = await this.readFileContent(uri);
+                astClasses = await astParser.parse(uri, content);
+            } catch (error) {
+                this.logger.error(`AST analysis failed for ${uri.fsPath}: ${error}`);
             }
         }
 
-        return classes;
+        // 3. 結果を統合
+        return this.mergeResults(lspClasses, astClasses);
     }
 
     /**
@@ -109,8 +107,27 @@ export class SourceAnalyzer {
         return document.getText();
     }
 
+    /**
+     * LSPとASTの結果を統合する
+     * タスク8.3: LSPの結果にASTから得られた継承情報を統合する
+     */
     private mergeResults(lspResults: ClassInfo[], astResults: ClassInfo[]): ClassInfo[] {
-        // 基本的にはLSPがある場合はそれを優先し、ASTはフォールバックとして扱う
-        return lspResults.length > 0 ? lspResults : astResults;
+        if (lspResults.length === 0) return astResults;
+        if (astResults.length === 0) return lspResults;
+
+        // LSPの結果をベースに、ASTの結果から情報を補完する
+        return lspResults.map(lspClass => {
+            const astClass = astResults.find(ac => ac.name === lspClass.name);
+            if (astClass) {
+                // LSPで継承情報が不足している場合にASTで補完
+                if (!lspClass.baseClass && astClass.baseClass) {
+                    lspClass.baseClass = astClass.baseClass;
+                }
+                if ((!lspClass.interfaces || lspClass.interfaces.length === 0) && (astClass.interfaces && astClass.interfaces.length > 0)) {
+                    lspClass.interfaces = astClass.interfaces;
+                }
+            }
+            return lspClass;
+        });
     }
 }

@@ -1,14 +1,14 @@
 const assert = require('assert');
 const path = require('path');
+const { pathToFileURL } = require('url');
 
-// Helper to run ESM in a CJS environment
 // Helper to run ESM in a CJS environment
 async function runTests() {
     try {
         // Use dynamic import to load ESM modules
-        //const utilsPath = 'file:///' + path.resolve(__dirname, '../../../media/main.utils.js').replace(/\\/g, '/');
-        const utilsPath = path.resolve(__dirname, '../../../media/main.utils.js').replace(/\\/g, '/');
-        const statePath = path.resolve(__dirname, '../../../media/main.state.js').replace(/\\/g, '/');
+        // On Windows, absolute paths must be valid file:// URLs for the ESM loader
+        const utilsPath = pathToFileURL(path.resolve(__dirname, '../../../media/main.utils.js')).href;
+        const statePath = pathToFileURL(path.resolve(__dirname, '../../../media/main.state.js')).href;
 
         const utils = await import(utilsPath);
         const { state } = await import(statePath);
