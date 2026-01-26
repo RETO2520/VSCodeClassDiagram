@@ -34,7 +34,7 @@
   - _Requirements: 要件3, 要件4_
   - _Prompt: Implement the task for spec source-to-diagram, first run spec-workflow-guide to get the workflow guide then implement the task: Role: インターフェース設計の専門知識を持つ開発者 | Task: 要件3と要件4に従って、src/services/sourceToDiagram/ast/IAstParser.tsにASTパーサーの統一インターフェースを定義します。parseメソッド（uri、contentを受け取り、ClassInfo[]を返す）とsupportsメソッド（languageIdを受け取り、booleanを返す）を含めます。 | Restrictions: インターフェースは明確で拡張可能にし、エラーハンドリングを考慮する | Success: IAstParserインターフェースが明確に定義され、実装クラスで実装可能な構造になっています。_
 
-- [ ] 1.5. IDiagramConverterインターフェースを定義する
+- [x] 1.5. IDiagramConverterインターフェースを定義する
   - File: src/services/sourceToDiagram/converter/IDiagramConverter.ts
   - diagram.json変換機能の統一インターフェースを定義する
   - Purpose: 変換ロジックの抽象化とテスト容易性を提供する
