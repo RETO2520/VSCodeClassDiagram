@@ -50,6 +50,12 @@
         "title": "%contributes.commands.workflow.title%",
         "category": "class diagram",
         "shortTitle": "open workflow"
+      },
+      {
+        "command": "sourceToDiagram.generate",
+        "title": "Generate Diagram from Source",
+        "category": "class diagram",
+        "shortTitle": "source to diagram"
       }
     ]
   },
