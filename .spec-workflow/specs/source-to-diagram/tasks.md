@@ -44,7 +44,7 @@
 
 ## フェーズ2: LSP連携実装
 
-- [ ] 2.1. LspProviderクラスの基本構造を実装する
+- [x] 2.1. LspProviderクラスの基本構造を実装する
   - File: src/services/sourceToDiagram/lsp/LspProvider.ts
   - LspProviderクラスを作成し、ILspProviderインターフェースを実装する。コンストラクタとisAvailableメソッドを実装する
   - Purpose: LSPプロバイダーの基本構造を確立する
@@ -52,7 +52,7 @@
   - _Requirements: 要件1, 要件2_
   - _Prompt: Implement the task for spec source-to-diagram, first run spec-workflow-guide to get the workflow guide then implement the task: Role: VS Code Extension APIの専門知識を持つ開発者 | Task: 要件1と要件2に従って、src/services/sourceToDiagram/lsp/LspProvider.tsにLspProviderクラスを作成します。ILspProviderインターフェースを実装し、コンストラクタでLoggerを受け取り、isAvailableメソッドでvscode.languages.getLanguages()を使用してLSPプロバイダーの利用可能性をチェックします。 | Restrictions: エラーをスローせず、利用できない場合はfalseを返す。既存のLoggerパターンに従う | Success: LspProviderクラスが正しく作成され、isAvailableメソッドが正しく動作し、エラーなくコンパイルされます。_
 
-- [ ] 2.2. getDocumentSymbolsメソッドを実装する
+- [x] 2.2. getDocumentSymbolsメソッドを実装する
   - File: src/services/sourceToDiagram/lsp/LspProvider.ts（タスク2.1から継続）
   - vscode.languages.getDocumentSymbolsを使用してDocumentSymbolを取得する機能を実装する
   - Purpose: LSPプロバイダーからクラス、インターフェース、メソッド、プロパティの基本構造を取得する
@@ -60,7 +60,7 @@
   - _Requirements: 要件1_
   - _Prompt: Implement the task for spec source-to-diagram, first run spec-workflow-guide to get the workflow guide then implement the task: Role: VS Code Extension APIとLanguage Server Protocolの専門知識を持つ開発者 | Task: 要件1に従って、LspProviderクラスにgetDocumentSymbolsメソッドを実装します。vscode.languages.getDocumentSymbolsを使用してDocumentSymbolを取得し、エラーが発生した場合はLoggerに記録して空配列を返します。LSPプロバイダーが利用できない場合はnullを返します。 | Restrictions: エラーをスローせず、常に適切な値を返す。Loggerを使用してエラーを記録する | Success: getDocumentSymbolsメソッドが正しく動作し、DocumentSymbolを取得でき、エラーハンドリングが適切です。_
 
-- [ ] 2.3. getSemanticTokensメソッドを実装する
+- [x] 2.3. getSemanticTokensメソッドを実装する
   - File: src/services/sourceToDiagram/lsp/LspProvider.ts（タスク2.2から継続）
   - vscode.languages.provideDocumentSemanticTokensを使用してSemantic Tokensを取得する機能を実装する
   - Purpose: LSPプロバイダーから詳細な型情報と修飾子を取得する
@@ -68,7 +68,7 @@
   - _Requirements: 要件2_
   - _Prompt: Implement the task for spec source-to-diagram, first run spec-workflow-guide to get the workflow guide then implement the task: Role: VS Code Extension APIとSemantic Tokensの専門知識を持つ開発者 | Task: 要件2に従って、LspProviderクラスにgetSemanticTokensメソッドを実装します。vscode.languages.provideDocumentSemanticTokensを使用してSemantic Tokensを取得し、エラーが発生した場合はLoggerに記録してnullを返します。Semantic Tokensプロバイダーが利用できない場合もnullを返します。 | Restrictions: エラーをスローせず、常に適切な値を返す。Loggerを使用してエラーを記録する | Success: getSemanticTokensメソッドが正しく動作し、Semantic Tokensを取得でき、エラーハンドリングが適切です。_
 
-- [ ] 2.4. DocumentSymbolからClassInfoへの変換ロジックを実装する
+- [x] 2.4. DocumentSymbolからClassInfoへの変換ロジックを実装する
   - File: src/services/sourceToDiagram/lsp/DocumentSymbolConverter.ts
   - DocumentSymbolをClassInfo形式に変換するユーティリティクラスを実装する
   - Purpose: LSPのDocumentSymbolを内部データ構造（ClassInfo）に変換する
@@ -76,7 +76,7 @@
   - _Requirements: 要件1_
   - _Prompt: Implement the task for spec source-to-diagram, first run spec-workflow-guide to get the workflow guide then implement the task: Role: データ変換ロジックの専門知識を持つ開発者 | Task: 要件1に従って、src/services/sourceToDiagram/lsp/DocumentSymbolConverter.tsにDocumentSymbolをClassInfo形式に変換する機能を実装します。クラス、インターフェース、メソッド、プロパティを正しく識別し、ClassInfo、AttributeInfo、OperationInfoに変換します。 | Restrictions: ネストされたシンボルを正しく処理し、エラーが発生しても可能な限り部分的な結果を返す | Success: DocumentSymbolConverterが正しく動作し、DocumentSymbolをClassInfo形式に変換でき、エッジケースも適切に処理されます。_
 
-- [ ] 2.5. Semantic Tokensから修飾子と型情報を抽出するロジックを実装する
+- [x] 2.5. Semantic Tokensから修飾子と型情報を抽出するロジックを実装する
   - File: src/services/sourceToDiagram/lsp/SemanticTokensExtractor.ts
   - Semantic Tokensから修飾子（public/private/protected、static、abstract等）と型情報を抽出するユーティリティクラスを実装する
   - Purpose: Semantic Tokensから詳細なメタデータを抽出してClassInfoに追加する
