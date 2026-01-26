@@ -18,7 +18,7 @@
   - _Requirements: 要件1, 要件5_
   - _Prompt: Implement the task for spec source-to-diagram, first run spec-workflow-guide to get the workflow guide then implement the task: Role: TypeScript型システムの専門知識を持つ開発者 | Task: 要件1と要件5に従って、src/services/sourceToDiagram/types.tsにAnalyzeOptionsとLayoutInfoインターフェースを追加します。AnalyzeOptionsにはincludePatterns、excludePatterns、useLsp、useAst、maxFilesなどのオプションを含めます。LayoutInfoにはclassId、x、y、width、heightを含めます。 | Restrictions: オプショナルフィールドを適切に使用し、デフォルト値が設定可能な構造にする | Success: AnalyzeOptionsとLayoutInfoインターフェースが正しく定義され、エラーなくコンパイルされます。_
 
-- [ ] 1.3. ILspProviderインターフェースを定義する
+- [x] 1.3. ILspProviderインターフェースを定義する
   - File: src/services/sourceToDiagram/lsp/ILspProvider.ts
   - LSPプロバイダーの統一インターフェースを定義する
   - Purpose: LSP連携機能の抽象化とテスト容易性を提供する
