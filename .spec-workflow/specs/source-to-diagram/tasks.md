@@ -26,7 +26,7 @@
   - _Requirements: 要件1, 要件2_
   - _Prompt: Implement the task for spec source-to-diagram, first run spec-workflow-guide to get the workflow guide then implement the task: Role: インターフェース設計の専門知識を持つ開発者 | Task: 要件1と要件2に従って、src/services/sourceToDiagram/lsp/ILspProvider.tsにLSPプロバイダーの統一インターフェースを定義します。getDocumentSymbols、getSemanticTokens、isAvailableメソッドを含めます。 | Restrictions: インターフェースは明確で拡張可能にし、エラーハンドリングを考慮する | Success: ILspProviderインターフェースが明確に定義され、実装クラスで実装可能な構造になっています。_
 
-- [ ] 1.4. IAstParserインターフェースを定義する
+- [x] 1.4. IAstParserインターフェースを定義する
   - File: src/services/sourceToDiagram/ast/IAstParser.ts
   - ASTパーサーの統一インターフェースを定義する
   - Purpose: 言語固有のASTパーサーの抽象化とテスト容易性を提供する
