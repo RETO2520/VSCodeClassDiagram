@@ -3,3 +3,6 @@
 src
 out/test
 .spec-workflow
+.cursor
+audit.log
+eslint.config.mjs
