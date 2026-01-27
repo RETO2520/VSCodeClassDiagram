@@ -67,8 +67,5 @@
   "license": "MIT",
   "type": "commonjs",
   "publisher": "reto",
-  "pricing": "Free",
-  "dependencies": {
-    "@typescript-eslint/parser": "^8.53.1"
-  }
+  "pricing": "Free"
 }

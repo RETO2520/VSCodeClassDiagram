@@ -1,6 +1,6 @@
 # Tasks: tree-sitterを利用したdiagram.json構築
 
-- [ ] 1. 依存関係の追加
+- [x] 1. 依存関係の追加
   - File: package.json
   - `tree-sitter` および主要言語の文法の追加 (`tree-sitter-typescript` 等)
   - Purpose: AST解析に必要なライブラリを導入する
