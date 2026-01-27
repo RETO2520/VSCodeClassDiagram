@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/tree-sitter-diagram-generation/tasks.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-27T06:34:38.413Z",
+      "trigger": "initial",
+      "approvalId": "approval_1769495678314_4wu4k8lqr",
+      "approvalTitle": "Tree-Sitter Diagram Generation Tasks"
+    }
+  ]
+}

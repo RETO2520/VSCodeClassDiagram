@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1769495606244_8ceh8os73",
+  "approvalId": "approval_1769495606184_9usfktnao",
+  "approvalTitle": "Tree-Sitter Diagram Generation Design",
+  "version": 1,
+  "timestamp": "2026-01-27T06:33:26.244Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# 設計ドキュメント: tree-sitterを利用したdiagram.json構築\r\n\r\n## 1. 概要\r\n`node-tree-sitter` を使用して各種プログラミング言語のソースコードをパースし、クラス図のデータ構造（`ClassInfo` および最終的な `diagram.json`）を生成する仕組みを設計します。\r\n\r\n## 2. アーキテクチャ\r\n\r\n既存の `IAstParser` インターフェースを実装する `TreeSitterAstParser` を追加します。\r\n\r\n```mermaid\r\nclassDiagram\r\n    class IAstParser {\r\n        <<interface>>\r\n        +parse(uri, content) Promise~ClassInfo[]~\r\n        +supports(languageId) boolean\r\n    }\r\n    class TreeSitterAstParser {\r\n        -languages Map~string, any~\r\n        -queries Map~string, any~\r\n        +parse(uri, content)\r\n        +supports(languageId)\r\n        -extractClassInfo(tree, languageId)\r\n    }\r\n    class AstParserFactory {\r\n        +getParser(languageId) IAstParser\r\n    }\r\n    IAstParser <|.. TreeSitterAstParser\r\n    AstParserFactory --> IAstParser\r\n```\r\n\r\n## 3. コンポーネント設計\r\n\r\n### 3.1. TreeSitterAstParser\r\n- **役割**: `node-tree-sitter` を利用した汎用 AST 解析。\r\n- **言語サポート**: 言語 ID に対応した `tree-sitter` 文法を動的にロードする。\r\n- **クエリベースの抽出**: 各言語ごとに Tree-Sitter の `Query` (scm形式) を定義し、クラス、メソッド、属性を一貫した方法で抽出する。\r\n\r\n### 3.2. 言語固有の設定 (Language Profiles)\r\n各言語の解析に必要な情報を定義します。\r\n\r\n| 言語 | 文法パッケージ | 主要なクエリ対象 |\r\n| :--- | :--- | :--- |\r\n| TypeScript | `tree-sitter-typescript` | `class_declaration`, `interface_declaration` |\r\n| C# | `tree-sitter-c-sharp` | `class_declaration`, `interface_declaration`, `struct_declaration` |\r\n| Java | `tree-sitter-java` | `class_declaration`, `interface_declaration` |\r\n\r\n## 4. データフロー\r\n\r\n1. `SourceToDiagramCommand` が実行される。\r\n2. `AstParserFactory.getParser(languageId)` が呼び出される。\r\n3. `TreeSitterAstParser` が選択される（既存のパーサーがない場合、または優先設定の場合）。\r\n4. `TreeSitterAstParser.parse()` 内で：\r\n    - 言語に対応する文法パッケージをロード。\r\n    - Tree-Sitter で `Tree` を生成。\r\n    - クエリを実行して、クラス定義、プロパティ、メソッドを抽出。\r\n    - 抽出した情報を `ClassInfo` オブジェクトにマッピング。\r\n5. `DiagramConverter` が `ClassInfo[]` を `diagram.json` 形式に変換。\r\n\r\n## 5. 実装の詳細\r\n\r\n### 5.1. 動的ロードの仕組み\r\n`node-tree-sitter` および各言語の文法パッケージは、実行時に `require` または `import` で動的に読み込みます。インストールされていない場合は警告を表示し、その言語の解析をスキップします。\r\n\r\n### 5.2. クエリ定義 (queries/*.scm)\r\n言語ごとにクラス構造を抽出するためのクエリを用意します。\r\n例 (abstract 構文):\r\n```scm\r\n(class_declaration\r\n  name: (identifier) @class.name\r\n  (class_body) @class.body) @class.def\r\n```\r\n\r\n## 6. 考慮事項\r\n\r\n- **パフォーマンス**: 大規模ファイルでは Tree-Sitter のクエリ効率が重要になります。\r\n- **依存関係**: `node-tree-sitter` はネイティブモジュールであるため、VS Code 拡張機能内でのバイナリ互換性に注意が必要です。\r\n- **エラーハンドリング**: パースエラーが発生した際、Tree-Sitter は部分的な木を返すため、可能な限り情報を抽出するようにします。\r\n",
+  "fileStats": {
+    "size": 3669,
+    "lines": 78,
+    "lastModified": "2026-01-27T06:33:22.701Z"
+  },
+  "comments": []
+}
