@@ -12,7 +12,7 @@
     "vscode:prepublish": "npm run build",
     "packaging": "npx vsce package",
     "license-check": "license-checker-rseidelsohn --json --production --summary --out ./THIRD-PARTY-LICENSES.json",
-    "license-report": "license-report --json --production --summary --out ./THIRD-PARTY-LICENSES.json",
+    "license-report": "license-report --output-json --production --summary >  ./THIRD-PARTY-LICENSES.json",
     "generate-license-text": "npm run license-report &&generate-license-file --input package.json --output THIRD-PARTY-LICENSES.txt",
     "build": "tsc -p ./",
     "watch": "tsc -watch -p ./",
