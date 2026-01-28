@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1769587356314_vm6zqdsu5",
+  "approvalId": "approval_1769587356235_uenwulwte",
+  "approvalTitle": "C# ASTパーサー 設計書の承認依頼",
+  "version": 1,
+  "timestamp": "2026-01-28T08:02:36.314Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# 設計書: C# ASTパーサー\r\n\r\n## 概要\r\n\r\nC# ASTパーサーは、C# (.cs) ファイルを解析し、クラス、インターフェース、プロパティ、メソッドなどの構造情報を抽出するためのコンポーネントです。抽出された情報は、共通の `ClassInfo` モデルに変換され、クラス図の描画に使用されます。\r\n\r\n## Steering Document Alignment\r\n\r\n### 技術基準 (tech.md)\r\n- **TypeScript**: 拡張機能のコードベースに合わせてTypeScriptで実装。\r\n- **Parsing Strategy**: `tree-sitter-c-sharp` を使用。Tree-sitterはVS Code内でも広く使われており、パフォーマンスと堅牢性に優れています。\r\n- **Async API**: 他のパーサーと同様に、非同期処理を基本とします。\r\n\r\n### プロジェクト構造 (structure.md)\r\n- `src/services/sourceToDiagram/ast/csharp/` ディレクトリに配置。\r\n- `IAstParser` インターフェースを実装。\r\n\r\n## コード再利用分析\r\n\r\n### 活用できる既存のコンポーネント\r\n- **IAstParser.ts**: パーサーの共通インターフェース。\r\n- **types.ts**: `ClassInfo` などの共通データ構造。\r\n- **TypescriptAstParser.ts**: ビジターパターンの実装リファレンス。\r\n\r\n### 統合ポイント\r\n- **SourceToDiagramService**: 各言語のパーサーのロードと実行を管理。\r\n\r\n## Architecture\r\n\r\nC#パーサーは、Tree-sitterを用いて具象構文木（CST）を構築し、それを走査して必要な情報を抽出します。\r\n\r\n```mermaid\r\ngraph TD\r\n    A[SourceToDiagramService] --> B[CsharpAstParser]\r\n    B --> C[tree-sitter-c-sharp]\r\n    C --> D[C# Syntax Tree]\r\n    D --> E[Visitor / Node Traversal]\r\n    E --> F[ClassInfo Mapping]\r\n```\r\n\r\n## コンポーネントとインターフェース\r\n\r\n### CsharpAstParser\r\n- **目的:** C#ソースコードを `ClassInfo` の配列に変換する。\r\n- **インターフェース:** `IAstParser`\r\n    - `supports(languageId: string): boolean`: 'csharp' をサポート。\r\n    - `parse(uri: vscode.Uri, content: string): Promise<ClassInfo[]>`: 解析処理の実行。\r\n- **依存関係:** `tree-sitter`, `tree-sitter-c-sharp`, `vscode`\r\n\r\n## データモデル\r\n\r\nC#の構造を以下のように `ClassInfo` にマッピングします：\r\n- `namespace`: `name` （完全修飾名の一部として扱うか、別途考慮）\r\n- `class`, `interface`, `record`, `struct`: `kind`\r\n- `property`: `AttributeInfo`\r\n- `method`: `OperationInfo`\r\n\r\n## エラー処理\r\n\r\n### エラーシナリオ\r\n1. **Tree-sitterのバインディングエラー:**\r\n   - **取り扱い:** エラーをキャッチしてログ（Logger）に出力し、空の配列を返す。\r\n   - **ユーザーの影響:** C#ファイルの解析が行われない。\r\n2. **不完全なコードのパース:**\r\n   - **取り扱い:** Tree-sitterの回復機能を利用し、認識可能な範囲で情報を抽出。\r\n\r\n## テスト戦略\r\n\r\n### 単体テスト\r\n- 多様なC#構文（Auto-properties, Expression-bodied members, Primary constructorsなど）が正しく解析されることを検証。\r\n\r\n### 統合テスト\r\n- 実際の `.cs` ファイルを使用したエンドツーエンドの抽出テスト。\r\n轉。\r\n",
+  "fileStats": {
+    "size": 3272,
+    "lines": 75,
+    "lastModified": "2026-01-28T08:02:34.261Z"
+  },
+  "comments": []
+}

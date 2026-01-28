@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/cpp-ast-parser/requirements.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-28T07:58:45.280Z",
+      "trigger": "initial",
+      "approvalId": "approval_1769587125209_lepueswmv",
+      "approvalTitle": "C++ ASTパーサー 要件ドキュメントの承認依頼"
+    }
+  ]
+}

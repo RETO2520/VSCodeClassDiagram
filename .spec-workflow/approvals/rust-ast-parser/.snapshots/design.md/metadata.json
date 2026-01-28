@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/rust-ast-parser/design.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-28T08:02:58.056Z",
+      "trigger": "initial",
+      "approvalId": "approval_1769587377967_cyligo1pf",
+      "approvalTitle": "Rust ASTパーサー 設計書の承認依頼"
+    }
+  ]
+}

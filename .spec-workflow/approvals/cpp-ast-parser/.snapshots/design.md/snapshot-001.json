@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1769587345355_87xnrcpmx",
+  "approvalId": "approval_1769587345288_czbxnof1w",
+  "approvalTitle": "C++ ASTパーサー 設計書の承認依頼",
+  "version": 1,
+  "timestamp": "2026-01-28T08:02:25.355Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# 設計書: C++ ASTパーサー\r\n\r\n## 概要\r\n\r\nC++ ASTパーサーは、C++コードを解析してクラス図生成に必要なメタデータ（クラス、メンバ、継承関係など）を抽出するコンポーネントです。VS Code拡張機能内で動作し、`TypescriptAstParser`と同様に `IAstParser` インターフェースを実装します。\r\n\r\n## Steering Document Alignment\r\n\r\n### 技術基準 (tech.md)\r\n- **TypeScript**: 拡張機能の主要言語としてTypeScriptを使用。\r\n- **Tree-sitter**: 堅牢なパースを実現するため、`tree-sitter-cpp` を使用することを想定。\r\n- **非同期処理**: ファイル解析は非同期（`async/await`）で行い、UIスレッドをブロックしない。\r\n\r\n### プロジェクト構造 (structure.md)\r\n- `src/services/sourceToDiagram/ast/cpp/` ディレクトリに配置。\r\n- `IAstParser.ts` で定義されたインターフェースを遵守。\r\n\r\n## コード再利用分析\r\n\r\n### 活用できる既存のコンポーネント\r\n- **IAstParser**: 他の言語パーサーと共通のインターフェース。\r\n- **types.ts**: `ClassInfo`, `OperationInfo`, `AttributeInfo` などの共有データモデル。\r\n- **Logger**: `LoggerComponents/Logger` を使用して解析状況を記録。\r\n\r\n### 統合ポイント\r\n- **SourceToDiagramService**: 各言語のパーサーを管理し、適切なパーサーを呼び出すサービス。\r\n\r\n## Architecture\r\n\r\n`CppAstParser` は Tree-sitter を利用してC++の解析を行います。Tree-sitterは高速かつ堅牢な解析を提供し、不完全なコードでもASTを構築できる利点があります。\r\n\r\n```mermaid\r\ngraph TD\r\n    A[SourceToDiagramService] --> B[CppAstParser]\r\n    B --> C[tree-sitter-cpp]\r\n    C --> D[C++ AST]\r\n    D --> E[ClassInfo Mapping]\r\n    E --> F[Common Data Model]\r\n```\r\n\r\n## コンポーネントとインターフェース\r\n\r\n### CppAstParser\r\n- **目的:** C++ソースコードを解析し、`ClassInfo` の配列を生成する。\r\n- **インターフェース:** `IAstParser`\r\n    - `supports(languageId: string): boolean`: 'cpp' をサポート。\r\n    - `parse(uri: vscode.Uri, content: string): Promise<ClassInfo[]>`: 解析のメインエントリーポイント。\r\n- **依存関係:** `vscode`, `tree-sitter`, `tree-sitter-cpp`\r\n- **再利用:** `TypeScriptAstParser` の構造（ビジターパターン）を参考にする。\r\n\r\n## データモデル\r\n\r\n抽出結果は以下の共通モデルにマッピングされます：\r\n\r\n### ClassInfo\r\n```typescript\r\n{\r\n  name: string;\r\n  kind: 'class' | 'abstract' | 'interface' | 'enum';\r\n  baseClass?: string;\r\n  interfaces: string[];\r\n  attributes: AttributeInfo[];\r\n  operations: OperationInfo[];\r\n  location: { uri: vscode.Uri, range: vscode.Range };\r\n}\r\n```\r\n\r\n## エラー処理\r\n\r\n### エラーシナリオ\r\n1. **Tree-sitterロード失敗:**\r\n   - **取り扱い:** ログに警告を出力し、その言語の解析を無効化する。\r\n   - **ユーザーの影響:** クラス図が生成されない（空の結果）。\r\n2. **パースエラー（構文エラーのあるファイル）:**\r\n   - **取り扱い:** Tree-sitterが提供するエラーノードを無視し、可能な限り健全なノードから情報を抽出する。\r\n   - **ユーザーの影響:** 部分的なクラス図が表示される。\r\n\r\n## テスト戦略\r\n\r\n### 単体テスト\r\n- モックした Tree-sitter AST に対して、正しく `ClassInfo` が抽出されるか検証。\r\n- 基本的なクラス定義、継承、アクセス修飾子、メンバ関数のテスト。\r\n\r\n### 統合テスト\r\n- 実際にサンプルの `.cpp`, `.h` ファイルを読み込み、拡張機能全体としてクラス図が生成されるか検証。\r\n",
+  "fileStats": {
+    "size": 3797,
+    "lines": 86,
+    "lastModified": "2026-01-28T08:02:23.424Z"
+  },
+  "comments": []
+}

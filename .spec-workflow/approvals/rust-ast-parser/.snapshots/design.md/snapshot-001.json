@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1769587378056_y9numi3ok",
+  "approvalId": "approval_1769587377967_cyligo1pf",
+  "approvalTitle": "Rust ASTパーサー 設計書の承認依頼",
+  "version": 1,
+  "timestamp": "2026-01-28T08:02:58.056Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# 設計書: Rust ASTパーサー\r\n\r\n## 概要\r\n\r\nRust ASTパーサーは、Rustソースコード（.rs）を解析し、構造体、トレイト、およびそれらの実装（impl）情報を抽出します。Rust特有の「データと振る舞いの分離」を、クラス図の「クラスとメソッド」の概念に適切にマッピングします。\r\n\r\n## Steering Document Alignment\r\n\r\n### 技術基準 (tech.md)\r\n- **TypeScript**: 拡張機能の共通言語。\r\n- **Library**: `tree-sitter-rust` を使用。\r\n- **Modern Features**: Rustの `enum` (ADTs) やジェネリクス、アソシエイトタイプ等のパースも考慮。\r\n\r\n### プロジェクト構造 (structure.md)\r\n- `src/services/sourceToDiagram/ast/rust/` に配置。\r\n\r\n## コード再利用分析\r\n\r\n### 活用できる既存のコンポーネント\r\n- **IAstParser**: インターフェース定義。\r\n- **TypescriptAstParser**: 先行事例としての実装パターン。\r\n\r\n### 統合ポイント\r\n- **SourceToDiagramService**: Rustパーサーの統合先。\r\n\r\n## Architecture\r\n\r\nRustパーサーは、同一ファイル内の `struct` 定義とそれに対応する `impl` ブロックを紐づけるロジックを持ちます。\r\n\r\n```mermaid\r\ngraph TD\r\n    A[SourceToDiagramService] --> B[RustAstParser]\r\n    B --> C[tree-sitter-rust]\r\n    C --> D[Rust Syntax Tree]\r\n    D --> E{Node Classifier}\r\n    E -->|Struct/Trait| F[Basic ClassInfo]\r\n    E -->|Impl Block| G[Method Extractor]\r\n    G --> F\r\n    F --> H[Final ClassInfo List]\r\n```\r\n\r\n## コンポーネントとインターフェース\r\n\r\n### RustAstParser\r\n- **目的:** Rustコードから構造詳細を抽出し、ダイアグラム用データに変換する。\r\n- **インターフェース:** `IAstParser`\r\n    - `supports(languageId: string)`: 'rust' をサポート。\r\n    - `parse(uri, content)`: 解析を実行。\r\n- **依存関係:** `tree-sitter`, `tree-sitter-rust`\r\n\r\n## データモデルのマッピング\r\n\r\n- `struct`: `ClassInfo (kind: 'class')`\r\n- `trait`: `ClassInfo (kind: 'interface')`\r\n- `enum`: `ClassInfo (kind: 'enum')`\r\n- `impl Struct`: 内包する関数をその `Struct` の `operations` に追加。\r\n- `impl Trait for Struct`: `Struct` の `interfaces` に `Trait` を追加。\r\n\r\n## エラー処理\r\n\r\n### エラーシナリオ\r\n1. **マクロ展開:**\r\n   - **取り扱い:** Tree-sitterはマクロ内部を完全にはパースできない場合がある。その場合、マクロ呼び出し自体を検出し、可能なら単純なメタデータとして扱う。\r\n2. **モジュール分割:**\r\n   - **取り扱い:** 現在のスコープは単一ファイル。別ファイルの `impl` 等は今後の課題。\r\n\r\n## テスト戦略\r\n\r\n### 単体テスト\r\n- `impl` ブロックが離れた場所にある場合のメソッド抽出、トレイトの実装関係抽出のテスト。\r\n\r\n### 統合テスト\r\n- 標準的な `main.rs` やライブラリコードを用いたテスト。\r\n轉。\r\n",
+  "fileStats": {
+    "size": 3000,
+    "lines": 75,
+    "lastModified": "2026-01-28T08:02:55.917Z"
+  },
+  "comments": []
+}

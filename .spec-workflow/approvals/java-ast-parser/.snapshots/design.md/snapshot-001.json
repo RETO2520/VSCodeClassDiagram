@@ -1,0 +1,16 @@
+{
+  "id": "snapshot_1769587366886_32aj5780v",
+  "approvalId": "approval_1769587366773_c9c47963r",
+  "approvalTitle": "Java ASTパーサー 設計書の承認依頼",
+  "version": 1,
+  "timestamp": "2026-01-28T08:02:46.886Z",
+  "trigger": "initial",
+  "status": "pending",
+  "content": "# 設計書: Java ASTパーサー\r\n\r\n## 概要\r\n\r\nJava ASTパーサーは、Javaソースコード（.java）からクラス、インターフェース、列挙型、レコード、およびそれぞれのメンバ情報を抽出するためのコンポーネントです。Tree-sitterを活用し、大規模プロジェクトでも高速に動作することを目指します。\r\n\r\n## Steering Document Alignment\r\n\r\n### 技術基準 (tech.md)\r\n- **TypeScript**: 拡張機能のメイン言語として使用。\r\n- **Library**: `tree-sitter-java` を採用。\r\n- **Coding Standard**: シングルトンまたはDIを意識したサービス設計。\r\n\r\n### プロジェクト構造 (structure.md)\r\n- `src/services/sourceToDiagram/ast/java/` に配置。\r\n\r\n## コード再利用分析\r\n\r\n### 活用できる既存のコンポーネント\r\n- **IAstParser**: すべてのパーサーが準拠すべきインターフェース。\r\n- **TypescriptAstParser**: 実装構造のベース。\r\n\r\n### 統合ポイント\r\n- **SourceToDiagramService**: 各言語のパース機能を集約するポイント。\r\n\r\n## Architecture\r\n\r\nJavaパーサーは、Java固有の構文（アノテーション、ジェネリクス、内部クラスなど）を解釈し、正規化された `ClassInfo` 形式に変換します。\r\n\r\n```mermaid\r\ngraph TD\r\n    A[SourceToDiagramService] --> B[JavaAstParser]\r\n    B --> C[tree-sitter-java]\r\n    C --> D[Java Syntax Tree]\r\n    D --> E[Class/Member Extractor]\r\n    E --> F[ClassInfo List]\r\n```\r\n\r\n## コンポーネントとインターフェース\r\n\r\n### JavaAstParser\r\n- **目的:** Javaファイルを解析し、ダイアグラム用のメタデータを提供する。\r\n- **インターフェース:** `IAstParser`\r\n    - `supports(languageId: string)`: 'java' をサポート。\r\n    - `parse(uri, content)`: 解析を実行。\r\n- **依存関係:** `tree-sitter`, `tree-sitter-java`\r\n\r\n## データモデル\r\n\r\n- `package`: クラス名のプレフィックスまたは情報として保持。\r\n- `class`, `interface`, `enum`, `record`: `ClassInfo.kind` にマッピング。\r\n- `field`: `AttributeInfo` へ。\r\n- `method`: `OperationInfo` へ（オーバーロードにも対応可能にする）。\r\n\r\n## エラー処理\r\n\r\n### エラーシナリオ\r\n1. **ライブラリ未インストール/ロード失敗:**\r\n   - **取り扱い:** ログに出力し、ユーザーにはその言語の解析が利用不可であることを通知（任意）。\r\n2. **Java 21等の新構文への対応:**\r\n   - **取り扱い:** Tree-sitterの更新状況に依存するが、パースエラー時は可能な限りスキップして継続。\r\n\r\n## テスト戦略\r\n\r\n### 単体テスト\r\n- ジェネリクスを含むクラス、多重実装されたインターフェース、複雑なアノテーションを持つメンバの抽出テスト。\r\n\r\n### 統合テスト\r\n- Maven/Gradleプロジェクト内の標準的なJavaファイルを用いた抽出テスト。\r\n",
+  "fileStats": {
+    "size": 2992,
+    "lines": 70,
+    "lastModified": "2026-01-28T08:02:44.867Z"
+  },
+  "comments": []
+}

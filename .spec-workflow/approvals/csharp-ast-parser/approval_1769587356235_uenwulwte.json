@@ -1,0 +1,12 @@
+{
+  "id": "approval_1769587356235_uenwulwte",
+  "title": "C# ASTパーサー 設計書の承認依頼",
+  "filePath": ".spec-workflow/specs/csharp-ast-parser/design.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2026-01-28T08:02:36.235Z",
+  "category": "spec",
+  "categoryName": "csharp-ast-parser",
+  "response": "要修正",
+  "respondedAt": "2026-01-28T08:06:22.647Z"
+}

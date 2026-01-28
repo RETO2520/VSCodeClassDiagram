@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/java-ast-parser/design.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-28T08:02:46.886Z",
+      "trigger": "initial",
+      "approvalId": "approval_1769587366773_c9c47963r",
+      "approvalTitle": "Java ASTパーサー 設計書の承認依頼"
+    }
+  ]
+}

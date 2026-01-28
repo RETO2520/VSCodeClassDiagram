@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/csharp-ast-parser/requirements.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-28T07:58:55.099Z",
+      "trigger": "initial",
+      "approvalId": "approval_1769587135020_6qx3eyyko",
+      "approvalTitle": "C# ASTパーサー 要件ドキュメントの承認依頼"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/rust-ast-parser/requirements.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-28T07:59:14.929Z",
+      "trigger": "initial",
+      "approvalId": "approval_1769587154809_exdw7uf80",
+      "approvalTitle": "Rust ASTパーサー 要件ドキュメントの承認依頼"
+    }
+  ]
+}

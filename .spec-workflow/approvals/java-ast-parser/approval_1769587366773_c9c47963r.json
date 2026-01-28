@@ -1,0 +1,12 @@
+{
+  "id": "approval_1769587366773_c9c47963r",
+  "title": "Java ASTパーサー 設計書の承認依頼",
+  "filePath": ".spec-workflow/specs/java-ast-parser/design.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2026-01-28T08:02:46.773Z",
+  "category": "spec",
+  "categoryName": "java-ast-parser",
+  "response": "要修正",
+  "respondedAt": "2026-01-28T08:06:21.928Z"
+}

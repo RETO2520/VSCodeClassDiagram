@@ -1,0 +1,12 @@
+{
+  "id": "approval_1769587345288_czbxnof1w",
+  "title": "C++ ASTパーサー 設計書の承認依頼",
+  "filePath": ".spec-workflow/specs/cpp-ast-parser/design.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2026-01-28T08:02:25.288Z",
+  "category": "spec",
+  "categoryName": "cpp-ast-parser",
+  "response": "要修正",
+  "respondedAt": "2026-01-28T08:06:23.277Z"
+}
