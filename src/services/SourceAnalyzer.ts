@@ -126,6 +126,35 @@ export class SourceAnalyzer {
                 if ((!lspClass.interfaces || lspClass.interfaces.length === 0) && (astClass.interfaces && astClass.interfaces.length > 0)) {
                     lspClass.interfaces = astClass.interfaces;
                 }
+
+                // 属性情報の補完 (型がanyの場合や、可視性がデフォルトの場合にASTの情報を使用)
+                lspClass.attributes = lspClass.attributes.map(lspAttr => {
+                    const astAttr = astClass.attributes.find(aa => aa.name === lspAttr.name);
+                    if (astAttr) {
+                        return {
+                            ...lspAttr,
+                            type: lspAttr.type === 'any' ? astAttr.type : lspAttr.type,
+                            visibility: lspAttr.visibility === 'public' && astAttr.visibility !== 'public' ? astAttr.visibility : lspAttr.visibility,
+                            modifiers: lspAttr.modifiers.length === 0 ? astAttr.modifiers : lspAttr.modifiers
+                        };
+                    }
+                    return lspAttr;
+                });
+
+                // 操作情報の補完
+                lspClass.operations = lspClass.operations.map(lspOp => {
+                    const astOp = astClass.operations.find(ao => ao.name === lspOp.name);
+                    if (astOp) {
+                        return {
+                            ...lspOp,
+                            returnType: lspOp.returnType === 'void' || lspOp.returnType === 'any' ? astOp.returnType : lspOp.returnType,
+                            visibility: lspOp.visibility === 'public' && astOp.visibility !== 'public' ? astOp.visibility : lspOp.visibility,
+                            parameters: lspOp.parameters.length === 0 ? astOp.parameters : lspOp.parameters,
+                            modifiers: lspOp.modifiers.length === 0 ? astOp.modifiers : lspOp.modifiers
+                        };
+                    }
+                    return lspOp;
+                });
             }
             return lspClass;
         });

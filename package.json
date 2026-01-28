@@ -11,6 +11,9 @@
   "scripts": {
     "vscode:prepublish": "npm run build",
     "packaging": "npx vsce package",
+    "license-check": "license-checker-rseidelsohn --json --production --summary --out ./THIRD-PARTY-LICENSES.json",
+    "license-report": "license-report --json --production --summary --out ./THIRD-PARTY-LICENSES.json",
+    "generate-license-text": "npm run license-report &&generate-license-file --input package.json --output THIRD-PARTY-LICENSES.txt",
     "build": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "test:js": "node src/test/js/index.test.js",
@@ -29,8 +32,10 @@
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.1",
     "eslint": "^9.39.2",
+    "generate-license-file": "^4.1.1",
     "globals": "^17.0.0",
     "license-checker-rseidelsohn": "^4.4.2",
+    "license-report": "^6.8.1",
     "sinon": "^21.0.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
@@ -67,5 +72,8 @@
   "license": "MIT",
   "type": "commonjs",
   "publisher": "reto",
-  "pricing": "Free"
+  "pricing": "Free",
+  "dependencies": {
+    "@typescript-eslint/parser": "^8.54.0"
+  }
 }

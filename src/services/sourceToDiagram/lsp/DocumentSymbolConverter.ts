@@ -65,21 +65,68 @@ export class DocumentSymbolConverter {
     }
 
     private static convertToAttributeInfo(symbol: vscode.DocumentSymbol): AttributeInfo {
+        let type = 'any';
+        let visibility: 'public' | 'private' | 'protected' = 'public';
+
+        // detailプロパティから情報を抽出してみる (例: "public name: string")
+        if (symbol.detail) {
+            const detail = symbol.detail.toLowerCase();
+            if (detail.includes('private')) visibility = 'private';
+            else if (detail.includes('protected')) visibility = 'protected';
+
+            // 型の抽出 (コロンの後ろ)
+            const typeMatch = symbol.detail.match(/:\s*([^=;]+)/);
+            if (typeMatch) {
+                type = typeMatch[1].trim();
+            }
+        }
+
         return {
             name: symbol.name,
-            type: 'any', // DocumentSymbolからは型情報が直接得られないため、後でSemanticTokens等で補完
-            visibility: 'public', // デフォルト
+            type: type,
+            visibility: visibility,
             modifiers: [],
             location: symbol.range
         };
     }
 
     private static convertToOperationInfo(symbol: vscode.DocumentSymbol): OperationInfo {
+        let returnType = 'void';
+        let visibility: 'public' | 'private' | 'protected' = 'public';
+        const parameters: ParameterInfo[] = [];
+
+        if (symbol.detail) {
+            const detail = symbol.detail.toLowerCase();
+            if (detail.includes('private')) visibility = 'private';
+            else if (detail.includes('protected')) visibility = 'protected';
+
+            // 戻り値型の抽出 (最後のコロンの後ろ)
+            const lastColonIndex = symbol.detail.lastIndexOf(':');
+            const lastParenIndex = symbol.detail.lastIndexOf(')');
+            if (lastColonIndex > lastParenIndex) {
+                returnType = symbol.detail.substring(lastColonIndex + 1).trim();
+            }
+
+            // 引数の抽出（簡易的な実装）
+            const paramMatch = symbol.detail.match(/\((.*)\)/);
+            if (paramMatch && paramMatch[1]) {
+                const paramStrs = paramMatch[1].split(',');
+                for (const p of paramStrs) {
+                    const parts = p.trim().split(':');
+                    parameters.push({
+                        name: parts[0].trim(),
+                        type: parts[1] ? parts[1].trim() : 'any',
+                        isOptional: parts[0].includes('?')
+                    });
+                }
+            }
+        }
+
         return {
             name: symbol.name,
-            returnType: 'void', // デフォルト
-            parameters: [],
-            visibility: 'public', // デフォルト
+            returnType: returnType,
+            parameters: parameters,
+            visibility: visibility,
             modifiers: [],
             location: symbol.range
         };
