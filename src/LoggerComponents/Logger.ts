@@ -13,18 +13,22 @@ export class Logger implements vscode.Disposable {
 
     info(message: string) {
         this.channel.appendLine(this.format('INFO', message));
+        console.log(this.format('INFO', message));
     }
 
     warn(message: string) {
         this.channel.appendLine(this.format('WARN', message));
+        console.warn(this.format('WARN', message));
     }
 
     error(message: string) {
         this.channel.appendLine(this.format('ERROR', message));
+        console.error(this.format('ERROR', message));
     }
 
     debug(message: string) {
         this.channel.appendLine(this.format('DEBUG', message));
+        console.debug(this.format('DEBUG', message));
     }
 
     show(preserveFocus = false) {

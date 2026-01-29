@@ -1,5 +1,6 @@
 import { IAstParser } from './IAstParser';
 import { TypeScriptAstParser } from './typescript/TypescriptAstParser';
+import { CsharpAstParser } from './csharp/CsharpAstParser';
 import { Logger } from '../../../LoggerComponents/Logger';
 
 /**
@@ -15,7 +16,7 @@ export class AstParserFactory {
     public static initialize(logger: Logger): void {
         if (this.parsers.length === 0) {
             this.parsers.push(new TypeScriptAstParser(logger));
-            // 将来的にC#パーサーなどをここに追加可能
+            this.parsers.push(new CsharpAstParser(logger));
         }
     }
 

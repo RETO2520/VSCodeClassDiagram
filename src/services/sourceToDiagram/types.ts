@@ -13,7 +13,7 @@ export interface ClassInfo {
     /** クラス名 */
     name: string;
     /** クラスの種類 */
-    kind: 'class' | 'interface' | 'abstract' | 'struct';
+    kind: 'class' | 'interface' | 'abstract' | 'struct' | 'enum';
     /** 基底クラス名（継承がある場合） */
     baseClass?: string;
     /** 実装しているインターフェース名の配列 */

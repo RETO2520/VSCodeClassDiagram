@@ -20,6 +20,8 @@ import { ILspProvider } from '../services/sourceToDiagram/lsp/ILspProvider';
 import { Logger } from '../LoggerComponents/Logger';
 import { ClassInfo } from '../services/sourceToDiagram/types';
 import * as sinon from 'sinon';
+import { FileService } from '../services/FileService';
+import { CsharpAstParser } from '../services/sourceToDiagram/ast/csharp/CsharpAstParser';
 
 suite('Extension Test Suite', () => {
     console.log("Start Extension Test Suite test");
@@ -32,7 +34,123 @@ suite('Extension Test Suite', () => {
     });
 });
 
+suite('CsharpAstParser Test Suite', () => {
+    console.log("CsharpAstParser test");
+    let logger: Logger;
+    let parser: CsharpAstParser;
+
+    suiteSetup(() => {
+        const mockChannel: vscode.OutputChannel = {
+            name: 'Test',
+            append: (val) => { console.log(val); },
+            appendLine: (val) => { console.log(val); },
+            replace: () => { },
+            clear: () => { },
+            show: () => { },
+            hide: () => { },
+            dispose: () => { }
+        };
+        logger = new Logger(mockChannel);
+        parser = new CsharpAstParser(logger);
+    });
+
+    test('supports should return true for csharp', () => {
+        assert.strictEqual(parser.supports('csharp'), true);
+        assert.strictEqual(parser.supports('typescript'), false);
+    });
+
+    test('parse should extract class information from C# source', async () => {
+        const content = `
+            using System;
+                public class BaseClass {
+                    public void BaseMethod() {
+                        Console.WriteLine("BaseMethod");
+                    }
+                }
+                public class MyClass : BaseClass, IMyInterface {
+                    private int _myField;
+                    public string MyProperty { get; set; }
+
+                    public void MyMethod(int param1, string param2 = "default") {
+                        Console.WriteLine(param1);
+                    }
+
+                    protected static abstract void AbstractMethod();
+                }
+
+                public interface IMyInterface {
+                    void InterfaceMethod();
+                }
+
+                public record MyRecord(string Name, int Age);
+
+                public struct MyStruct {
+                    public int X;
+                }
+
+                public enum MyEnum {
+                    Value1,
+                    Value2
+                }
+        `;
+        const uri = vscode.Uri.file('/test.cs');
+        const classes = await parser.parse(uri, content);
+
+        assert.strictEqual(classes.length, 6, 'Should extract 6 entities');
+
+        // MyClass
+        const myClass = classes.find(c => c.name === 'MyClass');
+        assert.ok(myClass, 'MyClass should be found');
+        assert.strictEqual(myClass.kind, 'class');
+        assert.strictEqual(myClass.baseClass, 'BaseClass');
+        assert.deepStrictEqual(myClass.interfaces, ['IMyInterface']);
+
+        // Attributes
+        assert.strictEqual(myClass.attributes.length, 2);
+        const field = myClass.attributes.find(a => a.name === '_myField');
+        assert.ok(field);
+        assert.strictEqual(field.visibility, 'private');
+        assert.strictEqual(field.type, 'int');
+
+        const prop = myClass.attributes.find(a => a.name === 'MyProperty');
+        assert.ok(prop);
+        assert.strictEqual(prop.visibility, 'public');
+        assert.strictEqual(prop.type, 'string');
+
+        // Operations
+        assert.strictEqual(myClass.operations.length, 2);
+        const method = myClass.operations.find(o => o.name === 'MyMethod');
+        assert.ok(method);
+        assert.strictEqual(method.returnType, 'void');
+        assert.strictEqual(method.parameters.length, 2);
+        assert.strictEqual(method.parameters[0].name, 'param1');
+        assert.strictEqual(method.parameters[1].isOptional, true);
+
+        // IMyInterface
+        const myInterface = classes.find(c => c.name === 'IMyInterface');
+        assert.ok(myInterface);
+        assert.strictEqual(myInterface.kind, 'interface');
+
+        // MyRecord
+        const myRecord = classes.find(c => c.name === 'MyRecord');
+        assert.ok(myRecord);
+        assert.strictEqual(myRecord.kind, 'class'); // Record is currently mapped to class
+
+        // MyStruct
+        const myStruct = classes.find(c => c.name === 'MyStruct');
+        assert.ok(myStruct);
+        assert.strictEqual(myStruct.kind, 'struct');
+
+        // MyEnum
+        const myEnum = classes.find(c => c.name === 'MyEnum');
+        assert.ok(myEnum);
+        assert.strictEqual(myEnum.kind, 'enum');
+    });
+});
+
+
 suite('SourceAnalyzer integration test', () => {
+    console.log("Start SourceAnalyzer integration test test");
     let sandbox: sinon.SinonSandbox;
     let mockLspProvider: sinon.SinonStubbedInstance<ILspProvider>;
     let mockLogger: sinon.SinonStubbedInstance<Logger>;
@@ -210,7 +328,7 @@ suite('モデルのテストケース', () => {
     //assert.strictEqual(tt.name, 'number');
 
 
-    test('utility: pascalCase and safeIdentifier and typeName', () => {
+    test('utility: pascalCase and safeIdentifier and typeName', async () => {
         assert.strictEqual(pascalCase('hello_world'), 'HelloWorld');
         assert.strictEqual(pascalCase('user-id'), 'UserId');
         assert.strictEqual(pascalCase(''), 'Unnamed');
@@ -225,19 +343,19 @@ suite('モデルのテストケース', () => {
     });
 
     test('check1', () => {
-        assert(maps.nameToClass['Base'] === base);
+        assert.strictEqual(maps.nameToClass['Base'], base);
     });
     test('check2', () => {
-        assert(maps.idToClass['d'] === derived);
+        assert.strictEqual(maps.idToClass['d'], derived);
     });
     test('check3', () => {
         assert.strictEqual(sig, 'op1()');
     });
     test('check4', () => {
-        assert(inherited.attributes.has('a1'));
+        assert.strictEqual(inherited.attributes.has('a1'), true);
     });
     test('check5', () => {
-        assert(inherited.operations.has('ifOp()'));
+        assert.strictEqual(inherited.operations.has('ifOp()'), true);
     });
     test('check6', () => {
         assert.strictEqual(tt.name, 'number');
