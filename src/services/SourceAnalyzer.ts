@@ -29,6 +29,7 @@ export class SourceAnalyzer {
 
         let lspClasses: ClassInfo[] = [];
         const languageId = await this.getLanguageId(uri);
+        this.logger.info(`Language ID: ${languageId}`);
 
         // 1. LSPプロバイダーを使用して情報を取得
         if (this.lspProvider.isAvailable(languageId)) {
@@ -67,7 +68,7 @@ export class SourceAnalyzer {
      * ワークスペース全体を解析する
      */
     public async analyzeWorkspace(options?: AnalyzeOptions): Promise<ClassInfo[]> {
-        const includePattern = options?.includePatterns?.[0] || '**/*.{ts,js,cs,java}';
+        const includePattern = options?.includePatterns?.[0] || '**/*.{ts,js,cs,java,rs}';
         const excludePattern = options?.excludePatterns?.[0] || '**/node_modules/**';
 
         const files = await vscode.workspace.findFiles(includePattern, excludePattern, options?.maxFiles);
@@ -133,7 +134,7 @@ export class SourceAnalyzer {
                     if (astAttr) {
                         return {
                             ...lspAttr,
-                            type: lspAttr.type === 'any' ? astAttr.type : lspAttr.type,
+                            type: astAttr.type,
                             visibility: lspAttr.visibility === 'public' && astAttr.visibility !== 'public' ? astAttr.visibility : lspAttr.visibility,
                             modifiers: lspAttr.modifiers.length === 0 ? astAttr.modifiers : lspAttr.modifiers
                         };
