@@ -54,7 +54,7 @@ export class ClassDiagramHandler {
                 enableScripts: true,
                 retainContextWhenHidden: true,
                 localResourceRoots: [
-                    vscode.Uri.joinPath(this.context.extensionUri, 'media')
+                    vscode.Uri.joinPath(this.context.extensionUri, 'frontend', 'dist')
                 ]
             }
         );
@@ -83,25 +83,20 @@ export class ClassDiagramHandler {
 
     private getHtmlForWebview(webview: vscode.Webview): string {
         const extensionUri = this.context.extensionUri;
-        const mediaPath = (p: string) => vscode.Uri.joinPath(extensionUri, 'media', p);
+        const distUri = vscode.Uri.joinPath(extensionUri, 'frontend', 'dist');
 
-        // Read HTML directly from file
-        const htmlPath = path.join(extensionUri.fsPath, 'media', 'index.html');
+        // Read HTML built by Vite
+        const htmlPath = path.join(extensionUri.fsPath, 'frontend', 'dist', 'index.html');
         let html = fs.readFileSync(htmlPath, 'utf8');
 
-        // Resources
-        const styleUri = webview.asWebviewUri(mediaPath('style.css'));
-        const mainUri = webview.asWebviewUri(mediaPath('main.js'));
-        const baseUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media')).toString();
+        // Base URI for resolving relative paths in the built HTML
+        const baseUri = webview.asWebviewUri(distUri).toString();
 
         // Setup Content Security Policy
-        const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource};">`;
+        const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource}; font-src ${webview.cspSource};">`;
 
-        // Replace placeholders
-        html = html.replace(/<head>/i, `<head><base href="${baseUri}/">`);
-        html = html.replace(/%STYLE_CSS%/g, styleUri.toString());
-        html = html.replace(/%MAIN_JS%/g, mainUri.toString());
-        html = html.replace(/%CSP%/g, csp);
+        // Inject base href and CSP into <head>
+        html = html.replace(/<head>/i, `<head><base href="${baseUri}/">${csp}`);
 
         return html;
     }
