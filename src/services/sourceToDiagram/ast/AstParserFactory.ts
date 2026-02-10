@@ -3,6 +3,7 @@ import { TypeScriptAstParser } from './typescript/TypescriptAstParser';
 import { CsharpAstParser } from './csharp/CsharpAstParser';
 import { JavaAstParser } from './java/JavaAstParser';
 import { RustAstParser } from './rust/RustAstParser';
+import { CppAstParser } from './cpp/CppAstParser';
 import { Logger } from '../../../LoggerComponents/Logger';
 
 /**
@@ -21,6 +22,7 @@ export class AstParserFactory {
             this.parsers.push(new CsharpAstParser(logger));
             this.parsers.push(new JavaAstParser(logger));
             this.parsers.push(new RustAstParser(logger));
+            this.parsers.push(new CppAstParser(logger));
         }
     }
 
