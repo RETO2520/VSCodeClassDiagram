@@ -13,7 +13,7 @@
   ],
   "scripts": {
     "vscode:prepublish": "npm run build",
-    "packaging": "npx vsce package",
+    "packaging": "npx vsce package --no-dependencies",
     "license-check": "license-checker-rseidelsohn --json --production --summary --out ./THIRD-PARTY-LICENSES.json",
     "license-report": "license-report --output-json --production --summary >  ./THIRD-PARTY-LICENSES.json",
     "generate-license-text": "npm run license-report &&generate-license-file --input package.json --output THIRD-PARTY-LICENSES.txt",
@@ -79,6 +79,10 @@
   "pricing": "Free",
   "dependencies": {
     "@typescript-eslint/parser": "^8.54.0",
+    "date-fns": "4.1.0",
+    "picomatch": "^2.3.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "tree-sitter-c-sharp": "^0.23.1",
     "tree-sitter-cpp": "^0.23.4",
     "tree-sitter-java": "^0.23.5",
