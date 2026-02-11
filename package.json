@@ -6,7 +6,11 @@
   "engines": {
     "vscode": "^1.104.0"
   },
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:classDiagram.open",
+    "onCommand:workflowDiagram.open",
+    "onCommand:sourceToDiagram.generate"
+  ],
   "main": "./out/extension.js",
   "workspaces": [
     "frontend"
@@ -14,11 +18,14 @@
   "scripts": {
     "vscode:prepublish": "npm run build",
     "packaging": "npx vsce package --no-dependencies",
+    "frontend:build": "npm run build --workspace=frontend",
+    "backend:build": "node scripts/build.js",
+    "p": "npx vsce package",
     "license-check": "license-checker-rseidelsohn --json --production --summary --out ./THIRD-PARTY-LICENSES.json",
     "license-report": "license-report --output-json --production --summary >  ./THIRD-PARTY-LICENSES.json",
     "generate-license-text": "npm run license-report &&generate-license-file --input package.json --output THIRD-PARTY-LICENSES.txt",
-    "build": "npm run build --workspace=frontend && tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "build": "npm run build --workspace=frontend && node scripts/build.js",
+    "watch": "node scripts/build.js --watch",
     "test:js": "node src/test/js/index.test.js",
     "test": "npm run build && vscode-test",
     "lint": "eslint . --ext .ts,.tsx"
@@ -35,8 +42,10 @@
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.27.3",
     "eslint": "^9.39.2",
     "generate-license-file": "^4.1.1",
+    "glob": "^13.0.2",
     "globals": "^17.0.0",
     "license-checker-rseidelsohn": "^4.4.2",
     "license-report": "^6.8.1",
@@ -78,11 +87,7 @@
   "publisher": "reto",
   "pricing": "Free",
   "dependencies": {
-    "@typescript-eslint/parser": "^8.54.0",
-    "date-fns": "4.1.0",
-    "picomatch": "^2.3.1",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
+    "@typescript-eslint/parser": "^8.55.0",
     "tree-sitter-c-sharp": "^0.23.1",
     "tree-sitter-cpp": "^0.23.4",
     "tree-sitter-java": "^0.23.5",

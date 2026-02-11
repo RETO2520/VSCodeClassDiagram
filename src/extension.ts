@@ -22,13 +22,14 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Source to Diagram サービスの初期化
   const lspProvider = new LspProvider(logger);
-  const analyzer = new SourceAnalyzer(lspProvider, logger);
+  const analyzer = new SourceAnalyzer(lspProvider, logger, context.extensionUri);
   const converter = new DiagramConverter();
   const sourceToDiagramCommand = new SourceToDiagramCommand(analyzer, converter, fileService, logger);
 
   // コマンド登録
   context.subscriptions.push(
     vscode.commands.registerCommand('classDiagram.open', () => {
+      logger.info('classDiagram.open');
       classDiagramHandler.open();
     })
   );

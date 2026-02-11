@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import { IAstParser } from './IAstParser';
 import { TypeScriptAstParser } from './typescript/TypescriptAstParser';
 import { CsharpAstParser } from './csharp/CsharpAstParser';
@@ -15,14 +16,15 @@ export class AstParserFactory {
     /**
      * ファクトリーを初期化し、利用可能なパーサーを登録する
      * @param logger 
+     * @param extensionUri
      */
-    public static initialize(logger: Logger): void {
+    public static initialize(logger: Logger, extensionUri: vscode.Uri): void {
         if (this.parsers.length === 0) {
             this.parsers.push(new TypeScriptAstParser(logger));
-            this.parsers.push(new CsharpAstParser(logger));
-            this.parsers.push(new JavaAstParser(logger));
-            this.parsers.push(new RustAstParser(logger));
-            this.parsers.push(new CppAstParser(logger));
+            this.parsers.push(new CsharpAstParser(logger, extensionUri));
+            this.parsers.push(new JavaAstParser(logger, extensionUri));
+            this.parsers.push(new RustAstParser(logger, extensionUri));
+            this.parsers.push(new CppAstParser(logger, extensionUri));
         }
     }
 

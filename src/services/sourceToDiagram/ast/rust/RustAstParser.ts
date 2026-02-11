@@ -14,7 +14,8 @@ import { ClassInfo, OperationInfo, AttributeInfo, ParameterInfo } from '../../ty
 import { Logger } from '../../../../LoggerComponents/Logger';
 
 export class RustAstParser implements IAstParser {
-    private logger: Logger;
+    private readonly logger: Logger;
+    private readonly extensionUri: vscode.Uri;
     private parser: any = null;
     private isInitialized = false;
     // struct/enumとそれに対応するimplから抽出したメソッドをマッピング
@@ -22,8 +23,9 @@ export class RustAstParser implements IAstParser {
     // struct/enumとそれに対応するトレイト実装をマッピング
     private implTraits: Map<string, string[]> = new Map();
 
-    constructor(logger: Logger) {
+    constructor(logger: Logger, extensionUri: vscode.Uri) {
         this.logger = logger;
+        this.extensionUri = extensionUri;
     }
 
     /**
@@ -34,26 +36,19 @@ export class RustAstParser implements IAstParser {
 
         try {
             const ParserClass = (Parser as any).Parser;
+            const wasmBaseDir = vscode.Uri.joinPath(this.extensionUri, 'out');
+
             await ParserClass.init({
-                locateFile: () => {
-                    try {
-                        return require.resolve('web-tree-sitter/web-tree-sitter.wasm');
-                    } catch (e) {
-                        return path.join(__dirname, '../../../../../../node_modules/web-tree-sitter/web-tree-sitter.wasm');
+                locateFile: (file: string) => {
+                    if (file === 'web-tree-sitter.wasm') {
+                        return vscode.Uri.joinPath(wasmBaseDir, 'web-tree-sitter.wasm').fsPath;
                     }
+                    return file;
                 }
             });
 
-            let wasmPath: string;
-            try {
-                // tree-sitter-rustパッケージ内のwasmファイルを解決
-                wasmPath = require.resolve('tree-sitter-rust/tree-sitter-rust.wasm');
-                this.logger.info(`Found wasm file at: ${wasmPath}`);
-            } catch (e) {
-                // フォールバック: 相対パスでの解決
-                wasmPath = path.join(__dirname, '../../../../../node_modules/tree-sitter-rust/tree-sitter-rust.wasm');
-                this.logger.info(`Using fallback wasm file at: ${wasmPath}`);
-            }
+            const wasmPath = vscode.Uri.joinPath(wasmBaseDir, 'tree-sitter-rust.wasm').fsPath;
+            this.logger.info(`Loading wasm file from: ${wasmPath}`);
 
             const language = await Parser.Language.load(wasmPath);
             this.parser = new ParserClass();

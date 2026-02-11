@@ -134,11 +134,13 @@ function mediaOperationToView(op: MediaOperation, idx: number): ClassOperation {
 
 export function mediaClassToView(cls: MediaClassModel): ClassInfo {
     // Store metadata for round-trip
-    const attrMods: Record<string, string> = {}
+    const attrMods: Record<string, string> = {
+    }
     cls.attributes.forEach((a, i) => {
         attrMods[`m_${i}`] = a.modifier || 'None'
     })
-    const opMods: Record<string, string> = {}
+    const opMods: Record<string, string> = {
+    }
     cls.operations.forEach((o, i) => {
         opMods[`o_${i}`] = o.modifier || 'None'
     })
@@ -267,11 +269,15 @@ export function viewDiagramToMedia(classes: ClassInfo[]): MediaDiagramModel {
 
 export function migrateMediaModel(model: MediaDiagramModel): MediaDiagramModel {
     if (!model || !model.classes) {
-        return { classes: [] }
+        return {
+            classes: []
+        }
     }
 
-    const nameToId: Record<string, string> = {}
-    const idToClass: Record<string, MediaClassModel> = {}
+    const nameToId: Record<string, string> = {
+    }
+    const idToClass: Record<string, MediaClassModel> = {
+    }
 
     for (const c of model.classes) {
         if (!c.id) c.id = Math.random().toString(36).substring(2, 10)
@@ -318,7 +324,8 @@ export function migrateMediaModel(model: MediaDiagramModel): MediaDiagramModel {
 /** Prepare model for export (matches media/main.utils.js modelForExport) */
 export function modelForExport(classes: ClassInfo[]): object {
     const mediaModel = viewDiagramToMedia(classes)
-    const idToName: Record<string, string> = {}
+    const idToName: Record<string, string> = {
+    }
     for (const c of mediaModel.classes) idToName[c.id] = c.name
 
     return {

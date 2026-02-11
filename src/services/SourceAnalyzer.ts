@@ -14,10 +14,10 @@ export class SourceAnalyzer {
     private lspProvider: ILspProvider;
     private logger: Logger;
 
-    constructor(lspProvider: ILspProvider, logger: Logger) {
+    constructor(lspProvider: ILspProvider, logger: Logger, extensionUri: vscode.Uri) {
         this.lspProvider = lspProvider;
         this.logger = logger;
-        AstParserFactory.initialize(logger);
+        AstParserFactory.initialize(logger, extensionUri);
     }
 
     /**
