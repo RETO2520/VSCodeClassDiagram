@@ -1,0 +1,162 @@
+========================================
+  CLI Command Grammar Specification
+  Version 1.1
+========================================
+
+<command> ::= <add-type>
+            | <add-attr>
+            | <add-method>
+            | <add-param>
+            | <set-base>
+            | <set-impl>
+            | <rename>
+            | <delete>
+
+----------------------------------------
+1. Type Definitions (Class / Interface / Struct / Enum)
+----------------------------------------
+
+<add-type> ::= <type-prefix> <identifier> <type-ext>?
+
+<type-prefix> ::= "c"   ; class
+                | "ac"  ; abstract class
+                | "i"   ; interface
+                | "s"   ; struct
+                | "e"   ; enum
+
+<type-ext> ::= ":" <type-list>
+
+<type-list> ::= <identifier> ("," <identifier>)*
+
+Examples:
+  c User
+  ac BaseEntity
+  i ILogin
+  e Status
+  c Admin : User
+  c Admin : User, ILogin
+
+----------------------------------------
+2. Attribute Definition
+----------------------------------------
+
+<add-attr> ::= "a" <identifier> <visibility>? <modifier>? <identifier> <type>
+
+<visibility> ::= "+" | "-" | "#" | "~"
+  ; + = public
+  ; - = private
+  ; # = protected
+  ; ~ = package
+
+<modifier> ::= "s"      ; static
+             | "a"      ; abstract (in abstract class)
+
+Examples:
+  a User +name string
+  a Point -x int
+  a Config ~s instance Config
+  a Shape #a area float
+
+----------------------------------------
+3. Method Definition
+----------------------------------------
+
+<add-method> ::= "m" <identifier> <visibility>? <modifier>? <identifier> <type>
+
+<modifier> ::= <modifier> "v" ; v = virtual
+
+Examples:
+  m User +login void
+  m User -calculateScore int
+  m Base #v onInit void
+  m Service +s getInstance Service
+
+----------------------------------------
+4. Parameter Definition
+----------------------------------------
+
+<add-param> ::= "p" <identifier> <identifier> <identifier> <type>
+
+Examples:
+  p User login username string
+
+----------------------------------------
+5. Inheritance & Implementation
+----------------------------------------
+
+<set-base> ::= "base" <identifier> <identifier>
+<set-impl> ::= "impl" <identifier> <identifier>
+
+Examples:
+  base Admin User
+  impl Admin ILogin
+
+----------------------------------------
+6. Rename Command
+----------------------------------------
+
+<rename> ::= "ren" <rename-target>
+
+<rename-target> ::= "c" <identifier> <identifier>
+                  | "a" <identifier> <identifier> <identifier>
+                  | "m" <identifier> <identifier> <identifier>
+
+Examples:
+  ren c User Member
+  ren a User name firstName
+  ren m User login doLogin
+
+----------------------------------------
+7. Deletion Commands
+----------------------------------------
+
+<delete> ::= "del" <delete-target>
+
+<delete-target> ::= "c" <identifier>
+                  | "a" <identifier> <identifier>
+                  | "m" <identifier> <identifier>
+
+Examples:
+  del c User
+  del a User name
+  del m User login
+
+----------------------------------------
+8. Lexical Rules
+----------------------------------------
+
+<identifier> ::= <letter> (<letter> | <digit>)*
+
+<type> ::= <identifier>
+         | <type> "[]"                  ; Array
+         | <identifier> "<" <type-list> ">" ; Generic
+
+----------------------------------------
+9. Relationship Commands (Symbolic Form)
+----------------------------------------
+
+<relation-cmd> ::= <identifier> <relation-symbol> <identifier>
+                 | <identifier> <relation-symbol> ":" <multiplicity> <identifier>
+
+<relation-symbol> ::= ">|"     ; inheritance
+                    | ">/"     ; interface realization
+                    | "->"     ; association
+                    | "o>"     ; aggregation
+                    | "*>"     ; composition
+                    | "-/>"    ; dependency
+
+<multiplicity> ::= <single-multi>
+                 | <range-multi>
+
+<single-multi> ::= "1"
+                 | "0..1"
+                 | "*"
+
+<range-multi> ::= <number> ".." "*"
+                 | <number> ".." <number>
+
+<number> ::= <digit>+
+
+========================================
+  End of Specification
+========================================

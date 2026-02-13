@@ -1,7 +1,6 @@
 const esbuild = require('esbuild');
 const path = require('path');
 const fs = require('fs');
-const { globSync } = require('glob');
 
 const watch = process.argv.includes('--watch');
 

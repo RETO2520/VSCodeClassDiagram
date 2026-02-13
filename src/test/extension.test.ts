@@ -54,7 +54,8 @@ suite('SourceAnalyzer integration test', () => {
             error: sandbox.stub(),
             debug: sandbox.stub()
         } as any;
-        sourceAnalyzer = new SourceAnalyzer(mockLspProvider as any, mockLogger as any);
+        const extensionUri = vscode.Uri.file(path.join(__dirname, '..', '..'));
+        sourceAnalyzer = new SourceAnalyzer(mockLspProvider as any, mockLogger as any, extensionUri);
     });
 
     teardown(() => {

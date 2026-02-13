@@ -24,7 +24,7 @@
     "license-check": "license-checker-rseidelsohn --json --production --summary --out ./THIRD-PARTY-LICENSES.json",
     "license-report": "license-report --output-json --production --summary >  ./THIRD-PARTY-LICENSES.json",
     "generate-license-text": "npm run license-report &&generate-license-file --input package.json --output THIRD-PARTY-LICENSES.txt",
-    "build": "npm run build --workspace=frontend && node scripts/build.js",
+    "build": "npm run build --workspace=frontend && tsc && node scripts/build.js",
     "watch": "node scripts/build.js --watch",
     "test:js": "node src/test/js/index.test.js",
     "test": "npm run build && vscode-test",

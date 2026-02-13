@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import assert from 'assert';
+import * as path from 'path';
 import { RustAstParser } from '../services/sourceToDiagram/ast/rust/RustAstParser';
 import { Logger } from '../LoggerComponents/Logger';
 
@@ -19,8 +20,9 @@ suite('RustAstParser Test Suite', () => {
             hide: () => { },
             dispose: () => { }
         };
+        const extensionUri = vscode.Uri.file(path.join(__dirname, '..', '..'));
         logger = new Logger(mockChannel);
-        parser = new RustAstParser(logger);
+        parser = new RustAstParser(logger, extensionUri);
     });
 
     test('supports should return true for rust', () => {

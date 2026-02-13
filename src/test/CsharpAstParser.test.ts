@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import assert from 'assert';
+import * as path from 'path';
 import { CsharpAstParser } from '../services/sourceToDiagram/ast/csharp/CsharpAstParser';
 import { Logger } from '../LoggerComponents/Logger';
 suite('CsharpAstParser Test Suite', () => {
@@ -18,8 +19,9 @@ suite('CsharpAstParser Test Suite', () => {
             hide: () => { },
             dispose: () => { }
         };
+        const extensionUri = vscode.Uri.file(path.join(__dirname, '..', '..'));
         logger = new Logger(mockChannel);
-        parser = new CsharpAstParser(logger);
+        parser = new CsharpAstParser(logger, extensionUri);
     });
 
     test('supports should return true for csharp', () => {
