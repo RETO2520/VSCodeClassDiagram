@@ -5,17 +5,18 @@
  * with the VSCode webview bridge and model adapter.
  */
 
-import React, { useState, useMemo, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { ClassEditorPanel } from '@/components/class-editor'
 import { DiagramCanvas } from '@/components/diagram-canvas'
 import { detectRelationships } from '@/lib/detect-relationships'
 import type { ClassInfo } from '@/lib/class-diagram-types'
 import { createEmptyClass } from '@/lib/class-diagram-types'
-import { GripVertical } from 'lucide-react'
+import { GripVertical, Undo2, Redo2 } from 'lucide-react'
 import { useVSCodeState } from './bridge/use-vscode'
 import { isVSCodeWebview } from './bridge/vscode-bridge'
 import { CommandLine } from '@/components/command-line'
 import { parseCommand, executeAction } from '@/lib/command-executor'
+import { useCommandHistory } from '@/hooks/use-command-history' // 
 
 // ==============================
 // Toolbar for VSCode webview integration
@@ -27,15 +28,47 @@ function Toolbar({
     onSaveJson,
     onLoadJson,
     onGenerate,
+    onUndo,
+    onRedo,
+    canUndo,
+    canRedo,
+    historyCount,
 }: {
     language: string
     onLanguageChange: (lang: string) => void
     onSaveJson: () => void
     onLoadJson: () => void
     onGenerate: () => void
+    onUndo: () => void
+    onRedo: () => void
+    canUndo: boolean
+    canRedo: boolean
+    historyCount: number
 }) {
     return (
         <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
+            {/* Undo/Redo buttons */}
+            <div className="flex items-center gap-1 border-r pr-2">
+                <button
+                    onClick={onUndo}
+                    disabled={!canUndo}
+                    title="Undo (Ctrl+Z)"
+                    className="h-8 w-8 rounded-md flex items-center justify-center hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <Undo2 className="h-4 w-4" />
+                </button>
+                <button
+                    onClick={onRedo}
+                    disabled={!canRedo}
+                    title="Redo (Ctrl+Y)"
+                    className="h-8 w-8 rounded-md flex items-center justify-center hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <Redo2 className="h-4 w-4" />
+                </button>
+                <span className="text-xs text-muted-foreground ml-1">
+                    {historyCount}
+                </span>
+            </div>
             <select
                 value={language}
                 onChange={(e) => onLanguageChange(e.target.value)}
@@ -83,10 +116,15 @@ export function App() {
     const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH)
     const isDragging = useRef(false)
     const lastX = useRef(0)
-
+    // 履歴管理カスタムフック
+    const commandHistory = useCommandHistory(vsCodeState.classes)
+    // vsCodeState.classes の変更を commandHistory に同期
+    useEffect(() => {
+        commandHistory.setClasses(vsCodeState.classes);
+    }, [vsCodeState.classes]);
     const {
-        classes,
-        setClasses,
+        //classes,
+        //setClasses,
         selectedId,
         setSelectedId,
         saveJson,
@@ -94,7 +132,9 @@ export function App() {
         generateCode,
         changePrimitiveTypes,
     } = vsCodeState
-
+    // commandHistory.classes を使用
+    const classes = commandHistory.classes;
+    const setClasses = commandHistory.setClasses;
     const relationships = useMemo(() => detectRelationships(classes), [classes])
 
     const handleUpdateClass = useCallback(
@@ -148,9 +188,28 @@ export function App() {
     const handleExecuteCommand = useCallback((cmd: string) => {
         const action = parseCommand(cmd);
         if (action) {
-            setClasses(prev => executeAction(action, prev));
+            commandHistory.executeCommand(action); // 履歴付きで実行
         }
-    }, [setClasses])
+    }, [commandHistory])
+    // キーボードショートカット
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Ctrl+Z または Cmd+Z
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                commandHistory.undo();
+            }
+
+            // Ctrl+Y, Ctrl+Shift+Z または Cmd+Shift+Z
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+                e.preventDefault();
+                commandHistory.redo();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [commandHistory]);
 
     const handlePanelResizeStart = useCallback(
         (e: React.MouseEvent) => {
@@ -192,6 +251,11 @@ export function App() {
                 onSaveJson={saveJson}
                 onLoadJson={loadJson}
                 onGenerate={handleGenerate}
+                onUndo={commandHistory.undo}
+                onRedo={commandHistory.redo}
+                canUndo={commandHistory.canUndo}
+                canRedo={commandHistory.canRedo}
+                historyCount={commandHistory.history.length}
             />
 
             {/* Main content area */}
@@ -205,6 +269,7 @@ export function App() {
                         onUpdateClass={handleUpdateClass}
                         onDeleteClass={handleDeleteClass}
                         onAddClass={handleAddClass}
+
                     />
                 </div>
 
