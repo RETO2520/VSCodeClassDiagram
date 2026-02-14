@@ -146,9 +146,9 @@ export function App() {
     }, [generateCode, language])
 
     const handleExecuteCommand = useCallback((cmd: string) => {
-        const action = parseCommand(cmd)
+        const action = parseCommand(cmd);
         if (action) {
-            executeAction(action, setClasses)
+            setClasses(prev => executeAction(action, prev));
         }
     }, [setClasses])
 

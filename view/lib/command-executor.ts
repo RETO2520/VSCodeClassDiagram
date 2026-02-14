@@ -39,65 +39,59 @@ function getOrCreateClass(classes: ClassInfo[], name: string, preferredKind: Cla
         target: newClass
     };
 }
-
 export function executeAction(
     command: CliCommand,
-    setClasses: (updater: (prev: ClassInfo[]) => ClassInfo[]) => void
-) {
-    if (!command) return;
+    prevClasses: ClassInfo[]
+): ClassInfo[] {
+    if (!command) return prevClasses;
 
     switch (command.type) {
         case 'ADD_TYPE': {
             const addType = command as AddTypeCommand;
-            setClasses(prev => {
-                let currentClasses = [...prev];
+            let currentClasses = [...prevClasses];
 
-                // 1. Create the main class
-                const { updatedClasses: classesWithMain, target: newClass } = getOrCreateClass(currentClasses, addType.name);
-                currentClasses = classesWithMain;
+            const { updatedClasses: classesWithMain, target: newClass } =
+                getOrCreateClass(currentClasses, addType.name);
+            currentClasses = classesWithMain;
 
-                // Update properties if it was just created or already existed
-                newClass.kind = (addType.kind === 'i' ? 'interface' : addType.kind === 's' ? 'struct' : 'class') as ClassKind;
-                newClass.isAbstract = (addType.kind === 'ac');
+            newClass.kind = (addType.kind === 'i' ? 'interface' :
+                addType.kind === 's' ? 'struct' : 'class') as ClassKind;
+            newClass.isAbstract = (addType.kind === 'ac');
 
-                // 2. Handle extends list (e.g., : User, IAuth)
-                // If extends property is present (even if empty, e.g. "c A :"), we overwrite.
-                if (addType.extends !== undefined) {
-                    newClass.baseClassId = null;
-                    newClass.interfaces = [];
+            if (addType.extends !== undefined) {
+                newClass.baseClassId = null;
+                newClass.interfaces = [];
 
-                    if (addType.extends.length > 0) {
-                        addType.extends.forEach((parentName, index) => {
-                            let preferredKind: ClassKind = 'class';
-                            if (addType.kind === 'i' || index > 0 || parentName.match(/^I[A-Z]/)) {
-                                preferredKind = 'interface';
+                if (addType.extends.length > 0) {
+                    addType.extends.forEach((parentName, index) => {
+                        let preferredKind: ClassKind = 'class';
+                        if (addType.kind === 'i' || index > 0 || parentName.match(/^I[A-Z]/)) {
+                            preferredKind = 'interface';
+                        }
+
+                        const { updatedClasses: nextClasses, target: parent } =
+                            getOrCreateClass(currentClasses, parentName, preferredKind);
+                        currentClasses = nextClasses;
+
+                        if (parent.kind === 'interface') {
+                            if (!newClass.interfaces.includes(parent.id)) {
+                                newClass.interfaces = [...newClass.interfaces, parent.id];
                             }
-
-                            const { updatedClasses: nextClasses, target: parent } = getOrCreateClass(currentClasses, parentName, preferredKind);
-                            currentClasses = nextClasses;
-
-                            // Link based on parent kind
-                            if (parent.kind === 'interface') {
-                                if (!newClass.interfaces.includes(parent.id)) {
-                                    newClass.interfaces = [...newClass.interfaces, parent.id];
-                                }
-                            } else {
-                                if (!newClass.baseClassId) {
-                                    newClass.baseClassId = parent.id;
-                                }
+                        } else {
+                            if (!newClass.baseClassId) {
+                                newClass.baseClassId = parent.id;
                             }
-                        });
-                    }
+                        }
+                    });
                 }
+            }
 
-                // Return updated list ensuring newClass is updated in the list
-                return currentClasses.map(c => c.name === newClass.name ? newClass : c);
-            });
-            break;
+            return currentClasses.map(c => c.name === newClass.name ? newClass : c);
         }
+
         case 'ADD_ATTR': {
             const addAttr = command as AddAttrCommand;
-            setClasses(prev => prev.map(c => {
+            return prevClasses.map(c => {
                 if (c.name === addAttr.className) {
                     const newAttr = createEmptyMember();
                     newAttr.name = addAttr.name;
@@ -107,12 +101,12 @@ export function executeAction(
                     return { ...c, members: [...c.members, newAttr] };
                 }
                 return c;
-            }));
-            break;
+            });
         }
+
         case 'ADD_METHOD': {
             const addMethod = command as AddMethodCommand;
-            setClasses(prev => prev.map(c => {
+            return prevClasses.map(c => {
                 if (c.name === addMethod.className) {
                     const newOp = createEmptyOperation();
                     newOp.name = addMethod.name;
@@ -122,12 +116,12 @@ export function executeAction(
                     return { ...c, operations: [...c.operations, newOp] };
                 }
                 return c;
-            }));
-            break;
+            });
         }
+
         case 'ADD_PARAM': {
             const addParam = command as AddParamCommand;
-            setClasses(prev => prev.map(c => {
+            return prevClasses.map(c => {
                 if (c.name === addParam.className) {
                     return {
                         ...c,
@@ -143,80 +137,98 @@ export function executeAction(
                     };
                 }
                 return c;
-            }));
-            break;
+            });
         }
+
         case 'SET_BASE': {
             const setBase = command as SetBaseCommand;
-            setClasses(prev => {
-                let currentClasses = [...prev];
+            let currentClasses = [...prevClasses];
 
-                // Ensure target exists
-                const { updatedClasses: afterTarget, target: cls } = getOrCreateClass(currentClasses, setBase.className);
-                currentClasses = afterTarget;
+            const { updatedClasses: afterTarget, target: cls } =
+                getOrCreateClass(currentClasses, setBase.className);
+            currentClasses = afterTarget;
 
-                // Ensure parent exists
-                const { updatedClasses: afterParent, target: parent } = getOrCreateClass(currentClasses, setBase.baseClassName, 'class');
-                currentClasses = afterParent;
+            const { updatedClasses: afterParent, target: parent } =
+                getOrCreateClass(currentClasses, setBase.baseClassName, 'class');
+            currentClasses = afterParent;
 
-                return currentClasses.map(c => c.name === cls.name ? { ...c, baseClassId: parent.id } : c);
-            });
-            break;
+            return currentClasses.map(c =>
+                c.name === cls.name ? { ...c, baseClassId: parent.id } : c
+            );
         }
+
         case 'SET_IMPL': {
             const setImpl = command as SetImplCommand;
-            setClasses(prev => {
-                let currentClasses = [...prev];
+            let currentClasses = [...prevClasses];
 
-                // Ensure target exists
-                const { updatedClasses: afterTarget, target: cls } = getOrCreateClass(currentClasses, setImpl.className);
-                currentClasses = afterTarget;
+            const { updatedClasses: afterTarget, target: cls } =
+                getOrCreateClass(currentClasses, setImpl.className);
+            currentClasses = afterTarget;
 
-                // Ensure interface exists
-                const { updatedClasses: afterIface, target: iface } = getOrCreateClass(currentClasses, setImpl.interfaceName, 'interface');
-                currentClasses = afterIface;
+            const { updatedClasses: afterIface, target: iface } =
+                getOrCreateClass(currentClasses, setImpl.interfaceName, 'interface');
+            currentClasses = afterIface;
 
-                return currentClasses.map(c => {
-                    if (c.name === cls.name && !c.interfaces.includes(iface.id)) {
-                        return { ...c, interfaces: [...c.interfaces, iface.id] };
-                    }
-                    return c;
-                });
+            return currentClasses.map(c => {
+                if (c.name === cls.name && !c.interfaces.includes(iface.id)) {
+                    return { ...c, interfaces: [...c.interfaces, iface.id] };
+                }
+                return c;
             });
-            break;
         }
+
         case 'RENAME': {
             const rename = command as RenameCommand;
-            setClasses(prev => prev.map(c => {
-                if (rename.target === 'c' && c.name === rename.oldName) return { ...c, name: rename.newName };
+            return prevClasses.map(c => {
+                if (rename.target === 'c' && c.name === rename.oldName) {
+                    return { ...c, name: rename.newName };
+                }
                 if (c.name === rename.className) {
                     if (rename.target === 'a') {
-                        return { ...c, members: c.members.map(m => m.name === rename.oldName ? { ...m, name: rename.newName } : m) };
+                        return {
+                            ...c,
+                            members: c.members.map(m =>
+                                m.name === rename.oldName ? { ...m, name: rename.newName } : m
+                            )
+                        };
                     }
                     if (rename.target === 'm') {
-                        return { ...c, operations: c.operations.map(o => o.name === rename.oldName ? { ...o, name: rename.newName } : o) };
+                        return {
+                            ...c,
+                            operations: c.operations.map(o =>
+                                o.name === rename.oldName ? { ...o, name: rename.newName } : o
+                            )
+                        };
                     }
                 }
                 return c;
-            }));
-            break;
+            });
         }
+
         case 'DELETE': {
             const del = command as DeleteCommand;
-            setClasses(prev => {
-                if (del.target === 'c') return prev.filter(c => c.name !== del.className);
-                return prev.map(c => {
-                    if (c.name === del.className) {
-                        if (del.target === 'a') return { ...c, members: c.members.filter(m => m.name !== del.name) };
-                        if (del.target === 'm') return { ...c, operations: c.operations.filter(o => o.name !== del.name) };
+            if (del.target === 'c') {
+                return prevClasses.filter(c => c.name !== del.className);
+            }
+            return prevClasses.map(c => {
+                if (c.name === del.className) {
+                    if (del.target === 'a') {
+                        return { ...c, members: c.members.filter(m => m.name !== del.name) };
                     }
-                    return c;
-                });
+                    if (del.target === 'm') {
+                        return { ...c, operations: c.operations.filter(o => o.name !== del.name) };
+                    }
+                }
+                return c;
             });
-            break;
         }
+
         case 'RELATION': {
-            break;
+            // TODO: Implement relation handling
+            return prevClasses;
         }
+
+        default:
+            return prevClasses;
     }
 }

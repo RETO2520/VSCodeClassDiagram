@@ -48,8 +48,8 @@ Examples:
   ; # = protected
   ; ~ = package
 
-<modifier> ::= "s"      ; static
-             | "a"      ; abstract (in abstract class)
+<modifier> ::= "s"      ; static  (separate token)
+             | "a"      ; abstract  (separate token)
 
 Examples:
   a User +name string
@@ -57,13 +57,18 @@ Examples:
   a Config ~s instance Config
   a Shape #a area float
 
+NOTE: Modifier MUST be a separate token, separated by whitespace.
+      This prevents conflicts with attribute names starting with 's' or 'a'.
+
 ----------------------------------------
 3. Method Definition
 ----------------------------------------
 
 <add-method> ::= "m" <identifier> <visibility>? <modifier>? <identifier> <type>
 
-<modifier> ::= <modifier> "v" ; v = virtual
+<modifier> ::= "s"      ; static (separate token)
+             | "a"      ; abstract (separate token)
+             | "v"      ; virtual (separate token)
 
 Examples:
   m User +login void

@@ -172,10 +172,47 @@ export class CliParser {
         const className = parts[1];
 
         // Use a more flexible consumption of prefixes
-        const { visibility, modifier, name, nextIdx } = this.consumeVisibilityAndModifier(parts, 2);
-        if (nextIdx >= parts.length) return null;
+        let idx = 2;
 
-        const dataType = parts.slice(nextIdx).join(' ');
+        let visibility: Visibility | null = null;
+        let modifier: Modifier | null = null;
+
+        // 現在のトークンを取得
+        let currentToken = parts[idx];
+
+        // visibilityを解析（先頭が記号の場合）
+        if (currentToken && currentToken.length >= 1) {
+            const visSymbol = this.parseVisibility(currentToken[0]);
+            if (visSymbol) {
+                visibility = visSymbol;
+                currentToken = currentToken.substring(1); // 記号を削除
+
+                // トークンが空になったら次へ
+                if (currentToken === '') {
+                    idx++;
+                    currentToken = parts[idx];
+                }
+            }
+        }
+
+        // modifierを解析（独立したトークンまたは連結されている場合）
+        if (currentToken && currentToken.length === 1) {
+            const modSymbol = this.parseModifier(currentToken);
+            if (modSymbol) {
+                modifier = modSymbol;
+                idx++;
+                currentToken = parts[idx];
+            }
+        }
+
+        // 属性名
+        if (!currentToken) return null;
+        const name = currentToken;
+        idx++;
+
+        // 型
+        if (idx >= parts.length) return null;
+        const dataType = parts.slice(idx).join(' ');
 
         return {
             type: 'ADD_ATTR',
@@ -192,11 +229,47 @@ export class CliParser {
         // m <className> <visibility>? <modifier>? <name> <type>
         if (parts.length < 3) return null;
         const className = parts[1];
+        let idx = 2;
 
-        const { visibility, modifier, name, nextIdx } = this.consumeVisibilityAndModifier(parts, 2);
-        if (nextIdx >= parts.length) return null;
+        let visibility: Visibility | null = null;
+        let modifier: Modifier | null = null;
 
-        const returnType = parts.slice(nextIdx).join(' ');
+        // 現在のトークンを取得
+        let currentToken = parts[idx];
+
+        // visibilityを解析（先頭が記号の場合）
+        if (currentToken && currentToken.length >= 1) {
+            const visSymbol = this.parseVisibility(currentToken[0]);
+            if (visSymbol) {
+                visibility = visSymbol;
+                currentToken = currentToken.substring(1); // 記号を削除
+
+                // トークンが空になったら次へ
+                if (currentToken === '') {
+                    idx++;
+                    currentToken = parts[idx];
+                }
+            }
+        }
+
+        // modifierを解析（独立したトークンまたは連結されている場合）
+        if (currentToken && currentToken.length === 1) {
+            const modSymbol = this.parseModifier(currentToken);
+            if (modSymbol) {
+                modifier = modSymbol;
+                idx++;
+                currentToken = parts[idx];
+            }
+        }
+
+        // 属性名
+        if (!currentToken) return null;
+        const name = currentToken;
+        idx++;
+
+        // 戻り値型
+        if (idx >= parts.length) return null;
+        const returnType = parts.slice(idx).join(' ');
 
         return {
             type: 'ADD_METHOD',
