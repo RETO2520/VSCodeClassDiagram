@@ -8,7 +8,6 @@
       "dom"
     ],
     "sourceMap": true,
-    "rootDir": "src",
     "strict": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
@@ -16,6 +15,7 @@
     "moduleResolution": "node16"
   },
   "include": [
-    "src"
+    "src",
+    "view/lib"
   ]
 }

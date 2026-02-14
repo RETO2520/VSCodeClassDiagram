@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { CliParser, AddTypeCommand, AddAttrCommand, AddMethodCommand, AddParamCommand, SetBaseCommand, SetImplCommand, RenameCommand, DeleteCommand, RelationCommand } from '../services/CliParser';
+import { CliParser, AddTypeCommand, AddAttrCommand, AddMethodCommand, AddParamCommand, SetBaseCommand, SetImplCommand, RenameCommand, DeleteCommand, RelationCommand } from '../../view/lib/CliParser';
 
 suite('CliParser Test Suite', () => {
     let parser: CliParser;

@@ -14,6 +14,8 @@ import { createEmptyClass } from '@/lib/class-diagram-types'
 import { GripVertical } from 'lucide-react'
 import { useVSCodeState } from './bridge/use-vscode'
 import { isVSCodeWebview } from './bridge/vscode-bridge'
+import { CommandLine } from '@/components/command-line'
+import { parseCommand, executeAction } from '@/lib/command-executor'
 
 // ==============================
 // Toolbar for VSCode webview integration
@@ -143,6 +145,13 @@ export function App() {
         generateCode(language)
     }, [generateCode, language])
 
+    const handleExecuteCommand = useCallback((cmd: string) => {
+        const action = parseCommand(cmd)
+        if (action) {
+            executeAction(action, setClasses)
+        }
+    }, [setClasses])
+
     const handlePanelResizeStart = useCallback(
         (e: React.MouseEvent) => {
             e.preventDefault()
@@ -220,6 +229,9 @@ export function App() {
                     />
                 </div>
             </div>
+
+            {/* CLI Command Bar */}
+            <CommandLine onExecute={handleExecuteCommand} classes={classes} />
         </div>
     )
 }
