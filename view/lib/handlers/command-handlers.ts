@@ -6,7 +6,7 @@
  */
 
 import { DomainModel } from '../DomainModel'
-import { Command, CommandHandler } from '../handler-registry'
+import { CommandHandler, HandlerRegistry } from '../handler-registry'
 import {
     ClassInfo,
     ClassKind,
@@ -366,46 +366,45 @@ export class DeleteHandler implements CommandHandler<DeleteCommand> {
 
 /**
  * 全ハンドラーを登録したレジストリを生成
+ * @returns 全ハンドラーが登録された HandlerRegistry
  */
-export function createHandlerRegistry(): any {
-    // handler-registry.ts の HandlerRegistry を想定
-    // 実際の型は handler-registry.ts に依存
-    const registry = {
-        handlers: new Map<string, CommandHandler>(),
-
-        register(handler: CommandHandler): void {
-            if (this.handlers.has(handler.commandType)) {
-                throw new Error(
-                    `Handler already registered for ${handler.commandType}`
-                )
-            }
-            this.handlers.set(handler.commandType, handler)
-        },
-
-        dispatch(command: CliCommand, model: DomainModel): DomainModel {
-            const handler = this.handlers.get(command.type)
-            if (!handler) {
-                throw new Error(
-                    `No handler registered for ${command.type}`
-                )
-            }
-            return handler.execute(command, model)
-        }
-    }
-
+export function createHandlerRegistry(
+    extraHandlers: CommandHandler[] = []
+): HandlerRegistry {
+    const registry = new HandlerRegistry()
+    const coreHandlers = [
+        new AddTypeHandler(),
+        new AddAttrHandler(),
+        new AddMethodHandler(),
+        new AddParamHandler(),
+        new SetBaseHandler(),
+        new SetImplHandler(),
+        new RenameHandler(),
+        new DeleteHandler(),
+    ];
     // 全ハンドラーを登録
-    registry.register(new AddTypeHandler())
-    registry.register(new AddAttrHandler())
-    registry.register(new AddMethodHandler())
-    registry.register(new AddParamHandler())
-    registry.register(new SetBaseHandler())
-    registry.register(new SetImplHandler())
-    registry.register(new RenameHandler())
-    registry.register(new DeleteHandler())
-
+    [...coreHandlers, ...extraHandlers].forEach(handler => registry.register(handler))
     return registry
 }
 
+/**
+ * 全ハンドラーを配列で返す
+ * HandlerRegistry.registerAll() で使用可能
+ * 
+ * @returns CommandHandler の配列
+ */
+export function createAllHandlers(): CommandHandler[] {
+    return [
+        new AddTypeHandler(),
+        new AddAttrHandler(),
+        new AddMethodHandler(),
+        new AddParamHandler(),
+        new SetBaseHandler(),
+        new SetImplHandler(),
+        new RenameHandler(),
+        new DeleteHandler(),
+    ]
+}
 /* ============================
    Exports
 ============================ */

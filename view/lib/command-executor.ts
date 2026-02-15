@@ -9,25 +9,22 @@ const parser = new CliParser();
  * グローバルハンドラーレジストリ
  * アプリケーション起動時に一度だけ初期化
  */
-let registry: any = null
+const registry: HandlerRegistry = createHandlerRegistry();
 /**
  * ハンドラーレジストリを初期化
  */
-export function initializeRegistry(): void {
-    if (registry) {
-        return // 既に初期化済み
-    }
-    registry = createHandlerRegistry()
-}
+// export function initializeRegistry(): void {
+//     if (registry) {
+//         return // 既に初期化済み
+//     }
+//     registry = createHandlerRegistry()
+// }
 
 /**
  * カスタムハンドラーを登録
  * アプリケーション固有のハンドラーを追加する場合に使用
  */
 export function registerHandler(handler: any): void {
-    if (!registry) {
-        initializeRegistry()
-    }
     registry.register(handler)
 }
 export function parseCommand(input: string): CliCommand | null {
@@ -57,10 +54,6 @@ export function executeCommand(
         return model
     }
 
-    // レジストリが初期化されていない場合は初期化
-    if (!registry) {
-        initializeRegistry()
-    }
 
     try {
         // ハンドラーにディスパッチ

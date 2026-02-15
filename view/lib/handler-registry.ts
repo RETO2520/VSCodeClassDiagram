@@ -1,9 +1,7 @@
 import { CliCommand } from "./CliParser"
 import { DomainModel } from "./DomainModel"
 
-export interface Command {
-    readonly type: string
-}
+
 export interface CommandHandler<C extends CliCommand = CliCommand> {
     readonly commandType: C["type"]
 
