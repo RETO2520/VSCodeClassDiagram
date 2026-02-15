@@ -3,11 +3,12 @@ import assert from 'assert';
 import * as path from 'path';
 import { CsharpAstParser } from '../services/sourceToDiagram/ast/csharp/CsharpAstParser';
 import { Logger } from '../LoggerComponents/Logger';
+import { AstParserFactory } from '../services/sourceToDiagram/ast/AstParserFactory';
+import { IAstParser } from '../services/sourceToDiagram/ast/IAstParser';
 suite('CsharpAstParser Test Suite', () => {
     console.log("CsharpAstParser test");
     let logger: Logger;
-    let parser: CsharpAstParser;
-
+    let parser: IAstParser;
     suiteSetup(() => {
         const mockChannel: vscode.OutputChannel = {
             name: 'Test',
@@ -19,9 +20,13 @@ suite('CsharpAstParser Test Suite', () => {
             hide: () => { },
             dispose: () => { }
         };
-        const extensionUri = vscode.Uri.file(path.join(__dirname, '..', '..'));
+        const extensionUri = vscode.Uri.file(path.join(__dirname, '..', '..', '..'));
         logger = new Logger(mockChannel);
-        parser = new CsharpAstParser(logger, extensionUri);
+        AstParserFactory.initialize(logger, extensionUri);
+        parser = AstParserFactory.getParser('csharp') as IAstParser;
+        if (!parser) {
+            throw new Error('CsharpAstParser not found in factory');
+        }
     });
 
     test('supports should return true for csharp', () => {

@@ -3,11 +3,12 @@ import assert from 'assert';
 import * as path from 'path';
 import { RustAstParser } from '../services/sourceToDiagram/ast/rust/RustAstParser';
 import { Logger } from '../LoggerComponents/Logger';
-
+import { AstParserFactory } from '../services/sourceToDiagram/ast/AstParserFactory';
+import { IAstParser } from '../services/sourceToDiagram/ast/IAstParser';
 suite('RustAstParser Test Suite', () => {
     console.log("RustAstParser test");
     let logger: Logger;
-    let parser: RustAstParser;
+    let parser: IAstParser;
 
     suiteSetup(() => {
         const mockChannel: vscode.OutputChannel = {
@@ -20,9 +21,14 @@ suite('RustAstParser Test Suite', () => {
             hide: () => { },
             dispose: () => { }
         };
-        const extensionUri = vscode.Uri.file(path.join(__dirname, '..', '..'));
+        const extensionUri = vscode.Uri.file(path.join(__dirname, '..', '..', '..'));
         logger = new Logger(mockChannel);
-        parser = new RustAstParser(logger, extensionUri);
+        //parser = new RustAstParser(logger, extensionUri);
+        AstParserFactory.initialize(logger, extensionUri);
+        parser = AstParserFactory.getParser('rust') as IAstParser;
+        if (!parser) {
+            throw new Error('RustAstParser not found in factory');
+        }
     });
 
     test('supports should return true for rust', () => {

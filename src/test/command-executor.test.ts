@@ -10,7 +10,7 @@ suite('executeAction', () => {
         const result = executeAction(command, model);
 
         assert.strictEqual(result.getClassCount(), 1);
-        assert.strictEqual(result.findClassByName('User'), 'User');
+        assert.strictEqual(result.findClassByName('User')?.name, 'User');
         assert.strictEqual(result.findClassByName('User')?.kind, 'class');
     });
 
@@ -21,7 +21,7 @@ suite('executeAction', () => {
         const result = executeAction(command, model);
 
         assert.strictEqual(result.getClassCount(), 1);
-        assert.strictEqual(result.findClassByName('IAuth'), 'IAuth');
+        assert.strictEqual(result.findClassByName('IAuth')?.name, 'IAuth');
         assert.strictEqual(result.findClassByName('IAuth')?.kind, 'interface');
     });
     test('should add abstract class', () => {
@@ -64,7 +64,7 @@ suite('executeAction', () => {
         const iface = result.findClassByName('ILogin');
 
         assert.strictEqual(iface?.kind, 'interface');
-        assert.strictEqual(user?.interfaces, iface?.id);
+        assert.strictEqual(user?.interfaces[0], iface?.id);
     });
     test('should add attribute to existing class', () => {
         const model = DomainModel.createEmpty();
@@ -124,7 +124,7 @@ suite('executeAction', () => {
 
         assert.strictEqual(result.getClassCount(), 1);
         assert.strictEqual(result.findClassByName('User'), undefined);
-        assert.strictEqual(result.findClassByName('Admin'), 'Admin');
+        assert.strictEqual(result.findClassByName('Admin')?.name, 'Admin');
     });
 
     test('should delete an attribute', () => {
