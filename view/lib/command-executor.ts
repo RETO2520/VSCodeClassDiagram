@@ -1,6 +1,8 @@
 import { ClassInfo, ClassKind, Visibility as UmlVisibility, createEmptyClass, createEmptyMember, createEmptyOperation, createEmptyParameter } from './class-diagram-types';
 import { CliParser, CliCommand, AddTypeCommand, AddAttrCommand, AddMethodCommand, AddParamCommand, SetBaseCommand, SetImplCommand, RenameCommand, DeleteCommand } from './CliParser';
 
+import { DomainModel } from './DomainModel';
+
 const parser = new CliParser();
 
 export function parseCommand(input: string): CliCommand | null {
@@ -20,10 +22,10 @@ function mapVisibility(v: string): UmlVisibility {
  * Ensures a class exists in the state, creating it if necessary.
  * Returns the class.
  */
-function getOrCreateClass(classes: ClassInfo[], name: string, preferredKind: ClassKind = 'class'): { updatedClasses: ClassInfo[], target: ClassInfo } {
-    let target = classes.find(c => c.name === name);
+function getOrCreateClass(model: DomainModel, name: string, preferredKind: ClassKind = 'class'): { updatedModel: DomainModel, target: ClassInfo } {
+    let target = model.findClassByName(name);
     if (target) {
-        return { updatedClasses: classes, target };
+        return { updatedModel: model, target };
     }
 
     // Create new class
@@ -35,29 +37,33 @@ function getOrCreateClass(classes: ClassInfo[], name: string, preferredKind: Cla
     }
 
     return {
-        updatedClasses: [...classes, newClass],
+        updatedModel: model.addClass(newClass),
         target: newClass
     };
 }
 export function executeAction(
     command: CliCommand,
-    prevClasses: ClassInfo[]
-): ClassInfo[] {
-    if (!command) return prevClasses;
+    model: DomainModel
+): DomainModel {
+    if (!command) return model;
 
     switch (command.type) {
         case 'ADD_TYPE': {
             const addType = command as AddTypeCommand;
-            let currentClasses = [...prevClasses];
 
-            const { updatedClasses: classesWithMain, target: newClass } =
-                getOrCreateClass(currentClasses, addType.name);
-            currentClasses = classesWithMain;
+            // 1. メインクラスを取得または作成
+            let { updatedModel: currentModel, target: newClass } =
+                getOrCreateClass(model, addType.name);
 
-            newClass.kind = (addType.kind === 'i' ? 'interface' :
-                addType.kind === 's' ? 'struct' : 'class') as ClassKind;
+            // 2. プロパティを更新
+            newClass.kind = (
+                addType.kind === 'i' ? 'interface' :
+                    addType.kind === 's' ? 'struct' :
+                        'class'
+            ) as ClassKind;
             newClass.isAbstract = (addType.kind === 'ac');
 
+            // 3. 継承リストの処理
             if (addType.extends !== undefined) {
                 newClass.baseClassId = null;
                 newClass.interfaces = [];
@@ -69,10 +75,11 @@ export function executeAction(
                             preferredKind = 'interface';
                         }
 
-                        const { updatedClasses: nextClasses, target: parent } =
-                            getOrCreateClass(currentClasses, parentName, preferredKind);
-                        currentClasses = nextClasses;
+                        const { updatedModel: nextModel, target: parent } =
+                            getOrCreateClass(currentModel, parentName, preferredKind);
+                        currentModel = nextModel;
 
+                        // 親の種類に基づいてリンク
                         if (parent.kind === 'interface') {
                             if (!newClass.interfaces.includes(parent.id)) {
                                 newClass.interfaces = [...newClass.interfaces, parent.id];
@@ -86,91 +93,110 @@ export function executeAction(
                 }
             }
 
-            return currentClasses.map(c => c.name === newClass.name ? newClass : c);
+            // 4. 更新されたクラスを反映
+            return currentModel.updateClassByName(addType.name, () => newClass);
         }
 
         case 'ADD_ATTR': {
             const addAttr = command as AddAttrCommand;
-            return prevClasses.map(c => {
-                if (c.name === addAttr.className) {
-                    const newAttr = createEmptyMember();
-                    newAttr.name = addAttr.name;
-                    newAttr.type = addAttr.dataType || 'string';
-                    newAttr.visibility = mapVisibility(addAttr.visibility);
-                    newAttr.isStatic = addAttr.modifier === 'static';
-                    return { ...c, members: [...c.members, newAttr] };
-                }
-                return c;
+
+            // クラスが存在しない場合は警告して終了
+            if (!model.findClassByName(addAttr.className)) {
+                console.warn(`Class not found: ${addAttr.className}`);
+                return model;
+            }
+
+            // 属性を追加
+            return model.updateClassByName(addAttr.className, cls => {
+                const newAttr = createEmptyMember();
+                newAttr.name = addAttr.name;
+                newAttr.type = addAttr.dataType || 'string';
+                newAttr.visibility = mapVisibility(addAttr.visibility);
+                newAttr.isStatic = addAttr.modifier === 'static';
+
+                return { ...cls, members: [...cls.members, newAttr] };
             });
         }
 
         case 'ADD_METHOD': {
             const addMethod = command as AddMethodCommand;
-            return prevClasses.map(c => {
-                if (c.name === addMethod.className) {
-                    const newOp = createEmptyOperation();
-                    newOp.name = addMethod.name;
-                    newOp.returnType = addMethod.returnType || 'void';
-                    newOp.visibility = mapVisibility(addMethod.visibility);
-                    newOp.isStatic = addMethod.modifier === 'static';
-                    return { ...c, operations: [...c.operations, newOp] };
-                }
-                return c;
+
+            // クラスが存在しない場合は警告して終了
+            if (!model.findClassByName(addMethod.className)) {
+                console.warn(`Class not found: ${addMethod.className}`);
+                return model;
+            }
+
+            // メソッドを追加
+            return model.updateClassByName(addMethod.className, cls => {
+                const newOp = createEmptyOperation();
+                newOp.name = addMethod.name;
+                newOp.returnType = addMethod.returnType || 'void';
+                newOp.visibility = mapVisibility(addMethod.visibility);
+                newOp.isStatic = addMethod.modifier === 'static';
+
+                return { ...cls, operations: [...cls.operations, newOp] };
             });
         }
 
         case 'ADD_PARAM': {
             const addParam = command as AddParamCommand;
-            return prevClasses.map(c => {
-                if (c.name === addParam.className) {
-                    return {
-                        ...c,
-                        operations: c.operations.map(op => {
-                            if (op.name === addParam.methodName) {
-                                const newParam = createEmptyParameter();
-                                newParam.name = addParam.name;
-                                newParam.type = addParam.dataType || 'string';
-                                return { ...op, parameters: [...op.parameters, newParam] };
-                            }
-                            return op;
-                        })
-                    };
-                }
-                return c;
-            });
+
+            // クラスが存在しない場合は警告して終了
+            if (!model.findClassByName(addParam.className)) {
+                console.warn(`Class not found: ${addParam.className}`);
+                return model;
+            }
+
+            // パラメータを追加
+            return model.updateClassByName(addParam.className, cls => ({
+                ...cls,
+                operations: cls.operations.map(op => {
+                    if (op.name === addParam.methodName) {
+                        const newParam = createEmptyParameter();
+                        newParam.name = addParam.name;
+                        newParam.type = addParam.dataType || 'string';
+                        return { ...op, parameters: [...op.parameters, newParam] };
+                    }
+                    return op;
+                })
+            }));
         }
 
         case 'SET_BASE': {
             const setBase = command as SetBaseCommand;
-            let currentClasses = [...prevClasses];
 
-            const { updatedClasses: afterTarget, target: cls } =
-                getOrCreateClass(currentClasses, setBase.className);
-            currentClasses = afterTarget;
+            // 1. ターゲットクラスを確保
+            let { updatedModel: currentModel, target: cls } =
+                getOrCreateClass(model, setBase.className);
 
-            const { updatedClasses: afterParent, target: parent } =
-                getOrCreateClass(currentClasses, setBase.baseClassName, 'class');
-            currentClasses = afterParent;
+            // 2. 親クラスを確保
+            const { updatedModel: afterParent, target: parent } =
+                getOrCreateClass(currentModel, setBase.baseClassName, 'class');
+            currentModel = afterParent;
 
-            return currentClasses.map(c =>
-                c.name === cls.name ? { ...c, baseClassId: parent.id } : c
-            );
+            // 3. 継承関係を設定
+            return currentModel.updateClassByName(setBase.className, c => ({
+                ...c,
+                baseClassId: parent.id
+            }));
         }
 
         case 'SET_IMPL': {
             const setImpl = command as SetImplCommand;
-            let currentClasses = [...prevClasses];
 
-            const { updatedClasses: afterTarget, target: cls } =
-                getOrCreateClass(currentClasses, setImpl.className);
-            currentClasses = afterTarget;
+            // 1. ターゲットクラスを確保
+            let { updatedModel: currentModel, target: cls } =
+                getOrCreateClass(model, setImpl.className);
 
-            const { updatedClasses: afterIface, target: iface } =
-                getOrCreateClass(currentClasses, setImpl.interfaceName, 'interface');
-            currentClasses = afterIface;
+            // 2. インターフェースを確保
+            const { updatedModel: afterIface, target: iface } =
+                getOrCreateClass(currentModel, setImpl.interfaceName, 'interface');
+            currentModel = afterIface;
 
-            return currentClasses.map(c => {
-                if (c.name === cls.name && !c.interfaces.includes(iface.id)) {
+            // 3. インターフェース実装を設定
+            return currentModel.updateClassByName(setImpl.className, c => {
+                if (!c.interfaces.includes(iface.id)) {
                     return { ...c, interfaces: [...c.interfaces, iface.id] };
                 }
                 return c;
@@ -179,56 +205,79 @@ export function executeAction(
 
         case 'RENAME': {
             const rename = command as RenameCommand;
-            return prevClasses.map(c => {
-                if (rename.target === 'c' && c.name === rename.oldName) {
-                    return { ...c, name: rename.newName };
+
+            if (rename.target === 'c') {
+                // クラス名変更
+                return model.updateClassByName(rename.oldName, c => ({
+                    ...c,
+                    name: rename.newName
+                }));
+            }
+
+            // 属性またはメソッドの名前変更
+            return model.updateClassByName(rename.className, cls => {
+                if (rename.target === 'a') {
+                    // 属性の名前変更
+                    return {
+                        ...cls,
+                        members: cls.members.map(m =>
+                            m.name === rename.oldName ? { ...m, name: rename.newName } : m
+                        )
+                    };
                 }
-                if (c.name === rename.className) {
-                    if (rename.target === 'a') {
-                        return {
-                            ...c,
-                            members: c.members.map(m =>
-                                m.name === rename.oldName ? { ...m, name: rename.newName } : m
-                            )
-                        };
-                    }
-                    if (rename.target === 'm') {
-                        return {
-                            ...c,
-                            operations: c.operations.map(o =>
-                                o.name === rename.oldName ? { ...o, name: rename.newName } : o
-                            )
-                        };
-                    }
+
+                if (rename.target === 'm') {
+                    // メソッドの名前変更
+                    return {
+                        ...cls,
+                        operations: cls.operations.map(o =>
+                            o.name === rename.oldName ? { ...o, name: rename.newName } : o
+                        )
+                    };
                 }
-                return c;
+
+                return cls;
             });
         }
 
         case 'DELETE': {
             const del = command as DeleteCommand;
+
             if (del.target === 'c') {
-                return prevClasses.filter(c => c.name !== del.className);
+                // クラス削除
+                return model.removeClassByName(del.className);
             }
-            return prevClasses.map(c => {
-                if (c.name === del.className) {
-                    if (del.target === 'a') {
-                        return { ...c, members: c.members.filter(m => m.name !== del.name) };
-                    }
-                    if (del.target === 'm') {
-                        return { ...c, operations: c.operations.filter(o => o.name !== del.name) };
-                    }
+
+            // 属性またはメソッドの削除
+            return model.updateClassByName(del.className, cls => {
+                if (del.target === 'a') {
+                    // 属性削除
+                    return {
+                        ...cls,
+                        members: cls.members.filter(m => m.name !== del.name)
+                    };
                 }
-                return c;
+
+                if (del.target === 'm') {
+                    // メソッド削除
+                    return {
+                        ...cls,
+                        operations: cls.operations.filter(o => o.name !== del.name)
+                    };
+                }
+
+                return cls;
             });
         }
 
         case 'RELATION': {
-            // TODO: Implement relation handling
-            return prevClasses;
+            // TODO: 関係性の処理は将来実装
+            console.warn('RELATION command not yet implemented');
+            return model;
         }
 
         default:
-            return prevClasses;
+            console.warn(`Unknown command type: ${(command as any).type}`);
+            return model;
     }
 }

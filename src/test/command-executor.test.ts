@@ -1,53 +1,80 @@
 import { executeAction, parseCommand } from '../../view/lib/command-executor';
 import { ClassInfo } from '../../view/lib/class-diagram-types';
 import * as assert from 'assert';
+import { DomainModel } from '../../view/lib/DomainModel';
 suite('executeAction', () => {
+    test('should add a class to empty model', () => {
+        const model = DomainModel.createEmpty();
+        const command = parseCommand('c User')!;
 
-    test('should add a new class', () => {
-        const initial: ClassInfo[] = [];
-        const command = parseCommand('c User');
+        const result = executeAction(command, model);
 
-        const result = executeAction(command!, initial);
-
-        assert.strictEqual(result.length, 1);
-        assert.strictEqual(result[0].name, 'User');
-        assert.strictEqual(result[0].kind, 'class');
+        assert.strictEqual(result.getClassCount(), 1);
+        assert.strictEqual(result.findClassByName('User'), 'User');
+        assert.strictEqual(result.findClassByName('User')?.kind, 'class');
     });
 
     test('should add an interface', () => {
-        const initial: ClassInfo[] = [];
-        const command = parseCommand('i IAuth');
+        const model = DomainModel.createEmpty();
+        const command = parseCommand('i IAuth')!;
 
-        const result = executeAction(command!, initial);
+        const result = executeAction(command, model);
 
-        assert.strictEqual(result.length, 1);
-        assert.strictEqual(result[0].name, 'IAuth');
-        assert.strictEqual(result[0].kind, 'interface');
+        assert.strictEqual(result.getClassCount(), 1);
+        assert.strictEqual(result.findClassByName('IAuth'), 'IAuth');
+        assert.strictEqual(result.findClassByName('IAuth')?.kind, 'interface');
     });
+    test('should add abstract class', () => {
+        const model = DomainModel.createEmpty();
+        const command = parseCommand('ac BaseEntity')!;
 
+        const result = executeAction(command, model);
+
+        const cls = result.findClassByName('BaseEntity');
+        assert.strictEqual(cls?.kind, 'class');
+        assert.strictEqual(cls?.isAbstract, true);
+    });
     test('should add class with inheritance', () => {
-        const initial: ClassInfo[] = [];
-        const userCmd = parseCommand('c User');
-        const withUser = executeAction(userCmd!, initial);
+        const model = DomainModel.createEmpty();
 
-        const adminCmd = parseCommand('c Admin : User');
-        const result = executeAction(adminCmd!, withUser);
+        // まず親クラスを作成
+        const userCmd = parseCommand('c User')!;
+        const model2 = executeAction(userCmd, model);
 
-        assert.strictEqual(result.length, 2);
-        const admin = result.find(c => c.name === 'Admin');
-        const user = result.find(c => c.name === 'User');
+        // 継承したクラスを作成
+        const adminCmd = parseCommand('c Admin : User')!;
+        const result = executeAction(adminCmd, model2);
+
+        assert.strictEqual(result.getClassCount(), 2);
+
+        const admin = result.findClassByName('Admin');
+        const user = result.findClassByName('User');
+
         assert.strictEqual(admin?.baseClassId, user?.id);
     });
+    test('should add class implementing interface', () => {
+        const model = DomainModel.createEmpty();
 
+        const cmd = parseCommand('c User : ILogin')!;
+        const result = executeAction(cmd, model);
+
+        assert.strictEqual(result.getClassCount(), 2);
+
+        const user = result.findClassByName('User');
+        const iface = result.findClassByName('ILogin');
+
+        assert.strictEqual(iface?.kind, 'interface');
+        assert.strictEqual(user?.interfaces, iface?.id);
+    });
     test('should add attribute to existing class', () => {
-        const initial: ClassInfo[] = [];
-        const classCmd = parseCommand('c User');
-        const withClass = executeAction(classCmd!, initial);
+        const model = DomainModel.createEmpty();
+        const classCmd = parseCommand('c User')!;
+        const model2 = executeAction(classCmd, model);
 
-        const attrCmd = parseCommand('a User + name string');
-        const result = executeAction(attrCmd!, withClass);
+        const attrCmd = parseCommand('a User +name string')!;
+        const result = executeAction(attrCmd, model2);
 
-        const user = result.find(c => c.name === 'User');
+        const user = result.findClassByName('User');
         assert.strictEqual(user?.members.length, 1);
         assert.strictEqual(user?.members[0].name, 'name');
         assert.strictEqual(user?.members[0].type, 'string');
@@ -55,64 +82,96 @@ suite('executeAction', () => {
     });
 
     test('should handle static modifier', () => {
-        const initial: ClassInfo[] = [];
-        const classCmd = parseCommand('c Config');
-        const withClass = executeAction(classCmd!, initial);
+        const model = DomainModel.createEmpty();
+        const classCmd = parseCommand('c Config')!;
+        const model2 = executeAction(classCmd, model);
 
-        const attrCmd = parseCommand('a Config +s instance Config');
-        const result = executeAction(attrCmd!, withClass);
-        // デバッグ出力を追加
-        console.log('Parsed command:', JSON.stringify(attrCmd, null, 2));
-        const config = result.find(c => c.name === 'Config');
+        const attrCmd = parseCommand('a Config +s instance Config')!;
+        const result = executeAction(attrCmd, model2);
+
+        const config = result.findClassByName('Config');
         assert.strictEqual(config?.members[0].isStatic, true);
+        assert.strictEqual(config?.members[0].name, 'instance');
     });
+    test('should add parameter to method', () => {
+        const model = DomainModel.createEmpty();
 
+        // クラスとメソッドを作成
+        const classCmd = parseCommand('c User')!;
+        const model2 = executeAction(classCmd, model);
+        const methodCmd = parseCommand('m User +login void')!;
+        const model3 = executeAction(methodCmd, model2);
+
+        // パラメータを追加
+        const paramCmd = parseCommand('p User login username string')!;
+        const result = executeAction(paramCmd, model3);
+
+        const user = result.findClassByName('User');
+        const loginMethod = user?.operations.find((op: any) => op.name === 'login');
+
+        assert.strictEqual(loginMethod?.parameters.length, 1);
+        assert.strictEqual(loginMethod?.parameters[0].name, 'username');
+        assert.strictEqual(loginMethod?.parameters[0].type, 'string');
+    });
     test('should delete a class', () => {
-        const initial: ClassInfo[] = [];
-        const cmd1 = parseCommand('c User');
-        const cmd2 = parseCommand('c Admin');
-        const withClasses = executeAction(cmd2!, executeAction(cmd1!, initial));
+        const model = DomainModel.createEmpty();
+        const cmd1 = parseCommand('c User')!;
+        const cmd2 = parseCommand('c Admin')!;
+        const model2 = executeAction(cmd2, executeAction(cmd1, model));
 
-        const delCmd = parseCommand('del c User');
-        const result = executeAction(delCmd!, withClasses);
+        const delCmd = parseCommand('del c User')!;
+        const result = executeAction(delCmd, model2);
 
-        assert.strictEqual(result.length, 1);
-        assert.strictEqual(result[0].name, 'Admin');
+        assert.strictEqual(result.getClassCount(), 1);
+        assert.strictEqual(result.findClassByName('User'), undefined);
+        assert.strictEqual(result.findClassByName('Admin'), 'Admin');
     });
 
     test('should delete an attribute', () => {
-        const initial: ClassInfo[] = [];
-        const classCmd = parseCommand('c User');
-        const withClass = executeAction(classCmd!, initial);
+        const model = DomainModel.createEmpty();
+        const classCmd = parseCommand('c User')!;
+        const model2 = executeAction(classCmd, model);
 
-        const attr1 = parseCommand('a User +name string');
-        const attr2 = parseCommand('a User +age int');
-        const withAttrs = executeAction(attr2!, executeAction(attr1!, withClass));
+        const attr1 = parseCommand('a User +name string')!;
+        const attr2 = parseCommand('a User +age int')!;
+        const model3 = executeAction(attr2, executeAction(attr1, model2));
 
-        const delCmd = parseCommand('del a User name');
-        const result = executeAction(delCmd!, withAttrs);
+        const delCmd = parseCommand('del a User name')!;
+        const result = executeAction(delCmd, model3);
 
-        const user = result.find(c => c.name === 'User');
+        const user = result.findClassByName('User');
         assert.strictEqual(user?.members.length, 1);
         assert.strictEqual(user?.members[0].name, 'age');
     });
 
     test('should not mutate input', () => {
-        const initial: ClassInfo[] = [];
-        const command = parseCommand('c User');
+        const model = DomainModel.createEmpty();
+        const command = parseCommand('c User')!;
 
-        executeAction(command!, initial);
+        executeAction(command, model);
 
-        assert.strictEqual(initial.length, 0); // 元の配列は変更されていない
+        assert.strictEqual(model.getClassCount(), 0); // 元のモデルは変更されていない
     });
 
     test('should return same reference if no change', () => {
-        const initial: ClassInfo[] = [];
-        const command = null;
+        const model = DomainModel.createEmpty();
+        const invalidCommand = null;
 
-        const result = executeAction(command!, initial);
+        const result = executeAction(invalidCommand!, model);
 
-        assert.strictEqual(result, initial); // 同じ参照を返す
+        assert.strictEqual(result, model); // 同じ参照を返す
     });
+    test('should support command chaining', () => {
+        let model = DomainModel.createEmpty();
 
+        // 複数のコマンドを連鎖実行
+        model = executeAction(parseCommand('c User')!, model);
+        model = executeAction(parseCommand('a User +name string')!, model);
+        model = executeAction(parseCommand('a User +age int')!, model);
+        model = executeAction(parseCommand('m User +getName string')!, model);
+
+        const user = model.findClassByName('User');
+        assert.strictEqual(user?.members.length, 2);
+        assert.strictEqual(user?.operations.length, 1);
+    });
 });

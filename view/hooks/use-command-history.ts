@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { ClassInfo } from '@/lib/class-diagram-types';
 import { CliCommand } from '@/lib/CliParser';
 import { executeAction } from '@/lib/command-executor';
+import { DomainModel } from '@/lib/DomainModel';
 
 interface HistoryEntry {
     command: CliCommand;
@@ -20,13 +21,16 @@ interface UseCommandHistoryResult {
     redo: () => void;
     canUndo: boolean;
     canRedo: boolean;
-    setClasses: React.Dispatch<React.SetStateAction<ClassInfo[]>>;
+    setClasses: (updaterOrClasses: ClassInfo[] | ((prev: ClassInfo[]) => ClassInfo[])) => void;  // 互換性用
 }
 
 const MAX_HISTORY_SIZE = 50;
 
 export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandHistoryResult {
-    const [classes, setClasses] = useState<ClassInfo[]>(initialClasses);
+    // DomainModel として状態を保持
+    const [model, setModel] = useState<DomainModel>(
+        DomainModel.from(initialClasses)
+    );
     const [history, setHistory] = useState<HistoryEntry[]>([]);
     const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
 
@@ -34,13 +38,14 @@ export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandH
      * コマンドを実行して履歴に追加
      */
     const executeCommand = useCallback((command: CliCommand) => {
-        setClasses(prevClasses => {
-            const newClasses = executeAction(command, prevClasses);
+        setModel(prevModel => {
+            // コマンド実行
+            const newModel = executeAction(command, prevModel);
 
-            // 履歴エントリを作成
+            // 履歴エントリを作成（スナップショットとして保存）
             const historyEntry: HistoryEntry = {
                 command,
-                prevState: prevClasses,
+                prevState: prevModel.getClasses(), // 実行前の状態をスナップショット
                 timestamp: Date.now()
             };
 
@@ -57,7 +62,7 @@ export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandH
             // 新しいコマンド実行時はredoスタックをクリア
             setRedoStack([]);
 
-            return newClasses;
+            return newModel;
         });
     }, []);
 
@@ -75,16 +80,16 @@ export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandH
         // redoスタックに現在の状態を保存
         setRedoStack(prev => [...prev, {
             command: lastEntry.command,
-            prevState: classes, // 現在の状態（undo前）
+            prevState: model.getClasses(), // 現在の状態（undo前）
             timestamp: Date.now()
         }]);
 
         // 履歴から削除
         setHistory(prev => prev.slice(0, -1));
 
-        // 状態を戻す
-        setClasses(lastEntry.prevState);
-    }, [history, classes]);
+        // 状態を戻す（スナップショットから復元）
+        setModel(DomainModel.from(lastEntry.prevState));
+    }, [history, model]);
 
     /**
      * Redo: Undoした操作をやり直す
@@ -97,26 +102,51 @@ export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandH
 
         const redoEntry = redoStack[redoStack.length - 1];
 
-        // コマンドを再実行
-        setClasses(prevClasses => {
-            const newClasses = executeAction(redoEntry.command, prevClasses);
+        setModel(prevModel => {
+            // コマンドを再実行
+            const newModel = executeAction(redoEntry.command, prevModel);
 
             // 履歴に追加
             setHistory(prev => [...prev, {
                 command: redoEntry.command,
-                prevState: prevClasses,
+                prevState: prevModel.getClasses(),
                 timestamp: Date.now()
             }]);
 
-            return newClasses;
+            return newModel;
         });
 
         // redoスタックから削除
         setRedoStack(prev => prev.slice(0, -1));
     }, [redoStack]);
+    /**
+         * 既存コードとの互換性用
+         * React の setClasses パターンをサポート
+         */
+    /**
+     * 既存コードとの互換性用
+     * React の setClasses パターンをサポート
+     * 
+     * オーバーロード: 配列または updater 関数を受け取る
+     */
+    const setClasses = useCallback((
+        updaterOrClasses: ClassInfo[] | ((prev: ClassInfo[]) => ClassInfo[])
+    ) => {
+        setModel(prevModel => {
+            const prevClasses = prevModel.getClasses();
 
+            // 関数が渡された場合
+            if (typeof updaterOrClasses === 'function') {
+                const newClasses = updaterOrClasses(prevClasses);
+                return DomainModel.from(newClasses);
+            }
+
+            // 配列が直接渡された場合
+            return DomainModel.from(updaterOrClasses);
+        });
+    }, []);
     return {
-        classes,
+        classes: model.getClasses(),
         history,
         redoStack,
         executeCommand,
