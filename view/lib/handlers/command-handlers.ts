@@ -18,6 +18,16 @@ import {
 } from '../class-diagram-types'
 import { AddTypeCommand, AddAttrCommand, AddMethodCommand, AddParamCommand, SetBaseCommand, SetImplCommand, RenameCommand, DeleteCommand, CliCommand } from '../CliParser'
 
+export const CommandTypes = {
+    ADD_ATTR: 'ADD_ATTR',
+    ADD_TYPE: 'ADD_TYPE',
+    ADD_METHOD: 'ADD_METHOD',
+    ADD_PARAM: 'ADD_PARAM',
+    SET_BASE: 'SET_BASE',
+    SET_IMPL: 'SET_IMPL',
+    RENAME: 'RENAME',
+    DELETE: 'DELETE',
+} as const
 /* ============================
    Utility Functions
 ============================ */
@@ -51,7 +61,7 @@ export function getOrCreateClass(
  * クラス、抽象クラス、インターフェース、構造体を追加
  */
 export class AddTypeHandler implements CommandHandler<AddTypeCommand> {
-    readonly commandType = 'ADD_TYPE'
+    readonly commandType = CommandTypes.ADD_TYPE
 
     execute(command: AddTypeCommand, model: DomainModel): DomainModel {
         // 1. メインクラスを取得または作成
@@ -112,7 +122,7 @@ export class AddTypeHandler implements CommandHandler<AddTypeCommand> {
  * クラスに属性(メンバー)を追加
  */
 export class AddAttrHandler implements CommandHandler<AddAttrCommand> {
-    readonly commandType = 'ADD_ATTR'
+    readonly commandType = CommandTypes.ADD_ATTR
 
     execute(command: AddAttrCommand, model: DomainModel): DomainModel {
 
@@ -133,7 +143,7 @@ export class AddAttrHandler implements CommandHandler<AddAttrCommand> {
  * クラスにメソッド(操作)を追加
  */
 export class AddMethodHandler implements CommandHandler<AddMethodCommand> {
-    readonly commandType = 'ADD_METHOD'
+    readonly commandType = CommandTypes.ADD_METHOD
 
     execute(command: AddMethodCommand, model: DomainModel): DomainModel {
 
@@ -154,7 +164,7 @@ export class AddMethodHandler implements CommandHandler<AddMethodCommand> {
  * メソッドにパラメータを追加
  */
 export class AddParamHandler implements CommandHandler<AddParamCommand> {
-    readonly commandType = 'ADD_PARAM'
+    readonly commandType = CommandTypes.ADD_PARAM
 
     execute(command: AddParamCommand, model: DomainModel): DomainModel {
 
@@ -174,7 +184,7 @@ export class AddParamHandler implements CommandHandler<AddParamCommand> {
  * クラスの基底クラスを設定
  */
 export class SetBaseHandler implements CommandHandler<SetBaseCommand> {
-    readonly commandType = 'SET_BASE'
+    readonly commandType = CommandTypes.SET_BASE
 
     execute(command: SetBaseCommand, model: DomainModel): DomainModel {
         // 1. ターゲットクラスを確保
@@ -196,7 +206,7 @@ export class SetBaseHandler implements CommandHandler<SetBaseCommand> {
  * クラスのインターフェース実装を設定
  */
 export class SetImplHandler implements CommandHandler<SetImplCommand> {
-    readonly commandType = 'SET_IMPL'
+    readonly commandType = CommandTypes.SET_IMPL
 
     execute(command: SetImplCommand, model: DomainModel): DomainModel {
         // 1. ターゲットクラスを確保
@@ -218,7 +228,7 @@ export class SetImplHandler implements CommandHandler<SetImplCommand> {
  * クラス、属性、メソッドの名前を変更
  */
 export class RenameHandler implements CommandHandler<RenameCommand> {
-    readonly commandType = 'RENAME'
+    readonly commandType = CommandTypes.RENAME
 
     execute(command: RenameCommand, model: DomainModel): DomainModel {
         if (command.target === 'c') {
@@ -248,7 +258,7 @@ export class RenameHandler implements CommandHandler<RenameCommand> {
  * クラス、属性、メソッドを削除
  */
 export class DeleteHandler implements CommandHandler<DeleteCommand> {
-    readonly commandType = 'DELETE'
+    readonly commandType = CommandTypes.DELETE
 
     execute(command: DeleteCommand, model: DomainModel): DomainModel {
         if (command.target === 'c') {

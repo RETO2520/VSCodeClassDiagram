@@ -9,9 +9,9 @@ export interface CommandHandler<C extends CliCommand = CliCommand> {
 }
 export class HandlerRegistry {
 
-    private handlers = new Map<string, CommandHandler>()
+    private handlers = new Map<CliCommand["type"], CommandHandler<CliCommand>>()
 
-    register(handler: CommandHandler): void {
+    register<C extends CliCommand>(handler: CommandHandler<C>): void {
         if (this.handlers.has(handler.commandType)) {
             throw new Error(
                 `Handler already registered for ${handler.commandType}`
@@ -21,8 +21,8 @@ export class HandlerRegistry {
         this.handlers.set(handler.commandType, handler)
     }
 
-    dispatch(command: CliCommand, model: DomainModel): DomainModel {
-        const handler = this.handlers.get(command.type)
+    dispatch<C extends CliCommand>(command: C, model: DomainModel): DomainModel {
+        const handler: CommandHandler<CliCommand> | undefined = this.handlers.get(command.type)
 
         if (!handler) {
             throw new Error(
