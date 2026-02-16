@@ -6,7 +6,7 @@
  */
 
 import { DomainModel } from '../DomainModel'
-import { CommandHandler, HandlerRegistry } from '../handler-registry'
+import { CommandHandler, HandlerRegistry, HandlerResult } from '../handler-registry'
 import {
     ClassInfo,
     ClassKind,
@@ -63,7 +63,7 @@ export function getOrCreateClass(
 export class AddTypeHandler implements CommandHandler<AddTypeCommand> {
     readonly commandType = CommandTypes.ADD_TYPE
 
-    execute(command: AddTypeCommand, model: DomainModel): DomainModel {
+    execute(command: AddTypeCommand, model: DomainModel): HandlerResult {
         // 1. メインクラスを取得または作成
         let { updatedModel: currentModel, target: newClass } =
             getOrCreateClass(model, command.name)
@@ -113,7 +113,17 @@ export class AddTypeHandler implements CommandHandler<AddTypeCommand> {
         }
 
         // 4. 更新されたクラスを反映
-        return currentModel.updateClassByName(command.name, () => newClass)
+        const updatedModel = currentModel.updateClassByName(command.name, () => newClass)
+        return {
+            model: updatedModel,
+            events: [{
+                type: 'TYPE_ADDED',
+                payload: {
+                    className: command.name,
+                    classInfo: newClass
+                }
+            }]
+        }
     }
 }
 
@@ -124,7 +134,7 @@ export class AddTypeHandler implements CommandHandler<AddTypeCommand> {
 export class AddAttrHandler implements CommandHandler<AddAttrCommand> {
     readonly commandType = CommandTypes.ADD_ATTR
 
-    execute(command: AddAttrCommand, model: DomainModel): DomainModel {
+    execute(command: AddAttrCommand, model: DomainModel): HandlerResult {
 
         // 属性を作成
         const newAttr = createEmptyMember()
@@ -134,7 +144,17 @@ export class AddAttrHandler implements CommandHandler<AddAttrCommand> {
         newAttr.isStatic = command.modifier === 'static'
 
         // 属性を追加
-        return model.addMember(command.className, newAttr)
+        const result = model.addMember(command.className, newAttr)
+        return {
+            model: result,
+            events: [{
+                type: 'MEMBER_ADDED',
+                payload: {
+                    className: command.className,
+                    member: newAttr
+                }
+            }]
+        }
     }
 }
 
@@ -145,7 +165,7 @@ export class AddAttrHandler implements CommandHandler<AddAttrCommand> {
 export class AddMethodHandler implements CommandHandler<AddMethodCommand> {
     readonly commandType = CommandTypes.ADD_METHOD
 
-    execute(command: AddMethodCommand, model: DomainModel): DomainModel {
+    execute(command: AddMethodCommand, model: DomainModel): HandlerResult {
 
         // メソッドを作成
         const newOp = createEmptyOperation()
@@ -155,7 +175,17 @@ export class AddMethodHandler implements CommandHandler<AddMethodCommand> {
         newOp.isStatic = command.modifier === 'static'
 
         // メソッドを追加
-        return model.addOperation(command.className, newOp)
+        const result = model.addOperation(command.className, newOp)
+        return {
+            model: result,
+            events: [{
+                type: 'OPERATION_ADDED',
+                payload: {
+                    className: command.className,
+                    operation: newOp
+                }
+            }]
+        }
     }
 }
 
@@ -166,7 +196,7 @@ export class AddMethodHandler implements CommandHandler<AddMethodCommand> {
 export class AddParamHandler implements CommandHandler<AddParamCommand> {
     readonly commandType = CommandTypes.ADD_PARAM
 
-    execute(command: AddParamCommand, model: DomainModel): DomainModel {
+    execute(command: AddParamCommand, model: DomainModel): HandlerResult {
 
 
         // パラメータを作成
@@ -175,7 +205,18 @@ export class AddParamHandler implements CommandHandler<AddParamCommand> {
         newParam.type = command.dataType || 'string'
 
         // パラメータを追加
-        return model.addParameter(command.className, command.methodName, newParam)
+        const result = model.addParameter(command.className, command.methodName, newParam)
+        return {
+            model: result,
+            events: [{
+                type: 'PARAMETER_ADDED',
+                payload: {
+                    className: command.className,
+                    operationName: command.methodName,
+                    parameter: newParam
+                }
+            }]
+        }
     }
 }
 
@@ -186,7 +227,7 @@ export class AddParamHandler implements CommandHandler<AddParamCommand> {
 export class SetBaseHandler implements CommandHandler<SetBaseCommand> {
     readonly commandType = CommandTypes.SET_BASE
 
-    execute(command: SetBaseCommand, model: DomainModel): DomainModel {
+    execute(command: SetBaseCommand, model: DomainModel): HandlerResult {
         // 1. ターゲットクラスを確保
         let { updatedModel: currentModel, target: cls } =
             getOrCreateClass(model, command.className)
@@ -197,7 +238,17 @@ export class SetBaseHandler implements CommandHandler<SetBaseCommand> {
         currentModel = afterParent
 
         // 3. 継承関係を設定
-        return currentModel.setBaseClass(cls.id, parent.id)
+        const result = currentModel.setBaseClass(cls.id, parent.id)
+        return {
+            model: result,
+            events: [{
+                type: 'BASE_CLASS_ADDED',
+                payload: {
+                    className: command.className,
+                    baseClassName: command.baseClassName
+                }
+            }]
+        }
     }
 }
 
@@ -208,7 +259,7 @@ export class SetBaseHandler implements CommandHandler<SetBaseCommand> {
 export class SetImplHandler implements CommandHandler<SetImplCommand> {
     readonly commandType = CommandTypes.SET_IMPL
 
-    execute(command: SetImplCommand, model: DomainModel): DomainModel {
+    execute(command: SetImplCommand, model: DomainModel): HandlerResult {
         // 1. ターゲットクラスを確保
         let { updatedModel: currentModel, target: cls } =
             getOrCreateClass(model, command.className)
@@ -219,7 +270,17 @@ export class SetImplHandler implements CommandHandler<SetImplCommand> {
         currentModel = afterIface
 
         // 3. インターフェース実装を設定
-        return currentModel.addInterfaceImplementation(cls.id, iface.id)
+        const result = currentModel.addInterfaceImplementation(cls.id, iface.id)
+        return {
+            model: result,
+            events: [{
+                type: 'IMPLEMENTED_INTERFACE_ADDED',
+                payload: {
+                    className: command.className,
+                    interfaceName: command.interfaceName
+                }
+            }]
+        }
     }
 }
 
@@ -230,26 +291,60 @@ export class SetImplHandler implements CommandHandler<SetImplCommand> {
 export class RenameHandler implements CommandHandler<RenameCommand> {
     readonly commandType = CommandTypes.RENAME
 
-    execute(command: RenameCommand, model: DomainModel): DomainModel {
+    execute(command: RenameCommand, model: DomainModel): HandlerResult {
         if (command.target === 'c') {
-            return model.renameClass(command.oldName, command.newName)
+            const result = model.renameClass(command.oldName, command.newName)
+            return {
+                model: result,
+                events: [{
+                    type: 'TYPE_UPDATED',
+                    payload: {
+                        className: command.newName,
+                        classInfo: result.findClassByName(command.newName)!
+                    }
+                }]
+            }
         }
 
         if (command.target === 'a') {
-            return model.updateMember(command.className, command.oldName, m => ({
+            const result = model.updateMember(command.className, command.oldName, m => ({
                 ...m,
                 name: command.newName
             }))
+            return {
+                model: result,
+                events: [{
+                    type: 'MEMBER_UPDATED',
+                    payload: {
+                        className: command.className,
+                        member: result.findClassByName(command.className)!.members.find(m => m.name === command.newName)!,
+                        oldName: command.oldName,
+                        newName: command.newName
+                    }
+                }]
+            }
         }
 
         if (command.target === 'm') {
-            return model.updateOperation(command.className, command.oldName, op => ({
+            const result = model.updateOperation(command.className, command.oldName, op => ({
                 ...op,
                 name: command.newName
             }))
+            return {
+                model: result,
+                events: [{
+                    type: 'OPERATION_UPDATED',
+                    payload: {
+                        className: command.className,
+                        operation: result.findClassByName(command.className)!.operations.find(op => op.name === command.newName)!,
+                        oldName: command.oldName,
+                        newName: command.newName
+                    }
+                }]
+            }
         }
 
-        return model
+        return { model, events: [] }
     }
 }
 
@@ -260,23 +355,52 @@ export class RenameHandler implements CommandHandler<RenameCommand> {
 export class DeleteHandler implements CommandHandler<DeleteCommand> {
     readonly commandType = CommandTypes.DELETE
 
-    execute(command: DeleteCommand, model: DomainModel): DomainModel {
+    execute(command: DeleteCommand, model: DomainModel): HandlerResult {
         if (command.target === 'c') {
             // クラス削除
-            return model.removeClassByName(command.className)
+            const result = model.removeClassByName(command.className)
+            return {
+                model: result,
+                events: [{
+                    type: 'TYPE_REMOVED',
+                    payload: {
+                        className: command.className
+                    }
+                }]
+            }
         }
 
         if (command.target === 'a' && command.name) {
             // 属性削除
-            return model.removeMember(command.className, command.name)
+            const result = model.removeMember(command.className, command.name)
+            return {
+                model: result,
+                events: [{
+                    type: 'MEMBER_REMOVED',
+                    payload: {
+                        className: command.className,
+                        member: result.findClassByName(command.className)!.members.find(m => m.name === command.name)!
+                    }
+                }]
+            }
         }
 
         if (command.target === 'm' && command.name) {
             // メソッド削除
-            return model.removeOperation(command.className, command.name)
+            const result = model.removeOperation(command.className, command.name)
+            return {
+                model: result,
+                events: [{
+                    type: 'OPERATION_REMOVED',
+                    payload: {
+                        className: command.className,
+                        operation: result.findClassByName(command.className)!.operations.find(op => op.name === command.name)!,
+                    }
+                }]
+            }
         }
 
-        return model
+        return { model, events: [] }
     }
 }
 

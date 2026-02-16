@@ -5,11 +5,13 @@ import { ClassInfo } from '@/lib/class-diagram-types';
 import { CliCommand } from '@/lib/CliParser';
 import { executeAction } from '@/lib/command-executor';
 import { DomainModel } from '@/lib/DomainModel';
+import { HandlerResult } from '@/lib/handler-registry';
 
 interface HistoryEntry {
     command: CliCommand;
     prevState: ClassInfo[];
     timestamp: number;
+    result: HandlerResult;
 }
 
 interface UseCommandHistoryResult {
@@ -40,13 +42,14 @@ export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandH
     const executeCommand = useCallback((command: CliCommand) => {
         setModel(prevModel => {
             // コマンド実行
-            const newModel = executeAction(command, prevModel);
+            const result = executeAction(command, prevModel);
 
             // 履歴エントリを作成（スナップショットとして保存）
             const historyEntry: HistoryEntry = {
                 command,
                 prevState: prevModel.getClasses(), // 実行前の状態をスナップショット
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                result
             };
 
             // 履歴スタックを更新
@@ -62,7 +65,7 @@ export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandH
             // 新しいコマンド実行時はredoスタックをクリア
             setRedoStack([]);
 
-            return newModel;
+            return result.model;
         });
     }, []);
 
@@ -81,7 +84,8 @@ export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandH
         setRedoStack(prev => [...prev, {
             command: lastEntry.command,
             prevState: model.getClasses(), // 現在の状態（undo前）
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            result: lastEntry.result
         }]);
 
         // 履歴から削除
@@ -110,10 +114,11 @@ export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandH
             setHistory(prev => [...prev, {
                 command: redoEntry.command,
                 prevState: prevModel.getClasses(),
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                result: redoEntry.result
             }]);
 
-            return newModel;
+            return newModel.model;
         });
 
         // redoスタックから削除

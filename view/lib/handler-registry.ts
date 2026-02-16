@@ -1,11 +1,14 @@
 import { CliCommand } from "./CliParser"
-import { DomainModel } from "./DomainModel"
+import { DomainEvent, DomainModel } from "./DomainModel"
 
-
+export interface HandlerResult {
+    readonly model: DomainModel
+    readonly events: DomainEvent[]
+}
 export interface CommandHandler<C extends CliCommand = CliCommand> {
     readonly commandType: C["type"]
 
-    execute(command: C, model: DomainModel): DomainModel
+    execute(command: C, model: DomainModel): HandlerResult
 }
 export class HandlerRegistry {
 
@@ -21,7 +24,7 @@ export class HandlerRegistry {
         this.handlers.set(handler.commandType, handler)
     }
 
-    dispatch<C extends CliCommand>(command: C, model: DomainModel): DomainModel {
+    dispatch<C extends CliCommand>(command: C, model: DomainModel): HandlerResult {
         const handler: CommandHandler<CliCommand> | undefined = this.handlers.get(command.type)
 
         if (!handler) {

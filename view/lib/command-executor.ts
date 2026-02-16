@@ -2,8 +2,8 @@
 import { ClassInfo, ClassKind, Visibility as UmlVisibility, createEmptyClass, createEmptyMember, createEmptyOperation, createEmptyParameter } from './class-diagram-types';
 import { CliParser, CliCommand, AddTypeCommand, AddAttrCommand, AddMethodCommand, AddParamCommand, SetBaseCommand, SetImplCommand, RenameCommand, DeleteCommand } from './CliParser';
 
-import { DomainModel } from './DomainModel';
-import { HandlerRegistry } from './handler-registry';
+import { DomainModel, DomainEvent } from './DomainModel';
+import { HandlerRegistry, HandlerResult } from './handler-registry';
 import { createHandlerRegistry } from './handlers/command-handlers';
 import { postMessage } from '../../frontend/src/bridge/vscode-bridge'; // postMessage をインポート
 //import * as vb from '../../frontend/src/bridge/vscode-bridge'; // postMessage をインポート
@@ -53,9 +53,9 @@ function mapVisibility(v: string): UmlVisibility {
 export function executeCommand(
     command: CliCommand,
     model: DomainModel
-): DomainModel {
+): HandlerResult {
     if (!command) {
-        return model
+        return { model: model, events: [] }
     }
 
     postMessage({ command: 'log', level: 'info', text: `Executing command: ${command.type}` });
@@ -66,7 +66,7 @@ export function executeCommand(
     } catch (error) {
         postMessage({ command: 'log', level: 'error', text: `Error executing command: ${error}` });
 
-        return model // エラーが発生しても元のモデルを返す
+        return { model: model, events: [] } // エラーが発生しても元のモデルを返す
     }
 }
 /**
@@ -76,14 +76,17 @@ export function executeCommand(
 export function executeCommands(
     commands: CliCommand[],
     model: DomainModel
-): DomainModel {
+): HandlerResult {
     let currentModel = model
+    let currentEvents: DomainEvent[] = []
 
     for (const command of commands) {
-        currentModel = executeCommand(command, currentModel)
+        const result = executeCommand(command, currentModel)
+        currentModel = result.model
+        currentEvents = currentEvents.concat(result.events)
     }
 
-    return currentModel
+    return { model: currentModel, events: currentEvents }
 }
 /**
  * Ensures a class exists in the state, creating it if necessary.
@@ -111,7 +114,7 @@ function getOrCreateClass(model: DomainModel, name: string, preferredKind: Class
 export function executeAction(
     command: CliCommand,
     model: DomainModel
-): DomainModel {
+): HandlerResult {
     return executeCommand(command, model)
 
 }

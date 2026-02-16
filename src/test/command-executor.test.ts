@@ -2,6 +2,7 @@ import { executeAction, parseCommand } from '../../view/lib/command-executor';
 import { ClassInfo } from '../../view/lib/class-diagram-types';
 import * as assert from 'assert';
 import { DomainModel } from '../../view/lib/DomainModel';
+import { HandlerResult } from '../../view/lib/handler-registry';
 suite('executeAction', () => {
     test('should add a class to empty model', () => {
         const model = DomainModel.createEmpty();
@@ -9,9 +10,9 @@ suite('executeAction', () => {
 
         const result = executeAction(command, model);
 
-        assert.strictEqual(result.getClassCount(), 1);
-        assert.strictEqual(result.findClassByName('User')?.name, 'User');
-        assert.strictEqual(result.findClassByName('User')?.kind, 'class');
+        assert.strictEqual(result.model.getClassCount(), 1);
+        assert.strictEqual(result.model.findClassByName('User')?.name, 'User');
+        assert.strictEqual(result.model.findClassByName('User')?.kind, 'class');
     });
 
     test('should add an interface', () => {
@@ -20,9 +21,9 @@ suite('executeAction', () => {
 
         const result = executeAction(command, model);
 
-        assert.strictEqual(result.getClassCount(), 1);
-        assert.strictEqual(result.findClassByName('IAuth')?.name, 'IAuth');
-        assert.strictEqual(result.findClassByName('IAuth')?.kind, 'interface');
+        assert.strictEqual(result.model.getClassCount(), 1);
+        assert.strictEqual(result.model.findClassByName('IAuth')?.name, 'IAuth');
+        assert.strictEqual(result.model.findClassByName('IAuth')?.kind, 'interface');
     });
     test('should add abstract class', () => {
         const model = DomainModel.createEmpty();
@@ -30,7 +31,7 @@ suite('executeAction', () => {
 
         const result = executeAction(command, model);
 
-        const cls = result.findClassByName('BaseEntity');
+        const cls = result.model.findClassByName('BaseEntity');
         assert.strictEqual(cls?.kind, 'class');
         assert.strictEqual(cls?.isAbstract, true);
     });
@@ -43,12 +44,12 @@ suite('executeAction', () => {
 
         // 継承したクラスを作成
         const adminCmd = parseCommand('c Admin : User')!;
-        const result = executeAction(adminCmd, model2);
+        const result = executeAction(adminCmd, model2.model);
 
-        assert.strictEqual(result.getClassCount(), 2);
+        assert.strictEqual(result.model.getClassCount(), 2);
 
-        const admin = result.findClassByName('Admin');
-        const user = result.findClassByName('User');
+        const admin = result.model.findClassByName('Admin');
+        const user = result.model.findClassByName('User');
 
         assert.strictEqual(admin?.baseClassId, user?.id);
     });
@@ -58,10 +59,10 @@ suite('executeAction', () => {
         const cmd = parseCommand('c User : ILogin')!;
         const result = executeAction(cmd, model);
 
-        assert.strictEqual(result.getClassCount(), 2);
+        assert.strictEqual(result.model.getClassCount(), 2);
 
-        const user = result.findClassByName('User');
-        const iface = result.findClassByName('ILogin');
+        const user = result.model.findClassByName('User');
+        const iface = result.model.findClassByName('ILogin');
 
         assert.strictEqual(iface?.kind, 'interface');
         assert.strictEqual(user?.interfaces[0], iface?.id);
@@ -72,9 +73,9 @@ suite('executeAction', () => {
         const model2 = executeAction(classCmd, model);
 
         const attrCmd = parseCommand('a User +name string')!;
-        const result = executeAction(attrCmd, model2);
+        const result = executeAction(attrCmd, model2.model);
 
-        const user = result.findClassByName('User');
+        const user = result.model.findClassByName('User');
         assert.strictEqual(user?.members.length, 1);
         assert.strictEqual(user?.members[0].name, 'name');
         assert.strictEqual(user?.members[0].type, 'string');
@@ -87,9 +88,9 @@ suite('executeAction', () => {
         const model2 = executeAction(classCmd, model);
 
         const attrCmd = parseCommand('a Config +s instance Config')!;
-        const result = executeAction(attrCmd, model2);
+        const result = executeAction(attrCmd, model2.model);
 
-        const config = result.findClassByName('Config');
+        const config = result.model.findClassByName('Config');
         assert.strictEqual(config?.members[0].isStatic, true);
         assert.strictEqual(config?.members[0].name, 'instance');
     });
@@ -100,13 +101,13 @@ suite('executeAction', () => {
         const classCmd = parseCommand('c User')!;
         const model2 = executeAction(classCmd, model);
         const methodCmd = parseCommand('m User +login void')!;
-        const model3 = executeAction(methodCmd, model2);
+        const model3 = executeAction(methodCmd, model2.model);
 
         // パラメータを追加
         const paramCmd = parseCommand('p User login username string')!;
-        const result = executeAction(paramCmd, model3);
+        const result = executeAction(paramCmd, model3.model);
 
-        const user = result.findClassByName('User');
+        const user = result.model.findClassByName('User');
         const loginMethod = user?.operations.find((op: any) => op.name === 'login');
 
         assert.strictEqual(loginMethod?.parameters.length, 1);
@@ -117,14 +118,14 @@ suite('executeAction', () => {
         const model = DomainModel.createEmpty();
         const cmd1 = parseCommand('c User')!;
         const cmd2 = parseCommand('c Admin')!;
-        const model2 = executeAction(cmd2, executeAction(cmd1, model));
+        const model2 = executeAction(cmd2, executeAction(cmd1, model).model);
 
         const delCmd = parseCommand('del c User')!;
-        const result = executeAction(delCmd, model2);
+        const result = executeAction(delCmd, model2.model);
 
-        assert.strictEqual(result.getClassCount(), 1);
-        assert.strictEqual(result.findClassByName('User'), undefined);
-        assert.strictEqual(result.findClassByName('Admin')?.name, 'Admin');
+        assert.strictEqual(result.model.getClassCount(), 1);
+        assert.strictEqual(result.model.findClassByName('User'), undefined);
+        assert.strictEqual(result.model.findClassByName('Admin')?.name, 'Admin');
     });
 
     test('should delete an attribute', () => {
@@ -134,12 +135,12 @@ suite('executeAction', () => {
 
         const attr1 = parseCommand('a User +name string')!;
         const attr2 = parseCommand('a User +age int')!;
-        const model3 = executeAction(attr2, executeAction(attr1, model2));
+        const model3 = executeAction(attr2, executeAction(attr1, model2.model).model);
 
         const delCmd = parseCommand('del a User name')!;
-        const result = executeAction(delCmd, model3);
+        const result = executeAction(delCmd, model3.model);
 
-        const user = result.findClassByName('User');
+        const user = result.model.findClassByName('User');
         assert.strictEqual(user?.members.length, 1);
         assert.strictEqual(user?.members[0].name, 'age');
     });
@@ -163,12 +164,16 @@ suite('executeAction', () => {
     });
     test('should support command chaining', () => {
         let model = DomainModel.createEmpty();
-
+        let result: HandlerResult;
         // 複数のコマンドを連鎖実行
-        model = executeAction(parseCommand('c User')!, model);
-        model = executeAction(parseCommand('a User +name string')!, model);
-        model = executeAction(parseCommand('a User +age int')!, model);
-        model = executeAction(parseCommand('m User +getName string')!, model);
+        result = executeAction(parseCommand('c User')!, model);
+        model = result.model;
+        result = executeAction(parseCommand('a User +name string')!, model);
+        model = result.model;
+        result = executeAction(parseCommand('a User +age int')!, model);
+        model = result.model;
+        result = executeAction(parseCommand('m User +getName string')!, model);
+        model = result.model;
 
         const user = model.findClassByName('User');
         assert.strictEqual(user?.members.length, 2);

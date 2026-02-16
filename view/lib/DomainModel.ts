@@ -35,6 +35,206 @@ import {
 } from './class-diagram-types'
 
 /* ============================
+   Domain Events
+============================ */
+
+export interface TypeAddedEvent {
+    type: 'TYPE_ADDED'
+    payload: {
+        className: string
+        classInfo: ClassInfo
+    }
+}
+
+export interface TypeRemovedEvent {
+    type: 'TYPE_REMOVED'
+    payload: {
+        className: string
+    }
+}
+
+export interface TypeUpdatedEvent {
+    type: 'TYPE_UPDATED'
+    payload: {
+        className: string
+        classInfo: ClassInfo
+    }
+}
+
+export interface MemberAddedEvent {
+    type: 'MEMBER_ADDED'
+    payload: {
+        className: string
+        member: ClassMember
+    }
+}
+
+export interface MemberRemovedEvent {
+    type: 'MEMBER_REMOVED'
+    payload: {
+        className: string
+        member: ClassMember
+    }
+}
+
+export interface MemberUpdatedEvent {
+    type: 'MEMBER_UPDATED'
+    payload: {
+        className: string
+        member: ClassMember
+        oldName: string
+        newName: string
+    }
+}
+
+export interface OperationAddedEvent {
+    type: 'OPERATION_ADDED'
+    payload: {
+        className: string
+        operation: ClassOperation
+    }
+}
+
+export interface OperationRemovedEvent {
+    type: 'OPERATION_REMOVED'
+    payload: {
+        className: string
+        operation: ClassOperation
+    }
+}
+
+export interface OperationUpdatedEvent {
+    type: 'OPERATION_UPDATED'
+    payload: {
+        className: string
+        operation: ClassOperation
+        oldName: string
+        newName: string
+    }
+}
+
+export interface ParameterAddedEvent {
+    type: 'PARAMETER_ADDED'
+    payload: {
+        className: string
+        operationName: string
+        parameter: OperationParameter
+    }
+}
+
+export interface ParameterRemovedEvent {
+    type: 'PARAMETER_REMOVED'
+    payload: {
+        className: string
+        operationName: string
+        parameter: OperationParameter
+    }
+}
+
+export interface ParameterUpdatedEvent {
+    type: 'PARAMETER_UPDATED'
+    payload: {
+        className: string
+        operationName: string
+        parameter: OperationParameter
+    }
+}
+
+export interface BaseClassAddedEvent {
+    type: 'BASE_CLASS_ADDED'
+    payload: {
+        className: string
+        baseClassName: string
+    }
+}
+
+export interface BaseClassRemovedEvent {
+    type: 'BASE_CLASS_REMOVED'
+    payload: {
+        className: string
+        baseClassName: string
+    }
+}
+
+export interface BaseClassUpdatedEvent {
+    type: 'BASE_CLASS_UPDATED'
+    payload: {
+        className: string
+        baseClassName: string
+    }
+}
+
+export interface ImplementedInterfaceAddedEvent {
+    type: 'IMPLEMENTED_INTERFACE_ADDED'
+    payload: {
+        className: string
+        interfaceName: string
+    }
+}
+
+export interface ImplementedInterfaceRemovedEvent {
+    type: 'IMPLEMENTED_INTERFACE_REMOVED'
+    payload: {
+        className: string
+        interfaceName: string
+    }
+}
+
+export interface ImplementedInterfaceUpdatedEvent {
+    type: 'IMPLEMENTED_INTERFACE_UPDATED'
+    payload: {
+        className: string
+        interfaceName: string
+    }
+}
+
+export interface RelationshipAddedEvent {
+    type: 'RELATIONSHIP_ADDED'
+    payload: {
+        relationship: Relationship
+    }
+}
+
+export interface RelationshipRemovedEvent {
+    type: 'RELATIONSHIP_REMOVED'
+    payload: {
+        relationship: Relationship
+    }
+}
+
+export interface RelationshipUpdatedEvent {
+    type: 'RELATIONSHIP_UPDATED'
+    payload: {
+        relationship: Relationship
+    }
+}
+
+export type DomainEvent =
+    | TypeAddedEvent
+    | TypeRemovedEvent
+    | TypeUpdatedEvent
+    | MemberAddedEvent
+    | MemberRemovedEvent
+    | MemberUpdatedEvent
+    | OperationAddedEvent
+    | OperationRemovedEvent
+    | OperationUpdatedEvent
+    | ParameterAddedEvent
+    | ParameterRemovedEvent
+    | ParameterUpdatedEvent
+    | BaseClassAddedEvent
+    | BaseClassRemovedEvent
+    | BaseClassUpdatedEvent
+    | ImplementedInterfaceAddedEvent
+    | ImplementedInterfaceRemovedEvent
+    | ImplementedInterfaceUpdatedEvent
+    | RelationshipAddedEvent
+    | RelationshipRemovedEvent
+    | RelationshipUpdatedEvent
+
+
+
+/* ============================
    Domain Errors
 ============================ */
 
