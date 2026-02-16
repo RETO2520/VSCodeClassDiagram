@@ -1,6 +1,6 @@
-import type { Config } from 'tailwindcss'
-
-const config: Config = {
+//import type { Config } from 'tailwindcss'
+/** @type {import('tailwindcss-load-config').Config} */
+const config = {
     darkMode: ['class'],
     content: [
         // frontend source files

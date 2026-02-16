@@ -5,8 +5,7 @@ import { CliParser, CliCommand, AddTypeCommand, AddAttrCommand, AddMethodCommand
 import { DomainModel } from './DomainModel';
 import { HandlerRegistry } from './handler-registry';
 import { createHandlerRegistry } from './handlers/command-handlers';
-
-
+import { postMessage } from '../../frontend/src/bridge/vscode-bridge'; // postMessage をインポート
 //import * as vb from '../../frontend/src/bridge/vscode-bridge'; // postMessage をインポート
 
 const parser = new CliParser();
@@ -59,12 +58,14 @@ export function executeCommand(
         return model
     }
 
+    postMessage({ command: 'log', level: 'info', text: `Executing command: ${command.type}` });
 
     try {
         // ハンドラーにディスパッチ
         return registry.dispatch(command, model)
     } catch (error) {
-        console.error(`Error executing command: ${error}`)
+        postMessage({ command: 'log', level: 'error', text: `Error executing command: ${error}` });
+
         return model // エラーが発生しても元のモデルを返す
     }
 }

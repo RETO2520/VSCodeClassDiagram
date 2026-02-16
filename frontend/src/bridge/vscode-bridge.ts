@@ -17,6 +17,7 @@ export type WebviewToHostMessage =
     | { command: 'loadJson' }
     | { command: 'generateCode'; payload: { model: object; language: string } }
     | { command: 'showAlert'; text: string }
+    | { command: 'log'; level: 'debug' | 'info' | 'warn' | 'error'; text: string }
 
 /** Messages sent FROM the extension host TO the webview */
 export type HostToWebviewMessage =

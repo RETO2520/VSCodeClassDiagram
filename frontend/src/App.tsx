@@ -13,7 +13,7 @@ import type { ClassInfo } from '@/lib/class-diagram-types'
 import { createEmptyClass } from '@/lib/class-diagram-types'
 import { GripVertical, Undo2, Redo2 } from 'lucide-react'
 import { useVSCodeState } from './bridge/use-vscode'
-import { isVSCodeWebview } from './bridge/vscode-bridge'
+import { getVSCodeApi, isVSCodeWebview } from './bridge/vscode-bridge'
 import { CommandLine } from '@/components/command-line'
 import { parseCommand, executeAction } from '@/lib/command-executor'
 import { useCommandHistory } from '@/hooks/use-command-history' // 
@@ -118,6 +118,7 @@ export function App() {
     const lastX = useRef(0)
     // 履歴管理カスタムフック
     const commandHistory = useCommandHistory(vsCodeState.classes)
+
     // vsCodeState.classes の変更を commandHistory に同期
     useEffect(() => {
         commandHistory.setClasses(vsCodeState.classes);

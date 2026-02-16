@@ -33,7 +33,9 @@ export class ClassDiagramHandler {
             .register('showAlert', this.handleShowAlert.bind(this))
             .register('saveJson', this.handleSaveJson.bind(this))
             .register('loadJson', this.handleLoadJson.bind(this))
-            .register('generateCode', this.handleGenerateCode.bind(this));
+            .register('generateCode', this.handleGenerateCode.bind(this))
+            .register('log', this.handleLog.bind(this))
+            ;
     }
 
     public open(): void {
@@ -112,6 +114,26 @@ export class ClassDiagramHandler {
     }
 
     // --- Message Handlers ---
+    private async handleLog(msg: any, ctx: MessageContext): Promise<void> {
+        const level = msg.level || 'info';
+        const text = msg.text || '';
+
+        switch (level) {
+            case 'debug':
+                this.logger.debug(text);
+                break;
+            case 'warn':
+                this.logger.warn(text);
+                break;
+            case 'error':
+                this.logger.error(text);
+                break;
+            case 'info':
+            default:
+                this.logger.info(text);
+                break;
+        }
+    }
 
     private async handleRequestWorkspaceDiagram(msg: any, ctx: MessageContext): Promise<void> {
         const result = await this.fileService.findWorkspaceDiagram();
