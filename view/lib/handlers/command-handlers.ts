@@ -23,18 +23,6 @@ import { AddTypeCommand, AddAttrCommand, AddMethodCommand, AddParamCommand, SetB
 ============================ */
 
 /**
- * 可視性文字列をVisibility型にマッピング
- */
-export function mapVisibility(v: string): Visibility {
-    switch (v) {
-        case 'private': return 'private'
-        case 'protected': return 'protected'
-        case 'package': return 'package'
-        default: return 'public'
-    }
-}
-
-/**
  * クラスが存在しない場合は作成して返す
  */
 export function getOrCreateClass(
@@ -127,22 +115,16 @@ export class AddAttrHandler implements CommandHandler<AddAttrCommand> {
     readonly commandType = 'ADD_ATTR'
 
     execute(command: AddAttrCommand, model: DomainModel): DomainModel {
-        // クラスが存在しない場合は警告して終了
-        const targetClass = model.findClassByName(command.className)
-        if (!targetClass) {
-            console.warn(`Class not found: ${command.className}`)
-            return model
-        }
 
         // 属性を作成
         const newAttr = createEmptyMember()
         newAttr.name = command.name
         newAttr.type = command.dataType || 'string'
-        newAttr.visibility = mapVisibility(command.visibility)
+        newAttr.visibility = command.visibility
         newAttr.isStatic = command.modifier === 'static'
 
         // 属性を追加
-        return model.addMember(targetClass.id, newAttr)
+        return model.addMember(command.className, newAttr)
     }
 }
 
@@ -154,22 +136,16 @@ export class AddMethodHandler implements CommandHandler<AddMethodCommand> {
     readonly commandType = 'ADD_METHOD'
 
     execute(command: AddMethodCommand, model: DomainModel): DomainModel {
-        // クラスが存在しない場合は警告して終了
-        const targetClass = model.findClassByName(command.className)
-        if (!targetClass) {
-            console.warn(`Class not found: ${command.className}`)
-            return model
-        }
 
         // メソッドを作成
         const newOp = createEmptyOperation()
         newOp.name = command.name
         newOp.returnType = command.returnType || 'void'
-        newOp.visibility = mapVisibility(command.visibility)
+        newOp.visibility = command.visibility;
         newOp.isStatic = command.modifier === 'static'
 
         // メソッドを追加
-        return model.addOperation(targetClass.id, newOp)
+        return model.addOperation(command.className, newOp)
     }
 }
 
@@ -181,21 +157,7 @@ export class AddParamHandler implements CommandHandler<AddParamCommand> {
     readonly commandType = 'ADD_PARAM'
 
     execute(command: AddParamCommand, model: DomainModel): DomainModel {
-        // クラスが存在しない場合は警告して終了
-        const targetClass = model.findClassByName(command.className)
-        if (!targetClass) {
-            console.warn(`Class not found: ${command.className}`)
-            return model
-        }
 
-        // メソッドを検索
-        const operation = targetClass.operations.find(
-            op => op.name === command.methodName
-        )
-        if (!operation) {
-            console.warn(`Method not found: ${command.methodName} in ${command.className}`)
-            return model
-        }
 
         // パラメータを作成
         const newParam = createEmptyParameter()
@@ -203,7 +165,7 @@ export class AddParamHandler implements CommandHandler<AddParamCommand> {
         newParam.type = command.dataType || 'string'
 
         // パラメータを追加
-        return model.addParameter(targetClass.id, operation.id, newParam)
+        return model.addParameter(command.className, command.methodName, newParam)
     }
 }
 
@@ -260,48 +222,18 @@ export class RenameHandler implements CommandHandler<RenameCommand> {
 
     execute(command: RenameCommand, model: DomainModel): DomainModel {
         if (command.target === 'c') {
-            // クラス名変更
-            const targetClass = model.findClassByName(command.oldName)
-            if (!targetClass) {
-                console.warn(`Class not found: ${command.oldName}`)
-                return model
-            }
-            return model.renameClass(targetClass.id, command.newName)
-        }
-
-        // 属性またはメソッドの名前変更
-        if (!command.className) {
-            console.warn('className is required for attribute/method rename')
-            return model
-        }
-
-        const targetClass = model.findClassByName(command.className)
-        if (!targetClass) {
-            console.warn(`Class not found: ${command.className}`)
-            return model
+            return model.renameClass(command.oldName, command.newName)
         }
 
         if (command.target === 'a') {
-            // 属性の名前変更
-            const member = targetClass.members.find(m => m.name === command.oldName)
-            if (!member) {
-                console.warn(`Attribute not found: ${command.oldName}`)
-                return model
-            }
-            return model.updateMember(targetClass.id, member.id, m => ({
+            return model.updateMember(command.className, command.oldName, m => ({
                 ...m,
                 name: command.newName
             }))
         }
 
         if (command.target === 'm') {
-            // メソッドの名前変更
-            const operation = targetClass.operations.find(op => op.name === command.oldName)
-            if (!operation) {
-                console.warn(`Method not found: ${command.oldName}`)
-                return model
-            }
-            return model.updateOperation(targetClass.id, operation.id, op => ({
+            return model.updateOperation(command.className, command.oldName, op => ({
                 ...op,
                 name: command.newName
             }))
@@ -321,39 +253,17 @@ export class DeleteHandler implements CommandHandler<DeleteCommand> {
     execute(command: DeleteCommand, model: DomainModel): DomainModel {
         if (command.target === 'c') {
             // クラス削除
-            const targetClass = model.findClassByName(command.className)
-            if (!targetClass) {
-                console.warn(`Class not found: ${command.className}`)
-                return model
-            }
-            return model.removeClass(targetClass.id)
-        }
-
-        // 属性またはメソッドの削除
-        const targetClass = model.findClassByName(command.className)
-        if (!targetClass) {
-            console.warn(`Class not found: ${command.className}`)
-            return model
+            return model.removeClassByName(command.className)
         }
 
         if (command.target === 'a' && command.name) {
             // 属性削除
-            const member = targetClass.members.find(m => m.name === command.name)
-            if (!member) {
-                console.warn(`Attribute not found: ${command.name}`)
-                return model
-            }
-            return model.removeMember(targetClass.id, member.id)
+            return model.removeMember(command.className, command.name)
         }
 
         if (command.target === 'm' && command.name) {
             // メソッド削除
-            const operation = targetClass.operations.find(op => op.name === command.name)
-            if (!operation) {
-                console.warn(`Method not found: ${command.name}`)
-                return model
-            }
-            return model.removeOperation(targetClass.id, operation.id)
+            return model.removeOperation(command.className, command.name)
         }
 
         return model

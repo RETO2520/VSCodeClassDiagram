@@ -1,9 +1,14 @@
+
 import { ClassInfo, ClassKind, Visibility as UmlVisibility, createEmptyClass, createEmptyMember, createEmptyOperation, createEmptyParameter } from './class-diagram-types';
 import { CliParser, CliCommand, AddTypeCommand, AddAttrCommand, AddMethodCommand, AddParamCommand, SetBaseCommand, SetImplCommand, RenameCommand, DeleteCommand } from './CliParser';
 
 import { DomainModel } from './DomainModel';
 import { HandlerRegistry } from './handler-registry';
 import { createHandlerRegistry } from './handlers/command-handlers';
+
+
+//import * as vb from '../../frontend/src/bridge/vscode-bridge'; // postMessage をインポート
+
 const parser = new CliParser();
 /**
  * グローバルハンドラーレジストリ
@@ -59,8 +64,8 @@ export function executeCommand(
         // ハンドラーにディスパッチ
         return registry.dispatch(command, model)
     } catch (error) {
-        console.error(`Failed to execute command: ${command.type}`, error)
-        throw error
+        console.error(`Error executing command: ${error}`)
+        return model // エラーが発生しても元のモデルを返す
     }
 }
 /**

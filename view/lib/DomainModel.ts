@@ -414,8 +414,8 @@ export class DomainModel {
     /**
      * クラス名を変更
      */
-    renameClass(classId: string, newName: string): DomainModel {
-        return this.updateClass(classId, cls => ({ ...cls, name: newName }))
+    renameClass(oldClassName: string, newName: string): DomainModel {
+        return this.updateClassByName(oldClassName, cls => ({ ...cls, name: newName }))
     }
 
     /**
@@ -496,8 +496,12 @@ export class DomainModel {
     /**
      * メンバーを追加
      */
-    addMember(classId: string, member: ClassMember): DomainModel {
-        return this.updateClass(classId, cls => {
+    addMember(className: string, member: ClassMember): DomainModel {
+        const targetClass = this.findClassByName(className)
+        if (!targetClass) {
+            throw new DomainRuleViolation(`Class with name ${className} not found`)
+        }
+        return this.updateClass(targetClass.id, cls => {
             if (cls.members.some(m => m.name === member.name)) {
                 throw new DomainRuleViolation(`Member "${member.name}" already exists`)
             }
@@ -511,8 +515,16 @@ export class DomainModel {
     /**
      * メンバーを削除
      */
-    removeMember(classId: string, memberId: string): DomainModel {
-        return this.updateClass(classId, cls => ({
+    removeMember(className: string, memberName: string): DomainModel {
+        const targetClass = this.findClassByName(className)
+        if (!targetClass) {
+            throw new DomainRuleViolation(`Class with name ${className} not found`)
+        }
+        const memberId = targetClass.members.find(m => m.name === memberName)?.id
+        if (!memberId) {
+            throw new DomainRuleViolation(`Member with name ${memberName} not found in class ${className}`)
+        }
+        return this.updateClass(targetClass.id, cls => ({
             ...cls,
             members: cls.members.filter(m => m.id !== memberId)
         }))
@@ -522,27 +534,35 @@ export class DomainModel {
      * メンバーを更新
      */
     updateMember(
-        classId: string,
-        memberId: string,
+        className: string,
+        memberName: string,
         updater: (m: ClassMember) => ClassMember
     ): DomainModel {
-        return this.updateClass(classId, cls => {
-            const member = cls.members.find(m => m.id === memberId)
+        const targetClass = this.findClassByName(className)
+        if (!targetClass) {
+            throw new DomainRuleViolation(`Class with name ${className} not found`)
+        }
+        const targetMember = targetClass.members.find(m => m.name === memberName)
+        if (!targetMember) {
+            throw new DomainRuleViolation(`Member with name ${memberName} not found in class ${className}`)
+        }
+        return this.updateClassByName(className, cls => {
+            const member = cls.members.find(m => m.id === targetMember.id)
             if (!member) {
-                throw new DomainRuleViolation(`Member with id ${memberId} not found`)
+                throw new DomainRuleViolation(`Member with id ${targetMember.id} not found`)
             }
 
             const updated = updater({ ...member })
 
             // 名前の重複チェック
             if (updated.name !== member.name &&
-                cls.members.some(m => m.id !== memberId && m.name === updated.name)) {
+                cls.members.some(m => m.id !== targetMember.id && m.name === updated.name)) {
                 throw new DomainRuleViolation(`Member name "${updated.name}" already exists`)
             }
 
             return {
                 ...cls,
-                members: cls.members.map(m => m.id === memberId ? updated : m)
+                members: cls.members.map(m => m.id === targetMember.id ? updated : m)
             }
         })
     }
@@ -554,8 +574,12 @@ export class DomainModel {
     /**
      * 操作を追加
      */
-    addOperation(classId: string, operation: ClassOperation): DomainModel {
-        return this.updateClass(classId, cls => {
+    addOperation(className: string, operation: ClassOperation): DomainModel {
+        const targetClass = this.findClassByName(className)
+        if (!targetClass) {
+            throw new DomainRuleViolation(`Class with name ${className} not found`)
+        }
+        return this.updateClass(targetClass.id, cls => {
             if (cls.operations.some(op => op.name === operation.name)) {
                 throw new DomainRuleViolation(`Operation "${operation.name}" already exists`)
             }
@@ -569,8 +593,16 @@ export class DomainModel {
     /**
      * 操作を削除
      */
-    removeOperation(classId: string, operationId: string): DomainModel {
-        return this.updateClass(classId, cls => ({
+    removeOperation(className: string, operationName: string): DomainModel {
+        const targetClass = this.findClassByName(className)
+        if (!targetClass) {
+            throw new DomainRuleViolation(`Class with name ${className} not found`)
+        }
+        const operationId = targetClass.operations.find(op => op.name === operationName)?.id
+        if (!operationId) {
+            throw new DomainRuleViolation(`Operation with name ${operationName} not found in class ${className}`)
+        }
+        return this.updateClass(targetClass.id, cls => ({
             ...cls,
             operations: cls.operations.filter(op => op.id !== operationId)
         }))
@@ -580,14 +612,22 @@ export class DomainModel {
      * 操作を更新
      */
     updateOperation(
-        classId: string,
-        operationId: string,
+        className: string,
+        operationName: string,
         updater: (op: ClassOperation) => ClassOperation
     ): DomainModel {
-        return this.updateClass(classId, cls => {
-            const operation = cls.operations.find(op => op.id === operationId)
+        const targetClass = this.findClassByName(className)
+        if (!targetClass) {
+            throw new DomainRuleViolation(`Class with name ${className} not found`)
+        }
+        const targetOperation = targetClass.operations.find(op => op.name === operationName)
+        if (!targetOperation) {
+            throw new DomainRuleViolation(`Operation with name ${operationName} not found in class ${className}`)
+        }
+        return this.updateClass(targetClass.id, cls => {
+            const operation = cls.operations.find(op => op.id === targetOperation.id)
             if (!operation) {
-                throw new DomainRuleViolation(`Operation with id ${operationId} not found`)
+                throw new DomainRuleViolation(`Operation with id ${targetOperation.id} not found`)
             }
 
             const updated = updater({
@@ -597,13 +637,13 @@ export class DomainModel {
 
             // 名前の重複チェック
             if (updated.name !== operation.name &&
-                cls.operations.some(op => op.id !== operationId && op.name === updated.name)) {
+                cls.operations.some(op => op.id !== targetOperation.id && op.name === updated.name)) {
                 throw new DomainRuleViolation(`Operation name "${updated.name}" already exists`)
             }
 
             return {
                 ...cls,
-                operations: cls.operations.map(op => op.id === operationId ? updated : op)
+                operations: cls.operations.map(op => op.id === targetOperation.id ? updated : op)
             }
         })
     }
@@ -612,11 +652,19 @@ export class DomainModel {
      * パラメータを追加
      */
     addParameter(
-        classId: string,
-        operationId: string,
+        className: string,
+        operationName: string,
         parameter: OperationParameter
     ): DomainModel {
-        return this.updateOperation(classId, operationId, op => {
+        const targetClass = this.findClassByName(className)
+        if (!targetClass) {
+            throw new DomainRuleViolation(`Class with name ${className} not found`)
+        }
+        const targetOperation = targetClass.operations.find(op => op.name === operationName)
+        if (!targetOperation) {
+            throw new DomainRuleViolation(`Operation with name ${operationName} not found in class ${className}`)
+        }
+        return this.updateOperation(targetClass.name, targetOperation.name, op => {
             if (op.parameters.some(p => p.name === parameter.name)) {
                 throw new DomainRuleViolation(`Parameter "${parameter.name}" already exists`)
             }
