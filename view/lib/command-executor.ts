@@ -74,7 +74,9 @@ export function executeCommand(command: CliCommand | null, model: DomainModel): 
                     postMessage({ command: 'log', level: 'warn', text: `Language not supported for generate-code: ${lang}` });
                     return { model, events: [] };
                 }
-                postMessage({ command: 'generateCode', payload: { model: model.getClasses(), language: lang, path: outPath } as any });
+                // Use the same export shape as the GUI `Generate` button
+                // (frontend uses `modelForExport(service.getModel().getClasses())`)
+                postMessage({ command: 'generateCode', payload: { model: modelForExport(model.getClasses()), language: lang } as any });
                 return { model, events: [] };
             }
 
