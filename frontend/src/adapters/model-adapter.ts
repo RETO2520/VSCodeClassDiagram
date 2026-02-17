@@ -14,7 +14,7 @@ import type {
     Visibility,
     MemberRelationshipType,
     OperationParameter,
-} from '@/lib/class-diagram-types'
+} from '../../../view/lib/class-diagram-types'
 
 // ==============================
 // media/ side types (matching media/types.d.ts)

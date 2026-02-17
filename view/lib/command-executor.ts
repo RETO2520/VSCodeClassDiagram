@@ -6,6 +6,7 @@ import { CliParser, CliCommand } from './CliParser';
 import { DomainModel } from './DomainModel';
 import { HandlerResult } from './handler-registry';
 import { postMessage } from '../../frontend/src/bridge/vscode-bridge'; // 調整が必要ならパス変更
+import { modelForExport } from '../../frontend/src/adapters/model-adapter';
 import { cliCommandToInput } from './adapters/cli-adapter';
 import { ClassDiagramService } from './application/ClassDiagramService';
 
@@ -85,7 +86,8 @@ export function executeCommand(command: CliCommand | null, model: DomainModel): 
             }
             case 'SAVE': {
                 // trigger save; host will handle destination
-                postMessage({ command: 'saveJson', payload: model.getClasses() as any });
+                // Use same export shape as GUI Save JSON (media-style model)
+                postMessage({ command: 'saveJson', payload: modelForExport(model.getClasses()) as any });
                 return { model, events: [] };
             }
             case 'LOAD': {
