@@ -21,7 +21,7 @@ export type WebviewToHostMessage =
 
 /** Messages sent FROM the extension host TO the webview */
 export type HostToWebviewMessage =
-    | { command: 'loadedJson'; payload: { classes: unknown[] } }
+    | { command: 'loadedJson'; payload: unknown }
     | { command: 'changedPrimitiveTypes'; primitiveTypes: string[] }
 
 // ==============================

@@ -34,7 +34,10 @@ export function useVSCodeMessages(callbacks: {
         const cleanup = onMessage((msg: HostToWebviewMessage) => {
             switch (msg.command) {
                 case 'loadedJson': {
-                    const mediaModel = migrateMediaModel(msg.payload as MediaDiagramModel)
+                    // payload may be either { classes: [...] } or the classes array itself
+                    const raw = (msg as any).payload
+                    const mediaModelInput = Array.isArray(raw) ? { classes: raw } : raw
+                    const mediaModel = migrateMediaModel(mediaModelInput as MediaDiagramModel)
                     const classes = mediaDiagramToView(mediaModel)
                     callbacksRef.current.onLoadedJson(classes)
                     break
