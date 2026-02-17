@@ -644,6 +644,68 @@ export class DomainModel {
         return DomainModel.from(newClasses)
     }
 
+
+    /**
+ * メンバー（属性）の可視性を変更
+ */
+    changeMemberVisibility(
+        className: string,
+        memberName: string,
+        visibility: Visibility
+    ): DomainModel {
+        return this.updateMember(className, memberName, m => ({
+            ...m,
+            visibility,
+        }))
+    }
+
+    /**
+     * メンバー（属性）のモディファイアを変更
+     * modifier: 's' = static, 'a' = abstract, null = none
+     */
+    changeMemberModifier(
+        className: string,
+        memberName: string,
+        modifier: 'static' | 'abstract' | null
+    ): DomainModel {
+        return this.updateMember(className, memberName, m => ({
+            ...m,
+            isStatic: modifier === 'static',
+            isAbstract: modifier === 'abstract',
+        }))
+    }
+
+    /**
+     * オペレーション（メソッド）の可視性を変更
+     */
+    changeOperationVisibility(
+        className: string,
+        operationName: string,
+        visibility: Visibility
+    ): DomainModel {
+        return this.updateOperation(className, operationName, op => ({
+            ...op,
+            visibility,
+        }))
+    }
+
+    /**
+     * オペレーション（メソッド）のモディファイアを変更
+     * modifier: 's' = static, 'a' = abstract, 'v' = virtual, null = none
+     */
+    changeOperationModifier(
+        className: string,
+        operationName: string,
+        modifier: 'static' | 'abstract' | 'virtual' | null
+    ): DomainModel {
+        return this.updateOperation(className, operationName, op => ({
+            ...op,
+            isStatic: modifier === 'static',
+            isAbstract: modifier === 'abstract',
+            isVirtual: modifier === 'virtual',
+        }))
+    }
+
     /* ============================
        Inheritance Management
     ============================ */

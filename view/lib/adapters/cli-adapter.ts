@@ -32,6 +32,7 @@ import type {
     LoadInput,
     ClearInput,
     ListInput,
+    ChangeModifierInput,
     /* union type of all application inputs for return typing */
     /* If you have a common union type (e.g. ApplicationInput), import it instead */
 } from '../application/dtos';
@@ -225,6 +226,17 @@ function toClearInput(cmd: CliCommand): ClearInput { return {} }
 function toListInput(cmd: any): ListInput { return { subject: (cmd as any).subject } }
 
 function toGenerateCodeInput(cmd: any): any { return { language: (cmd as any).language, path: (cmd as any).path } }
+function toChangeModifierInput(cmd: any): ChangeModifierInput {
+    return {
+        target: cmd.target === 'a' ? 'member' : 'operation',
+        className: (cmd as any).className,
+        memberName: (cmd as any).memberName,
+        patch: {
+            ...(cmd.visibility !== null && { visibility: cmd.visibility }),
+            ...(cmd.modifierSpecified && { modifier: cmd.modifier }),
+        },
+    }
+}
 
 registerTransformer('HELP', (c) => toHelpInput(c));
 registerTransformer('SELECT', (c) => toSelectInput(c));
@@ -235,6 +247,9 @@ registerTransformer('SAVE', (c) => toSaveInput(c));
 registerTransformer('LOAD', (c) => toLoadInput(c));
 registerTransformer('CLEAR', (c) => toClearInput(c));
 registerTransformer('LIST', (c) => toListInput(c));
+registerTransformer('UNDO', (c) => null); // handled specially in command executor
+registerTransformer('REDO', (c) => null); // handled specially in command executor
+registerTransformer('CHANGE_MODIFIER', (c) => toChangeModifierInput(c));
 
 /* ---------- Usage note ----------
   - To extend: import { registerTransformer } and call with new type / transformer.

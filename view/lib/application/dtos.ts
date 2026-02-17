@@ -78,6 +78,18 @@ export interface AddParameterInput {
     parameter: OperationParameter;
 }
 
+export interface ChangeModifierInput {
+    target: 'member' | 'operation';
+    classId?: string;
+    className: string;
+    memberName: string;
+    patch: {
+        visibility?: string; // '+' | '-' | '#' | '~' | null
+        modifier: string | null | undefined; // 's' | 'a' | 'v' | null
+    };
+
+}
+
 /* ---------- Inheritance / Interface ---------- */
 export interface SetBaseInput {
     classId?: string;

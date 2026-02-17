@@ -201,6 +201,15 @@ These commands are convenience/operation commands for UI and persistence.
 <redo> ::= "redo:
   ; Redo last undone action
 
+<modify> ::= "modify" <modify-target>
+
+<modify-target> ::= "a" <identifier> <identifier> <mod-spec>
+                  | "m" <identifier> <identifier> <mod-spec>
+
+<mod-spec> ::= <visibility>? <modifier>?
+             ; visibility: + | - | # | ~
+             ; modifier:   s | a | v (メソッドのみ v が有効)
+  
 Examples:
   help
   sel User
@@ -212,6 +221,12 @@ Examples:
   load /path/to/save.json
   clear
   list classes
+  undo
+  redo
+  mod a User name +s    ; nameをpublic staticに変更
+  mod a User name +     ; 可視性だけ変更
+  mod a User name s     ; モディファイアだけ変更
+  mod m User login #v   ; loginをprotected virtualに変更
 
 ========================================
   End of Specification

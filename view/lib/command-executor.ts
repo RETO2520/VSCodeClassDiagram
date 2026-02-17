@@ -9,6 +9,7 @@ import { postMessage } from '../../frontend/src/bridge/vscode-bridge'; // 調整
 import { modelForExport } from '../../frontend/src/adapters/model-adapter';
 import { cliCommandToInput } from './adapters/cli-adapter';
 import { ClassDiagramService } from './application/ClassDiagramService';
+import { ChangeModifierInput } from './application/dtos';
 
 // parser はここで保持してパース専用に使う（statefulである必要はないが再利用は OK）
 const parser = new CliParser();
@@ -112,6 +113,12 @@ export function executeCommand(command: CliCommand | null, model: DomainModel): 
                 const ev = { type: 'MODEL_REDO' };
                 return { model: service.getModel(), events: [ev] } as any;
             }
+
+            case 'CHANGE_MODIFIER': {
+                // This command is CLI-specific and has no direct DTO equivalent, so we handle it here
+                return service.applyChangeModifierFromCli(inputDto as any);
+            }
+
             case 'LIST': {
                 const subject = (inputDto as any).subject;
                 if (!subject || subject === 'classes') {
@@ -177,6 +184,11 @@ export function executeCommand(command: CliCommand | null, model: DomainModel): 
         // UpdateClassInput (unlikely from CLI, but guard)
         if ((inputDto as any).patch && (inputDto as any).classId) {
             return service.applyUpdateClass(inputDto as any);
+        }
+
+        // ChangeModifierInput (from CLI)
+        if (inputDto as ChangeModifierInput) {
+            return service.applyChangeModifierFromCli(inputDto as any);
         }
 
         // Unknown DTO shape

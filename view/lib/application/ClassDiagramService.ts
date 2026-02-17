@@ -11,10 +11,11 @@ import {
     RenameInput,
     DeleteInput,
     UpdateClassInput,
-    AddRelationshipInput
+    AddRelationshipInput,
+    ChangeModifierInput
 } from './dtos'
 import { HandlerResult } from '../handler-registry'
-import type { ClassInfo, ClassKind, ClassMember, ClassOperation, OperationParameter, Relationship } from '../class-diagram-types'
+import type { ClassInfo, ClassKind, ClassMember, ClassOperation, OperationParameter, Relationship, Visibility } from '../class-diagram-types'
 
 /**
  * Optional EventDispatcher interface - if you have one.
@@ -186,6 +187,7 @@ export class ClassDiagramService {
         this.dispatcher?.dispatchAll([event])
         return { model: this.model, events: [event] }
     }
+
 
     applySetBase(input: SetBaseInput): HandlerResult {
         // resolve class and base by id or name
@@ -455,6 +457,53 @@ export class ClassDiagramService {
         return { model: this.model, events: [ev] }
     }
 
+    applyChangeModifierFromCli(input: ChangeModifierInput): HandlerResult {
+        console.log(`applyChangeModifierFromCli: ${input.className}.${input.memberName} (${input.target}) visibility=${input.patch.visibility} modifier=${input.patch.modifier}`); // log input for debugging
+        const target = input.target;
+        let currentModel = this.model
+        if (input.target === 'member') {
+            // 可視性の変更
+            if (input.patch.visibility !== undefined) {
+                currentModel = currentModel.changeMemberVisibility(
+                    input.className,
+                    input.memberName,
+                    input.patch.visibility as Visibility
+                )
+            }
+            // モディファイアの変更
+            currentModel = currentModel.changeMemberModifier(
+                input.className,
+                input.memberName,
+                input.patch.modifier as 'static' | 'abstract' | null
+            )
+
+        } else {
+            // 可視性の変更
+            if (input.patch.visibility !== undefined) {
+                currentModel = currentModel.changeOperationVisibility(
+                    input.className,
+                    input.memberName,
+                    input.patch.visibility as Visibility
+                )
+            }
+            // モディファイアの変更
+            currentModel = currentModel.changeOperationModifier(
+                input.className,
+                input.memberName,
+                (input.patch.modifier ?? null) as 'static' | 'abstract' | 'virtual' | null
+            )
+
+        }
+
+        const event: DomainEvent = {
+            type: 'MODIFIER_CHANGED',
+            payload: { target, className: input.className, memberName: input.memberName, visibility: input.patch.visibility ?? null, modifier: input.patch.modifier ?? null }
+        }
+        this.model = currentModel
+        this.notifyModelChanged();
+        this.dispatcher?.dispatchAll([event])
+        return { model: this.model, events: [event] }
+    }
     /* =====================
        Relationship helpers - if DomainModel lacks addRelationship, keep minimal support
        (If DomainModel supports addRelationship/removeRelationship/updateRelationship, use them)

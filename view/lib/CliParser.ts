@@ -21,6 +21,7 @@ export type CliCommandType =
     | 'CLEAR'
     | 'UNDO'
     | 'REDO'
+    | 'CHANGE_MODIFIER'
     | 'LIST';
 
 export type TypePrefix = 'c' | 'ac' | 'i' | 's' | 'e';
@@ -150,6 +151,16 @@ export interface ListCommand extends CliCommand {
     subject?: 'classes' | 'commands';
 }
 
+export interface ChangeModifierCommand extends CliCommand {
+    type: 'CHANGE_MODIFIER';
+    target: 'a' | 'm';        // attribute or method
+    className: string;
+    memberName: string;
+    visibility: string | null;
+    modifier: string | null;
+    modifierSpecified: boolean; // true if a modifier was specified (even if it's just "change-modifier a Class attr +")
+}
+
 export class CliParser {
     public parse(input: string): CliCommand | null {
         const line = input.trim();
@@ -222,6 +233,8 @@ export class CliParser {
                 return this.parseUndo(line, parts);
             case 'redo':
                 return this.parseRedo(line, parts);
+            case 'change-modifier':
+                return this.parseChangeModifier(line, parts);
             case 'list':
                 return this.parseList(line, parts);
             default:
@@ -292,6 +305,51 @@ export class CliParser {
             return { type: 'LIST', raw, subject } as ListCommand;
         }
         return null;
+    }
+
+    private parseChangeModifier(raw: string, parts: string[]): ChangeModifierCommand | null {
+        const kind = parts[0].toLowerCase();
+        const target = parts[1].toLowerCase() as 'a' | 'm';
+        const className = parts[2];
+        const memberName = parts[3];
+        const modifierSpec = parts[4];
+
+        if (!kind || !target || !className || !memberName || !modifierSpec) {
+            // 引数不足
+            return null;
+        }
+
+        const VISIBILITY = new Set(['+', '-', '#', '~']);
+        const MODIFIER_ATTR = new Set(['s', 'a']);
+        const MODIFIER_METHOD = new Set(['s', 'a', 'v']);
+
+        let visibility: string | null = null;
+        let modifier: string | null = null;
+        // modSpec をパース: "+s", "+", "s", "#v" など
+        let rest = modifierSpec;
+        if (VISIBILITY.has(rest[0])) {
+            visibility = this.parseVisibility(rest[0]);
+            rest = rest.slice(1); // 残りはモディファイア
+        }
+        if (rest.length > 0) {
+            const validMod = target === 'm' ? MODIFIER_METHOD : MODIFIER_ATTR;
+            if (validMod.has(rest)) {
+                modifier = this.parseModifier(rest);
+            } else {
+                return null; // 不正なモディファイア
+            }
+        }
+
+        return {
+            type: 'CHANGE_MODIFIER',
+            raw,
+            target,
+            className,
+            memberName,
+            visibility,
+            modifier,
+            modifierSpecified: rest.length > 0 || /* 元々修飾子が書かれていた */ modifier !== null
+        };
     }
 
     private parseAddType(raw: string, parts: string[]): AddTypeCommand | null {
