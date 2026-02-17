@@ -174,9 +174,11 @@ These commands are convenience/operation commands for UI and persistence.
 <select> ::= "sel" <identifier>
   ; Selects/focuses a class by name in the UI
 
-<export> ::= "export" <format>? <identifier>?
-<format> ::= "json" | "svg" | "png" | "plantuml"
-  ; Export the whole diagram or a single class in a given format
+<generate-code> ::= "generate-code" <language> <path>?
+<language> ::= "csharp" | "java" | "ts" | "rust" | "cpp"
+  ; Generate source code for the diagram in the specified language.
+  ; First argument: language (supported: C#, Java, TypeScript, Rust, C++)
+  ; Second argument (optional): output path for generated code
 
 <import> ::= "import" <format> <path>
   ; Import diagram/data from a given path in the specified format
@@ -196,8 +198,8 @@ These commands are convenience/operation commands for UI and persistence.
 Examples:
   help
   sel User
-  export json
-  export svg Admin
+  generate-code csharp ./out
+  generate-code ts ./src/generated
   import json /path/to/file.json
   save
   save /path/to/save.json

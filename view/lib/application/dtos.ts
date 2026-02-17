@@ -135,6 +135,11 @@ export interface ExportInput {
     target?: string; // optional class name
 }
 
+export interface GenerateCodeInput {
+    language: 'csharp' | 'java' | 'ts' | 'rust' | 'cpp';
+    path?: string;
+}
+
 export interface ImportInput {
     format: string;
     path: string;

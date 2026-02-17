@@ -26,6 +26,7 @@ import type {
     HelpInput,
     SelectInput,
     ExportInput,
+    GenerateCodeInput,
     ImportInput,
     SaveInput,
     LoadInput,
@@ -154,6 +155,7 @@ export type ApplicationInput =
     HelpInput |
     SelectInput |
     ExportInput |
+    GenerateCodeInput |
     ImportInput |
     SaveInput |
     LoadInput |
@@ -222,9 +224,12 @@ function toLoadInput(cmd: any): LoadInput { return { path: (cmd as any).path } }
 function toClearInput(cmd: CliCommand): ClearInput { return {} }
 function toListInput(cmd: any): ListInput { return { subject: (cmd as any).subject } }
 
+function toGenerateCodeInput(cmd: any): any { return { language: (cmd as any).language, path: (cmd as any).path } }
+
 registerTransformer('HELP', (c) => toHelpInput(c));
 registerTransformer('SELECT', (c) => toSelectInput(c));
 registerTransformer('EXPORT', (c) => toExportInput(c));
+registerTransformer('GENERATE_CODE', (c) => toGenerateCodeInput(c));
 registerTransformer('IMPORT', (c) => toImportInput(c));
 registerTransformer('SAVE', (c) => toSaveInput(c));
 registerTransformer('LOAD', (c) => toLoadInput(c));

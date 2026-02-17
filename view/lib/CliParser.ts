@@ -14,7 +14,7 @@ export type CliCommandType =
     | 'RELATION'
     | 'HELP'
     | 'SELECT'
-    | 'EXPORT'
+    | 'GENERATE_CODE'
     | 'IMPORT'
     | 'SAVE'
     | 'LOAD'
@@ -108,10 +108,11 @@ export interface SelectCommand extends CliCommand {
     className: string;
 }
 
-export interface ExportCommand extends CliCommand {
-    type: 'EXPORT';
-    format?: string;
-    target?: string; // optional class name to export
+
+export interface GenerateCodeCommand extends CliCommand {
+    type: 'GENERATE_CODE';
+    language: string; // csharp | java | ts | rust | cpp
+    path?: string;
 }
 
 export interface ImportCommand extends CliCommand {
@@ -197,8 +198,8 @@ export class CliParser {
                 return this.parseHelp(line, parts);
             case 'sel':
                 return this.parseSelect(line, parts);
-            case 'export':
-                return this.parseExport(line, parts);
+            case 'generate-code':
+                return this.parseGenerateCode(line, parts);
             case 'import':
                 return this.parseImport(line, parts);
             case 'save':
@@ -223,13 +224,23 @@ export class CliParser {
         return { type: 'SELECT', raw, className: parts.slice(1).join(' ') };
     }
 
-    private parseExport(raw: string, parts: string[]): ExportCommand | null {
-        // export <format>? <identifier>?
-        if (parts.length === 1) return { type: 'EXPORT', raw };
-        if (parts.length === 2) {
-            return { type: 'EXPORT', raw, format: parts[1] };
-        }
-        return { type: 'EXPORT', raw, format: parts[1], target: parts.slice(2).join(' ') };
+
+    private parseGenerateCode(raw: string, parts: string[]): GenerateCodeCommand | null {
+        // generate-code <language> <path>?
+        // Require at least language
+        if (parts.length < 2) return null;
+        const langRaw = parts[1].toLowerCase();
+        // Normalize common aliases
+        const map: Record<string, string> = {
+            'c#': 'csharp', 'csharp': 'csharp', 'cs': 'csharp',
+            'java': 'java',
+            'ts': 'ts', 'typescript': 'ts',
+            'rust': 'rust',
+            'c++': 'cpp', 'cpp': 'cpp'
+        };
+        const language = map[langRaw] || langRaw;
+        const path = parts.length >= 3 ? parts.slice(2).join(' ') : undefined;
+        return { type: 'GENERATE_CODE', raw, language, path };
     }
 
     private parseImport(raw: string, parts: string[]): ImportCommand | null {

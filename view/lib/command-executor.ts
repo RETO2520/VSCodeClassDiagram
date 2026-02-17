@@ -50,7 +50,7 @@ export function executeCommand(command: CliCommand | null, model: DomainModel): 
         // Handle utility commands explicitly by command.type
         switch (command.type) {
             case 'HELP': {
-                const helpText = 'Commands: c/ac/i/s/e, a, m, p, base, impl, ren, del, sel, export, import, save, load, clear, list';
+                const helpText = 'Commands: c/ac/i/s/e, a, m, p, base, impl, ren, del, sel, generate-code, import, save, load, clear, list';
                 postMessage({ command: 'showAlert', text: helpText });
                 return { model, events: [] };
             }
@@ -61,21 +61,23 @@ export function executeCommand(command: CliCommand | null, model: DomainModel): 
                 const ev = { type: 'UI_SELECT', payload: { className } };
                 return { model, events: [ev] } as any;
             }
-            case 'EXPORT': {
-                const fmt = (inputDto as any).format;
-                // JSON export -> reuse saveJson message
-                if (!fmt || fmt === 'json') {
-                    postMessage({ command: 'saveJson', payload: model.getClasses() as any });
+            case 'GENERATE_CODE': {
+                const lang = (inputDto as any).language;
+                const outPath = (inputDto as any).path;
+                const allowed = new Set(['csharp', 'java', 'ts', 'rust', 'cpp']);
+                if (!lang) {
+                    postMessage({ command: 'log', level: 'warn', text: `generate-code requires a language argument` });
                     return { model, events: [] };
                 }
-                if (fmt === 'plantuml') {
-                    postMessage({ command: 'generateCode', payload: { model: model.getClasses(), language: 'plantuml' } as any });
+                if (!allowed.has(lang)) {
+                    postMessage({ command: 'log', level: 'warn', text: `Language not supported for generate-code: ${lang}` });
                     return { model, events: [] };
                 }
-                // Unsupported direct export: log
-                postMessage({ command: 'log', level: 'warn', text: `Export format not supported: ${fmt}` });
+                postMessage({ command: 'generateCode', payload: { model: model.getClasses(), language: lang, path: outPath } as any });
                 return { model, events: [] };
             }
+
+
             case 'IMPORT': {
                 // request host to load JSON (host handles file picker)
                 postMessage({ command: 'loadJson' });
