@@ -19,8 +19,8 @@ interface UseCommandHistoryResult {
     history: HistoryEntry[];
     redoStack: HistoryEntry[];
     executeCommand: (command: CliCommand) => HandlerResult | undefined;
-    undo: () => void;
-    redo: () => void;
+    undo: () => HandlerResult | undefined;
+    redo: () => HandlerResult | undefined;
     canUndo: boolean;
     canRedo: boolean;
     setClasses: (updaterOrClasses: ClassInfo[] | ((prev: ClassInfo[]) => ClassInfo[])) => void;  // 互換性用
@@ -77,7 +77,7 @@ export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandH
     const undo = useCallback(() => {
         if (history.length === 0) {
             console.log('Nothing to undo');
-            return;
+            return undefined;
         }
 
         const lastEntry = history[history.length - 1];
@@ -97,6 +97,8 @@ export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandH
         const restored = DomainModel.from(lastEntry.prevState);
         setModel(restored);
         modelRef.current = restored;
+
+        return { model: restored, events: lastEntry.result?.events ?? [] } as HandlerResult;
     }, [history, model]);
 
     /**
@@ -105,7 +107,7 @@ export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandH
     const redo = useCallback(() => {
         if (redoStack.length === 0) {
             console.log('Nothing to redo');
-            return;
+            return undefined;
         }
 
         const redoEntry = redoStack[redoStack.length - 1];
@@ -125,11 +127,10 @@ export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandH
 
         // redoスタックから削除
         setRedoStack(prev => prev.slice(0, -1));
+
+        return newModelResult;
     }, [redoStack]);
-    /**
-         * 既存コードとの互換性用
-         * React の setClasses パターンをサポート
-         */
+
     /**
      * 既存コードとの互換性用
      * React の setClasses パターンをサポート

@@ -121,6 +121,21 @@ export function App({ service }: { service: ClassDiagramService }) {
     // 履歴管理カスタムフック
     const commandHistory = useCommandHistory(vsCodeState.classes)
 
+    // Undo/Redo を実行した後、共有 service を同期するためのラッパー
+    const handleUndo = useCallback(() => {
+        const res = commandHistory.undo();
+        if (res && res.model) {
+            service.replaceClassesFromArray(res.model.getClasses());
+        }
+    }, [commandHistory, service]);
+
+    const handleRedo = useCallback(() => {
+        const res = commandHistory.redo();
+        if (res && res.model) {
+            service.replaceClassesFromArray(res.model.getClasses());
+        }
+    }, [commandHistory, service]);
+
     // vsCodeState.classes の変更を commandHistory に同期
     useEffect(() => {
         commandHistory.setClasses(vsCodeState.classes);
@@ -210,19 +225,19 @@ export function App({ service }: { service: ClassDiagramService }) {
             // Ctrl+Z または Cmd+Z
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
                 e.preventDefault();
-                commandHistory.undo();
+                handleUndo();
             }
 
             // Ctrl+Y, Ctrl+Shift+Z または Cmd+Shift+Z
             if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
                 e.preventDefault();
-                commandHistory.redo();
+                handleRedo();
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [commandHistory]);
+    }, [handleUndo, handleRedo]);
 
     const handlePanelResizeStart = useCallback(
         (e: React.MouseEvent) => {
@@ -264,8 +279,8 @@ export function App({ service }: { service: ClassDiagramService }) {
                 onSaveJson={saveJson}
                 onLoadJson={loadJson}
                 onGenerate={handleGenerate}
-                onUndo={commandHistory.undo}
-                onRedo={commandHistory.redo}
+                onUndo={handleUndo}
+                onRedo={handleRedo}
                 canUndo={commandHistory.canUndo}
                 canRedo={commandHistory.canRedo}
                 historyCount={commandHistory.history.length}
