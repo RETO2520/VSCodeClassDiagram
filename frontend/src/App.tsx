@@ -188,9 +188,17 @@ export function App({ service }: { service: ClassDiagramService }) {
 
     const handleMoveClass = useCallback(
         (id: string, x: number, y: number) => {
-            setClasses((prev) => prev.map((c) => (c.id === id ? { ...c, x, y } : c)))
+            setClasses((prev) => {
+                const next = prev.map((c) => (c.id === id ? { ...c, x, y } : c))
+                try {
+                    service.replaceClassesFromArray(next)
+                } catch (e) {
+                    console.warn('Failed to sync to service', e)
+                }
+                return next
+            })
         },
-        [setClasses],
+        [setClasses, service],
     )
 
     const handleLanguageChange = useCallback(
