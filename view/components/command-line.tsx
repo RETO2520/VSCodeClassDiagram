@@ -65,6 +65,14 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
                 { id: 'impl', label: 'impl (Realization)', group: 'Relationships' },
                 { id: 'ren', label: 'ren (Rename)', group: 'Operations' },
                 { id: 'del', label: 'del (Delete)', group: 'Operations' },
+                { id: 'help', label: 'help (Show help)', group: 'Utilities' },
+                { id: 'sel', label: 'sel (Select class)', group: 'Utilities' },
+                { id: 'generate-code', label: 'generate-code (Codegen)', group: 'Utilities' },
+                { id: 'import', label: 'import (Import model)', group: 'Utilities' },
+                { id: 'save', label: 'save (Save model)', group: 'Utilities' },
+                { id: 'load', label: 'load (Load model)', group: 'Utilities' },
+                { id: 'clear', label: 'clear (Clear canvas)', group: 'Utilities' },
+                { id: 'list', label: 'list (List classes/commands)', group: 'Utilities' },
             ]
             return allCommands.filter(c => c.id.startsWith(currentPart)).map(c => ({
                 ...c,
@@ -167,6 +175,14 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
                 }))
         }
 
+        // generate-code <language>
+        if (cmd === 'generate-code' && currentIdx === 1) {
+            const langs = ['csharp', 'java', 'ts', 'rust', 'cpp']
+            return langs
+                .filter(l => l.startsWith(currentPart))
+                .map(l => ({ id: l, label: l, group: 'Languages', valueToInsert: l }))
+        }
+
         return []
     }
 
@@ -210,12 +226,13 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
 
                     const firstIdx = 0
                     setSelectedIdx(firstIdx)
-                    setInput(prefix + activeSuggestions[firstIdx].valueToInsert)
+                    // Insert completion and add a trailing space to advance to next arg
+                    setInput(prefix + activeSuggestions[firstIdx].valueToInsert + ' ')
                 } else {
                     // Continue cycling
                     const nextIdx = (selectedIdx + 1) % lockedSuggestions.length
                     setSelectedIdx(nextIdx)
-                    setInput(prefixAtLock + lockedSuggestions[nextIdx].valueToInsert)
+                    setInput(prefixAtLock + lockedSuggestions[nextIdx].valueToInsert + ' ')
                 }
             }
         } else if (e.key === 'ArrowUp') {
@@ -252,6 +269,7 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
     const onInputChange = (val: string) => {
         // If the change came from typing (not Tab cycling), reset cycling
         // We handle this in handleKeyDown usually, but this is a safety.
+        resetCycling()
         setInput(val)
     }
 
@@ -287,7 +305,7 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
                 </div>
                 <CommandList className={cn("max-h-[300px] overflow-y-auto", input === '' && "hidden")}>
                     <CommandEmpty>No suggestions found.</CommandEmpty>
-                    {['Types', 'Members', 'Operations', 'Relationships', 'Target Type', 'Classes', 'Visibility', 'Modifiers', 'Attributes', 'Methods'].map(g => {
+                    {['Types', 'Members', 'Operations', 'Relationships', 'Target Type', 'Classes', 'Visibility', 'Modifiers', 'Attributes', 'Methods', 'Utilities', 'Languages'].map(g => {
                         const groupItems = currentSuggestions.filter(s => s.group === g)
                         if (groupItems.length === 0) return null
                         return (
