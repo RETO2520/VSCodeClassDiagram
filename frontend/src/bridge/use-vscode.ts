@@ -4,6 +4,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { ClassInfo } from '@/lib/class-diagram-types'
+import { ClassDiagramService } from '../../../view/lib/application/ClassDiagramService'
+import { DomainModel } from '../../../view/lib/DomainModel'
 import {
     postMessage,
     onMessage,
@@ -50,23 +52,36 @@ export function useVSCodeMessages(callbacks: {
 /**
  * Hook that provides the full VSCode-integrated state and actions.
  */
-export function useVSCodeState() {
-    const [classes, setClasses] = useState<ClassInfo[]>([])
+export function useVSCodeState(service: ClassDiagramService) {
+    const [classes, setClassesInternal] = useState<ClassInfo[]>([])
     const [primitiveTypes, setPrimitiveTypes] = useState<string[]>([])
     const [selectedId, setSelectedId] = useState<string | null>(null)
 
     // Listen for messages from extension host
     useVSCodeMessages({
         onLoadedJson: (loadedClasses) => {
-            setClasses(loadedClasses)
-            if (loadedClasses.length > 0) {
-                setSelectedId(loadedClasses[0].id)
-            }
+            // Replace model in service and let service notify listeners
+            service.replaceClassesFromArray(loadedClasses)
+            // local selectedId will be updated via service change listener below
         },
         onPrimitiveTypes: (types) => {
             setPrimitiveTypes(types)
         },
     })
+
+    // Subscribe to service model changes and request initial data on mount
+    useEffect(() => {
+        const listener = () => {
+            const dm = service.getModel()
+            const cls = dm.getClasses()
+            setClassesInternal(cls)
+            if (cls.length > 0) setSelectedId(cls[0].id)
+        }
+        service.onModelChanged(listener)
+        // initialize local state from service
+        listener()
+        return () => service.offModelChanged(listener)
+    }, [service])
 
     // Request initial data on mount
     useEffect(() => {
@@ -75,25 +90,33 @@ export function useVSCodeState() {
 
     // Actions
     const saveJson = useCallback(() => {
-        const mediaModel = viewDiagramToMedia(classes)
+        const cls = service.getModel().getClasses()
+        const mediaModel = viewDiagramToMedia(cls)
         postMessage({ command: 'saveJson', payload: mediaModel })
-    }, [classes])
+    }, [service])
 
     const loadJson = useCallback(() => {
         postMessage({ command: 'loadJson' })
     }, [])
 
     const generateCode = useCallback((language: string) => {
-        const exportModel = modelForExport(classes)
+        const exportModel = modelForExport(service.getModel().getClasses())
         postMessage({
             command: 'generateCode',
             payload: { model: exportModel, language },
         })
-    }, [classes])
+    }, [service])
 
     const changePrimitiveTypes = useCallback((language: string) => {
         postMessage({ command: 'changedPrimitiveTypes', language })
     }, [])
+
+    // wrapper setClasses that updates service -> service will notify and update local state
+    const setClasses = useCallback((updater: ((prev: ClassInfo[]) => ClassInfo[]) | ClassInfo[]) => {
+        const current = service.getModel().getClasses()
+        const next = typeof updater === 'function' ? (updater as (p: ClassInfo[]) => ClassInfo[])(current) : updater
+        service.replaceClassesFromArray(next)
+    }, [service])
 
     return {
         classes,

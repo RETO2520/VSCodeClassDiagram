@@ -33,204 +33,221 @@ import {
     Relationship,
     createId,
 } from './class-diagram-types'
-
+import { HandlerResult } from './handler-registry'
+import { TypeAddedEvent, TypeRemovedEvent, TypeUpdatedEvent, MemberAddedEvent, MemberRemovedEvent, MemberUpdatedEvent, OperationAddedEvent, OperationRemovedEvent, OperationUpdatedEvent, ParameterAddedEvent, ParameterRemovedEvent, ParameterUpdatedEvent, BaseClassAddedEvent, BaseClassRemovedEvent, ImplementedInterfaceAddedEvent, ImplementedInterfaceRemovedEvent, RelationshipAddedEvent, RelationshipRemovedEvent, RelationshipUpdatedEvent } from './events/Event'
 /* ============================
    Domain Events
-============================ */
+// ============================ */
 
-export interface TypeAddedEvent {
-    type: 'TYPE_ADDED'
-    payload: {
-        className: string
-        classInfo: ClassInfo
-    }
+// export interface TypeAddedEvent {
+//     type: 'TYPE_ADDED'
+//     payload: {
+//         className: string
+//         classInfo: ClassInfo
+//     }
+// }
+
+// export interface TypeRemovedEvent {
+//     type: 'TYPE_REMOVED'
+//     payload: {
+//         className: string
+//     }
+// }
+
+// export interface TypeUpdatedEvent {
+//     type: 'TYPE_UPDATED'
+//     payload: {
+//         className: string
+//         classInfo: ClassInfo
+//     }
+// }
+
+// export interface MemberAddedEvent {
+//     type: 'MEMBER_ADDED'
+//     payload: {
+//         className: string
+//         member: ClassMember
+//     }
+// }
+
+// export interface MemberRemovedEvent {
+//     type: 'MEMBER_REMOVED'
+//     payload: {
+//         className: string
+//         member: ClassMember
+//     }
+// }
+
+// export interface MemberUpdatedEvent {
+//     type: 'MEMBER_UPDATED'
+//     payload: {
+//         className: string
+//         member: ClassMember
+//         oldName: string
+//         newName: string
+//     }
+// }
+
+// export interface OperationAddedEvent {
+//     type: 'OPERATION_ADDED'
+//     payload: {
+//         className: string
+//         operation: ClassOperation
+//     }
+// }
+
+// export interface OperationRemovedEvent {
+//     type: 'OPERATION_REMOVED'
+//     payload: {
+//         className: string
+//         operation: ClassOperation
+//     }
+// }
+
+// export interface OperationUpdatedEvent {
+//     type: 'OPERATION_UPDATED'
+//     payload: {
+//         className: string
+//         operation: ClassOperation
+//         oldName: string
+//         newName: string
+//     }
+// }
+
+// export interface ParameterAddedEvent {
+//     type: 'PARAMETER_ADDED'
+//     payload: {
+//         className: string
+//         operationName: string
+//         parameter: OperationParameter
+//     }
+// }
+
+// export interface ParameterRemovedEvent {
+//     type: 'PARAMETER_REMOVED'
+//     payload: {
+//         className: string
+//         operationName: string
+//         parameter: OperationParameter
+//     }
+// }
+
+// export interface ParameterUpdatedEvent {
+//     type: 'PARAMETER_UPDATED'
+//     payload: {
+//         className: string
+//         operationName: string
+//         parameter: OperationParameter
+//     }
+// }
+
+// export interface BaseClassAddedEvent {
+//     type: 'BASE_CLASS_ADDED'
+//     payload: {
+//         className: string
+//         baseClassName: string
+//     }
+// }
+
+// export interface BaseClassRemovedEvent {
+//     type: 'BASE_CLASS_REMOVED'
+//     payload: {
+//         className: string
+//         baseClassName: string
+//     }
+// }
+
+// export interface BaseClassUpdatedEvent {
+//     type: 'BASE_CLASS_UPDATED'
+//     payload: {
+//         className: string
+//         baseClassName: string
+//     }
+// }
+
+// export interface ImplementedInterfaceAddedEvent {
+//     type: 'IMPLEMENTED_INTERFACE_ADDED'
+//     payload: {
+//         className: string
+//         interfaceName: string
+//     }
+// }
+
+// export interface ImplementedInterfaceRemovedEvent {
+//     type: 'IMPLEMENTED_INTERFACE_REMOVED'
+//     payload: {
+//         className: string
+//         interfaceName: string
+//     }
+// }
+
+// export interface ImplementedInterfaceUpdatedEvent {
+//     type: 'IMPLEMENTED_INTERFACE_UPDATED'
+//     payload: {
+//         className: string
+//         interfaceName: string
+//     }
+// }
+
+// export interface RelationshipAddedEvent {
+//     type: 'RELATIONSHIP_ADDED'
+//     payload: {
+//         relationship: Relationship
+//     }
+// }
+
+// export interface RelationshipRemovedEvent {
+//     type: 'RELATIONSHIP_REMOVED'
+//     payload: {
+//         relationship: Relationship
+//     }
+// }
+
+// export interface RelationshipUpdatedEvent {
+//     type: 'RELATIONSHIP_UPDATED'
+//     payload: {
+//         relationship: Relationship
+//     }
+// }
+export interface DomainEvent {
+    readonly type: string
+    readonly payload: any
 }
 
-export interface TypeRemovedEvent {
-    type: 'TYPE_REMOVED'
-    payload: {
-        className: string
+export abstract class BaseDomainEvent implements DomainEvent {
+
+    readonly occurredAt: Date
+
+    constructor() {
+        this.occurredAt = new Date()
     }
+
+    abstract readonly type: string
+    abstract readonly payload: any
 }
 
-export interface TypeUpdatedEvent {
-    type: 'TYPE_UPDATED'
-    payload: {
-        className: string
-        classInfo: ClassInfo
-    }
-}
-
-export interface MemberAddedEvent {
-    type: 'MEMBER_ADDED'
-    payload: {
-        className: string
-        member: ClassMember
-    }
-}
-
-export interface MemberRemovedEvent {
-    type: 'MEMBER_REMOVED'
-    payload: {
-        className: string
-        member: ClassMember
-    }
-}
-
-export interface MemberUpdatedEvent {
-    type: 'MEMBER_UPDATED'
-    payload: {
-        className: string
-        member: ClassMember
-        oldName: string
-        newName: string
-    }
-}
-
-export interface OperationAddedEvent {
-    type: 'OPERATION_ADDED'
-    payload: {
-        className: string
-        operation: ClassOperation
-    }
-}
-
-export interface OperationRemovedEvent {
-    type: 'OPERATION_REMOVED'
-    payload: {
-        className: string
-        operation: ClassOperation
-    }
-}
-
-export interface OperationUpdatedEvent {
-    type: 'OPERATION_UPDATED'
-    payload: {
-        className: string
-        operation: ClassOperation
-        oldName: string
-        newName: string
-    }
-}
-
-export interface ParameterAddedEvent {
-    type: 'PARAMETER_ADDED'
-    payload: {
-        className: string
-        operationName: string
-        parameter: OperationParameter
-    }
-}
-
-export interface ParameterRemovedEvent {
-    type: 'PARAMETER_REMOVED'
-    payload: {
-        className: string
-        operationName: string
-        parameter: OperationParameter
-    }
-}
-
-export interface ParameterUpdatedEvent {
-    type: 'PARAMETER_UPDATED'
-    payload: {
-        className: string
-        operationName: string
-        parameter: OperationParameter
-    }
-}
-
-export interface BaseClassAddedEvent {
-    type: 'BASE_CLASS_ADDED'
-    payload: {
-        className: string
-        baseClassName: string
-    }
-}
-
-export interface BaseClassRemovedEvent {
-    type: 'BASE_CLASS_REMOVED'
-    payload: {
-        className: string
-        baseClassName: string
-    }
-}
-
-export interface BaseClassUpdatedEvent {
-    type: 'BASE_CLASS_UPDATED'
-    payload: {
-        className: string
-        baseClassName: string
-    }
-}
-
-export interface ImplementedInterfaceAddedEvent {
-    type: 'IMPLEMENTED_INTERFACE_ADDED'
-    payload: {
-        className: string
-        interfaceName: string
-    }
-}
-
-export interface ImplementedInterfaceRemovedEvent {
-    type: 'IMPLEMENTED_INTERFACE_REMOVED'
-    payload: {
-        className: string
-        interfaceName: string
-    }
-}
-
-export interface ImplementedInterfaceUpdatedEvent {
-    type: 'IMPLEMENTED_INTERFACE_UPDATED'
-    payload: {
-        className: string
-        interfaceName: string
-    }
-}
-
-export interface RelationshipAddedEvent {
-    type: 'RELATIONSHIP_ADDED'
-    payload: {
-        relationship: Relationship
-    }
-}
-
-export interface RelationshipRemovedEvent {
-    type: 'RELATIONSHIP_REMOVED'
-    payload: {
-        relationship: Relationship
-    }
-}
-
-export interface RelationshipUpdatedEvent {
-    type: 'RELATIONSHIP_UPDATED'
-    payload: {
-        relationship: Relationship
-    }
-}
-
-export type DomainEvent =
-    | TypeAddedEvent
-    | TypeRemovedEvent
-    | TypeUpdatedEvent
-    | MemberAddedEvent
-    | MemberRemovedEvent
-    | MemberUpdatedEvent
-    | OperationAddedEvent
-    | OperationRemovedEvent
-    | OperationUpdatedEvent
-    | ParameterAddedEvent
-    | ParameterRemovedEvent
-    | ParameterUpdatedEvent
-    | BaseClassAddedEvent
-    | BaseClassRemovedEvent
-    | BaseClassUpdatedEvent
-    | ImplementedInterfaceAddedEvent
-    | ImplementedInterfaceRemovedEvent
-    | ImplementedInterfaceUpdatedEvent
-    | RelationshipAddedEvent
-    | RelationshipRemovedEvent
-    | RelationshipUpdatedEvent
+// export type DomainEvents =
+//     | TypeAddedEvent
+//     | TypeRemovedEvent
+//     | TypeUpdatedEvent
+//     | MemberAddedEvent
+//     | MemberRemovedEvent
+//     | MemberUpdatedEvent
+//     | OperationAddedEvent
+//     | OperationRemovedEvent
+//     | OperationUpdatedEvent
+//     | ParameterAddedEvent
+//     | ParameterRemovedEvent
+//     | ParameterUpdatedEvent
+//     | BaseClassAddedEvent
+//     | BaseClassRemovedEvent
+//     | BaseClassUpdatedEvent
+//     | ImplementedInterfaceAddedEvent
+//     | ImplementedInterfaceRemovedEvent
+//     | ImplementedInterfaceUpdatedEvent
+//     | RelationshipAddedEvent
+//     | RelationshipRemovedEvent
+//     | RelationshipUpdatedEvent
 
 
 
@@ -617,6 +634,8 @@ export class DomainModel {
     renameClass(oldClassName: string, newName: string): DomainModel {
         return this.updateClassByName(oldClassName, cls => ({ ...cls, name: newName }))
     }
+
+
 
     /**
      * 複数クラスを一度に置き換え

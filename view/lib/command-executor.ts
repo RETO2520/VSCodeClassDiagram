@@ -1,120 +1,135 @@
+// command-executor.ts (refactored)
+// CLI parsing -> adapter -> ClassDiagramService execution path
+// Replace previous handler-registry based executor with this file.
 
-import { ClassInfo, ClassKind, Visibility as UmlVisibility, createEmptyClass, createEmptyMember, createEmptyOperation, createEmptyParameter } from './class-diagram-types';
-import { CliParser, CliCommand, AddTypeCommand, AddAttrCommand, AddMethodCommand, AddParamCommand, SetBaseCommand, SetImplCommand, RenameCommand, DeleteCommand } from './CliParser';
+import { CliParser, CliCommand } from './CliParser';
+import { DomainModel } from './DomainModel';
+import { HandlerResult } from './handler-registry';
+import { postMessage } from '../../frontend/src/bridge/vscode-bridge'; // 調整が必要ならパス変更
+import { cliCommandToInput } from './adapters/cli-adapter';
+import { ClassDiagramService } from './application/ClassDiagramService';
 
-import { DomainModel, DomainEvent } from './DomainModel';
-import { HandlerRegistry, HandlerResult } from './handler-registry';
-import { createHandlerRegistry } from './handlers/command-handlers';
-import { postMessage } from '../../frontend/src/bridge/vscode-bridge'; // postMessage をインポート
-//import * as vb from '../../frontend/src/bridge/vscode-bridge'; // postMessage をインポート
-
+// parser はここで保持してパース専用に使う（statefulである必要はないが再利用は OK）
 const parser = new CliParser();
-/**
- * グローバルハンドラーレジストリ
- * アプリケーション起動時に一度だけ初期化
- */
-const registry: HandlerRegistry = createHandlerRegistry();
-/**
- * ハンドラーレジストリを初期化
- */
-// export function initializeRegistry(): void {
-//     if (registry) {
-//         return // 既に初期化済み
-//     }
-//     registry = createHandlerRegistry()
-// }
 
 /**
- * カスタムハンドラーを登録
- * アプリケーション固有のハンドラーを追加する場合に使用
+ * parseCommand - (従来と互換)
+ * 文字列をパースして CliCommand を返す。パース自体は CliParserに任せる。
  */
-export function registerHandler(handler: any): void {
-    registry.register(handler)
-}
 export function parseCommand(input: string): CliCommand | null {
     return parser.parse(input);
 }
 
-function mapVisibility(v: string): UmlVisibility {
-    switch (v) {
-        case 'private': return 'private';
-        case 'protected': return 'protected';
-        case 'package': return 'package';
-        default: return 'public';
-    }
-}
-
 /**
- * コマンドを実行
- * 
- * 旧 executeAction 関数の置き換え
- * switch 文の代わりにハンドラーレジストリにディスパッチ
+ * executeCommand
+ * - 以前の registry.dispatch の代わりに adapter 経由で DTO を作成し、
+ *   ClassDiagramService の該当メソッドを呼び出す。
+ * - model を引数に取り、更新済みの model と events を返す（HandlerResult）
  */
-export function executeCommand(
-    command: CliCommand,
-    model: DomainModel
-): HandlerResult {
+export function executeCommand(command: CliCommand | null, model: DomainModel): HandlerResult {
     if (!command) {
-        return { model: model, events: [] }
+        return { model, events: [] };
     }
 
     postMessage({ command: 'log', level: 'info', text: `Executing command: ${command.type}` });
 
     try {
-        // ハンドラーにディスパッチ
-        return registry.dispatch(command, model)
-    } catch (error) {
-        postMessage({ command: 'log', level: 'error', text: `Error executing command: ${error}` });
+        // 1) CLI -> normalized DTO
+        const inputDto = cliCommandToInput(command);
+        if (!inputDto) {
+            postMessage({ command: 'log', level: 'warn', text: `No adapter transformer for command type: ${command.type}` });
+            return { model, events: [] };
+        }
 
-        return { model: model, events: [] } // エラーが発生しても元のモデルを返す
+        // 2) create a transient service with the current model as starting state
+        const service = new ClassDiagramService(model /* initialModel */, undefined /* optional dispatcher */);
+
+        // 3) route DTO to appropriate service method (duck-typing)
+        // Note: keep this routing minimal; prefer adding a discriminant on DTO if you want clearer dispatch
+        // The service methods return HandlerResult: { model, events }
+        // Order of checks chosen for likely shapes
+
+        // Add Type (has name + kind)
+        if ((inputDto as any).name && (inputDto as any).kind !== undefined) {
+            return service.addTypeFromCli(inputDto as any);
+        }
+
+        // Add Member (has member)
+        if ((inputDto as any).member) {
+            // prefer CLI-specific convenience which auto-creates type if missing
+            return service.addMemberFromCli(inputDto as any);
+        }
+
+        // Add Operation
+        if ((inputDto as any).operation && (inputDto as any).operation.name) {
+            return service.applyAddOperation(inputDto as any);
+        }
+
+        // Add Parameter
+        if ((inputDto as any).parameter && (inputDto as any).operationName) {
+            return service.applyAddParameter(inputDto as any);
+        }
+
+        // Set Base
+        if ((inputDto as any).baseClassName !== undefined && (inputDto as any).className !== undefined) {
+            // CLI semantics likely want fromCli convenience
+            return service.setBaseFromCli(inputDto as any);
+        }
+
+        // Add Implemented Interface
+        if ((inputDto as any).interfaceName !== undefined) {
+            return service.addInterfaceImplFromCli(inputDto as any);
+        }
+
+        // Relationship
+        if ((inputDto as any).relationship) {
+            return service.applyAddRelationship(inputDto as any);
+        }
+
+        // Rename / Delete detection (Rename has oldName & newName)
+        if ((inputDto as any).oldName && (inputDto as any).newName) {
+            return service.applyRename(inputDto as any);
+        }
+
+        // Delete detection
+        if ((inputDto as any).target && ((inputDto as any).name || (inputDto as any).className || (inputDto as any).classId)) {
+            return service.applyDelete(inputDto as any);
+        }
+
+        // UpdateClassInput (unlikely from CLI, but guard)
+        if ((inputDto as any).patch && (inputDto as any).classId) {
+            return service.applyUpdateClass(inputDto as any);
+        }
+
+        // Unknown DTO shape
+        postMessage({ command: 'log', level: 'warn', text: `Unhandled DTO shape for command type: ${command.type}` });
+        return { model, events: [] };
+    } catch (err) {
+        // preserve existing behavior: log and return original model
+        postMessage({ command: 'log', level: 'error', text: `Error executing command: ${String(err)}` });
+        return { model, events: [] };
     }
 }
+
 /**
- * バッチでコマンドを実行
- * 複数のコマンドを順次実行
+ * executeCommands - バッチ実行（互換）
  */
-export function executeCommands(
-    commands: CliCommand[],
-    model: DomainModel
-): HandlerResult {
-    let currentModel = model
-    let currentEvents: DomainEvent[] = []
+export function executeCommands(commands: CliCommand[] | null, model: DomainModel): HandlerResult {
+    if (!commands || commands.length === 0) return { model, events: [] };
 
-    for (const command of commands) {
-        const result = executeCommand(command, currentModel)
-        currentModel = result.model
-        currentEvents = currentEvents.concat(result.events)
+    let currentModel = model;
+    let currentEvents: any[] = [];
+
+    for (const cmd of commands) {
+        const result = executeCommand(cmd, currentModel);
+        currentModel = result.model;
+        if (result.events && result.events.length) currentEvents = currentEvents.concat(result.events);
     }
 
-    return { model: currentModel, events: currentEvents }
+    return { model: currentModel, events: currentEvents };
 }
-/**
- * Ensures a class exists in the state, creating it if necessary.
- * Returns the class.
- */
-function getOrCreateClass(model: DomainModel, name: string, preferredKind: ClassKind = 'class'): { updatedModel: DomainModel, target: ClassInfo } {
-    let target = model.findClassByName(name);
-    if (target) {
-        return { updatedModel: model, target };
-    }
 
-    // Create new class
-    const newClass = createEmptyClass();
-    newClass.name = name;
-    newClass.kind = preferredKind;
-    if (preferredKind === 'interface') {
-        newClass.isAbstract = false; // interfaces are interfaces
-    }
-
-    return {
-        updatedModel: model.addClass(newClass),
-        target: newClass
-    };
-}
-export function executeAction(
-    command: CliCommand,
-    model: DomainModel
-): HandlerResult {
-    return executeCommand(command, model)
-
+export function executeAction(command: CliCommand, model: DomainModel): HandlerResult {
+    // 旧 executeCommand を保持している場合はそちらを呼び出す（互換性のため）
+    return executeCommand(command, model);
 }

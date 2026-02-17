@@ -10,13 +10,12 @@ import { CommandHandler, HandlerRegistry, HandlerResult } from '../handler-regis
 import {
     ClassInfo,
     ClassKind,
-    Visibility,
-    createId,
     createEmptyMember,
     createEmptyOperation,
     createEmptyParameter,
 } from '../class-diagram-types'
-import { AddTypeCommand, AddAttrCommand, AddMethodCommand, AddParamCommand, SetBaseCommand, SetImplCommand, RenameCommand, DeleteCommand, CliCommand } from '../CliParser'
+import { AddTypeCommand, AddAttrCommand, AddMethodCommand, AddParamCommand, SetBaseCommand, SetImplCommand, RenameCommand, DeleteCommand } from '../CliParser'
+import { TypeAddedEvent, TypeRemovedEvent, MemberAddedEvent, MemberRemovedEvent, OperationAddedEvent, OperationRemovedEvent, ParameterAddedEvent, ParameterRemovedEvent, BaseClassAddedEvent, BaseClassRemovedEvent, ImplementedInterfaceAddedEvent, ImplementedInterfaceRemovedEvent, TypeUpdatedEvent, MemberUpdatedEvent, OperationUpdatedEvent, ParameterUpdatedEvent, BaseClassUpdatedEvent, ImplementedInterfaceUpdatedEvent, RelationshipAddedEvent, RelationshipRemovedEvent, RelationshipUpdatedEvent } from '../events/Event'
 
 export const CommandTypes = {
     ADD_ATTR: 'ADD_ATTR',
@@ -116,13 +115,7 @@ export class AddTypeHandler implements CommandHandler<AddTypeCommand> {
         const updatedModel = currentModel.updateClassByName(command.name, () => newClass)
         return {
             model: updatedModel,
-            events: [{
-                type: 'TYPE_ADDED',
-                payload: {
-                    className: command.name,
-                    classInfo: newClass
-                }
-            }]
+            events: [new TypeAddedEvent(command.name, newClass)]
         }
     }
 }
@@ -147,13 +140,7 @@ export class AddAttrHandler implements CommandHandler<AddAttrCommand> {
         const result = model.addMember(command.className, newAttr)
         return {
             model: result,
-            events: [{
-                type: 'MEMBER_ADDED',
-                payload: {
-                    className: command.className,
-                    member: newAttr
-                }
-            }]
+            events: [new MemberAddedEvent(command.className, newAttr)]
         }
     }
 }
@@ -178,13 +165,7 @@ export class AddMethodHandler implements CommandHandler<AddMethodCommand> {
         const result = model.addOperation(command.className, newOp)
         return {
             model: result,
-            events: [{
-                type: 'OPERATION_ADDED',
-                payload: {
-                    className: command.className,
-                    operation: newOp
-                }
-            }]
+            events: [new OperationAddedEvent(command.className, newOp)]
         }
     }
 }
@@ -208,14 +189,7 @@ export class AddParamHandler implements CommandHandler<AddParamCommand> {
         const result = model.addParameter(command.className, command.methodName, newParam)
         return {
             model: result,
-            events: [{
-                type: 'PARAMETER_ADDED',
-                payload: {
-                    className: command.className,
-                    operationName: command.methodName,
-                    parameter: newParam
-                }
-            }]
+            events: [new ParameterAddedEvent(command.className, command.methodName, newParam)]
         }
     }
 }
@@ -241,13 +215,7 @@ export class SetBaseHandler implements CommandHandler<SetBaseCommand> {
         const result = currentModel.setBaseClass(cls.id, parent.id)
         return {
             model: result,
-            events: [{
-                type: 'BASE_CLASS_ADDED',
-                payload: {
-                    className: command.className,
-                    baseClassName: command.baseClassName
-                }
-            }]
+            events: [new BaseClassAddedEvent(command.className, command.baseClassName)]
         }
     }
 }
@@ -273,13 +241,7 @@ export class SetImplHandler implements CommandHandler<SetImplCommand> {
         const result = currentModel.addInterfaceImplementation(cls.id, iface.id)
         return {
             model: result,
-            events: [{
-                type: 'IMPLEMENTED_INTERFACE_ADDED',
-                payload: {
-                    className: command.className,
-                    interfaceName: command.interfaceName
-                }
-            }]
+            events: [new ImplementedInterfaceAddedEvent(command.className, command.interfaceName)]
         }
     }
 }
@@ -296,13 +258,7 @@ export class RenameHandler implements CommandHandler<RenameCommand> {
             const result = model.renameClass(command.oldName, command.newName)
             return {
                 model: result,
-                events: [{
-                    type: 'TYPE_UPDATED',
-                    payload: {
-                        className: command.newName,
-                        classInfo: result.findClassByName(command.newName)!
-                    }
-                }]
+                events: [new TypeUpdatedEvent(command.newName, result.findClassByName(command.newName)!)]
             }
         }
 
@@ -313,15 +269,7 @@ export class RenameHandler implements CommandHandler<RenameCommand> {
             }))
             return {
                 model: result,
-                events: [{
-                    type: 'MEMBER_UPDATED',
-                    payload: {
-                        className: command.className,
-                        member: result.findClassByName(command.className)!.members.find(m => m.name === command.newName)!,
-                        oldName: command.oldName,
-                        newName: command.newName
-                    }
-                }]
+                events: [new MemberUpdatedEvent(command.className, result.findClassByName(command.className)!.members.find(m => m.name === command.newName)!, command.oldName, command.newName)]
             }
         }
 
@@ -332,15 +280,7 @@ export class RenameHandler implements CommandHandler<RenameCommand> {
             }))
             return {
                 model: result,
-                events: [{
-                    type: 'OPERATION_UPDATED',
-                    payload: {
-                        className: command.className,
-                        operation: result.findClassByName(command.className)!.operations.find(op => op.name === command.newName)!,
-                        oldName: command.oldName,
-                        newName: command.newName
-                    }
-                }]
+                events: [new OperationUpdatedEvent(command.className, result.findClassByName(command.className)!.operations.find(op => op.name === command.newName)!, command.oldName, command.newName)]
             }
         }
 
@@ -361,12 +301,7 @@ export class DeleteHandler implements CommandHandler<DeleteCommand> {
             const result = model.removeClassByName(command.className)
             return {
                 model: result,
-                events: [{
-                    type: 'TYPE_REMOVED',
-                    payload: {
-                        className: command.className
-                    }
-                }]
+                events: [new TypeRemovedEvent(command.className)]
             }
         }
 
@@ -375,13 +310,7 @@ export class DeleteHandler implements CommandHandler<DeleteCommand> {
             const result = model.removeMember(command.className, command.name)
             return {
                 model: result,
-                events: [{
-                    type: 'MEMBER_REMOVED',
-                    payload: {
-                        className: command.className,
-                        member: result.findClassByName(command.className)!.members.find(m => m.name === command.name)!
-                    }
-                }]
+                events: [new MemberRemovedEvent(command.className, result.findClassByName(command.className)!.members.find(m => m.name === command.name)!)]
             }
         }
 
@@ -390,13 +319,7 @@ export class DeleteHandler implements CommandHandler<DeleteCommand> {
             const result = model.removeOperation(command.className, command.name)
             return {
                 model: result,
-                events: [{
-                    type: 'OPERATION_REMOVED',
-                    payload: {
-                        className: command.className,
-                        operation: result.findClassByName(command.className)!.operations.find(op => op.name === command.name)!,
-                    }
-                }]
+                events: [new OperationRemovedEvent(command.className, result.findClassByName(command.className)!.operations.find(op => op.name === command.name)!)],
             }
         }
 

@@ -6,6 +6,8 @@
  */
 
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
+import { ClassEditorContainer } from '@/components/ClassEditorContainer'
+import { ClassDiagramService } from '@/lib/application/ClassDiagramService'
 import { ClassEditorPanel } from '@/components/class-editor'
 import { DiagramCanvas } from '@/components/diagram-canvas'
 import { detectRelationships } from '@/lib/detect-relationships'
@@ -110,8 +112,8 @@ const MIN_PANEL_WIDTH = 360
 const MAX_PANEL_WIDTH = 800
 const DEFAULT_PANEL_WIDTH = 500
 
-export function App() {
-    const vsCodeState = useVSCodeState()
+export function App({ service }: { service: ClassDiagramService }) {
+    const vsCodeState = useVSCodeState(service)
     const [language, setLanguage] = useState('csharp')
     const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH)
     const isDragging = useRef(false)
@@ -123,6 +125,8 @@ export function App() {
     useEffect(() => {
         commandHistory.setClasses(vsCodeState.classes);
     }, [vsCodeState.classes]);
+
+
     const {
         //classes,
         //setClasses,
@@ -260,29 +264,10 @@ export function App() {
             />
 
             {/* Main content area */}
+
             <div className="flex flex-1 min-h-0 overflow-hidden">
                 {/* Left Panel - Editor */}
-                <div className="flex-shrink-0" style={{ width: panelWidth }}>
-                    <ClassEditorPanel
-                        classes={classes}
-                        selectedId={selectedId}
-                        onSelectClass={setSelectedId}
-                        onUpdateClass={handleUpdateClass}
-                        onDeleteClass={handleDeleteClass}
-                        onAddClass={handleAddClass}
-
-                    />
-                </div>
-
-                {/* Resize handle */}
-                <div
-                    onMouseDown={handlePanelResizeStart}
-                    className="flex w-3 shrink-0 cursor-col-resize items-center justify-center bg-muted/50 transition-colors hover:bg-accent active:bg-accent"
-                    role="separator"
-                    aria-orientation="vertical"
-                >
-                    <GripVertical className="h-4 w-4 text-muted-foreground" />
-                </div>
+                <ClassEditorContainer service={service} setGlobalClasses={setClasses} />
 
                 {/* Right Panel - Canvas */}
                 <div className="flex-1 min-w-0">

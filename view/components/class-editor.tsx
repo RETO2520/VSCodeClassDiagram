@@ -67,6 +67,8 @@ const kindIcons: Record<ClassKind, React.ReactNode> = {
   struct: <Layers className="h-4 w-4" />,
 }
 
+
+
 export function ClassEditor({
   classInfo,
   allClasses,
@@ -756,6 +758,9 @@ interface ClassEditorPanelProps {
 const MIN_LIST_WIDTH = 120
 const MAX_LIST_WIDTH = 320
 const DEFAULT_LIST_WIDTH = 180
+const MIN_DETAIL_WIDTH = 240
+const MAX_DETAIL_WIDTH = 900
+const DEFAULT_DETAIL_WIDTH = 380
 
 export function ClassEditorPanel({
   classes,
@@ -767,11 +772,19 @@ export function ClassEditorPanel({
 }: ClassEditorPanelProps) {
   const selectedClass = classes.find((c) => c.id === selectedId)
   const [listWidth, setListWidth] = useState(DEFAULT_LIST_WIDTH)
+  const [detailWidth, setDetailWidth] = useState(DEFAULT_DETAIL_WIDTH)
 
   const handleListResize = useCallback((deltaX: number) => {
     setListWidth((prev) => {
       const next = prev + deltaX
       return Math.max(MIN_LIST_WIDTH, Math.min(MAX_LIST_WIDTH, next))
+    })
+  }, [])
+
+  const handleDetailResize = useCallback((deltaX: number) => {
+    setDetailWidth((prev) => {
+      const next = prev + deltaX
+      return Math.max(MIN_DETAIL_WIDTH, Math.min(MAX_DETAIL_WIDTH, next))
     })
   }, [])
 
@@ -795,8 +808,8 @@ export function ClassEditorPanel({
               <div
                 key={c.id}
                 className={`group flex items-center gap-1 pr-1 transition-colors ${c.id === selectedId
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
                   }`}
               >
                 <button
@@ -834,7 +847,7 @@ export function ClassEditorPanel({
       <ResizeHandle onResize={handleListResize} />
 
       {/* Right: Class detail editor */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-shrink-0 min-w-0" style={{ width: detailWidth }}>
         {selectedClass ? (
           <ClassEditor
             classInfo={selectedClass}
@@ -850,6 +863,9 @@ export function ClassEditorPanel({
           </div>
         )}
       </div>
+
+      {/* Resize handle to adjust detail editor width */}
+      <ResizeHandle onResize={handleDetailResize} />
     </div>
   )
 }
