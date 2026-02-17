@@ -3,7 +3,7 @@
 import React from "react"
 import { useRef, useCallback, useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { ZoomIn, ZoomOut, Maximize2 } from "lucide-react"
+import { ZoomIn, ZoomOut, Maximize2, Maximize } from "lucide-react"
 import type {
   ClassInfo,
   Relationship,
@@ -787,6 +787,48 @@ export function DiagramCanvas({
     setPanOffset({ x: newPanX, y: newPanY })
   }
 
+  function handleAlignAll() {
+    if (classes.length === 0) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    const grid = 40
+    const placed: Array<{ x: number; y: number; w: number; h: number }> = []
+
+    for (const cls of classes) {
+      const dims = calculateClassDimensions(ctx, cls)
+
+      // snap to grid
+      let nx = Math.round(cls.x / grid) * grid
+      let ny = Math.round(cls.y / grid) * grid
+
+      // if overlaps with already placed boxes, shift to the right until free
+      let attempts = 0
+      const maxAttempts = 200
+      const gap = 24
+      while (
+        placed.some(
+          (p) => !(nx + dims.width < p.x || nx > p.x + p.w || ny + dims.height < p.y || ny > p.y + p.h),
+        ) &&
+        attempts < maxAttempts
+      ) {
+        nx += Math.max(dims.width, grid) + gap
+        attempts++
+      }
+
+      placed.push({ x: nx, y: ny, w: dims.width, h: dims.height })
+      onMoveClass(cls.id, nx, ny)
+    }
+
+    // After repositioning all classes, fit to view
+    // Small timeout to allow parent state updates to propagate before fitting
+    setTimeout(() => {
+      handleFitAll()
+    }, 0)
+  }
+
   return (
     <div ref={containerRef} className="relative h-full w-full bg-background">
       <canvas
@@ -801,6 +843,15 @@ export function DiagramCanvas({
 
       {/* Zoom controls */}
       <div className="absolute bottom-4 right-4 flex flex-col gap-1.5">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={handleAlignAll}
+          className="h-8 w-8 bg-card shadow-sm"
+          title="Align all"
+        >
+          <Maximize className="h-4 w-4" />
+        </Button>
         <Button
           variant="outline"
           size="icon"
