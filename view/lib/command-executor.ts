@@ -40,7 +40,6 @@ export function executeCommand(command: CliCommand | null, model: DomainModel): 
             postMessage({ command: 'log', level: 'warn', text: `No adapter transformer for command type: ${command.type}` });
             return { model, events: [] };
         }
-
         // 2) create a transient service with the current model as starting state
         const service = new ClassDiagramService(model /* initialModel */, undefined /* optional dispatcher */);
 
@@ -48,6 +47,69 @@ export function executeCommand(command: CliCommand | null, model: DomainModel): 
         // Note: keep this routing minimal; prefer adding a discriminant on DTO if you want clearer dispatch
         // The service methods return HandlerResult: { model, events }
         // Order of checks chosen for likely shapes
+        // Handle utility commands explicitly by command.type
+        switch (command.type) {
+            case 'HELP': {
+                const helpText = 'Commands: c/ac/i/s/e, a, m, p, base, impl, ren, del, sel, export, import, save, load, clear, list';
+                postMessage({ command: 'showAlert', text: helpText });
+                return { model, events: [] };
+            }
+            case 'SELECT': {
+                const className = (inputDto as any).className;
+                postMessage({ command: 'log', level: 'info', text: `Select request: ${className}` });
+                // Emit an application-level event so callers may react if they inspect events
+                const ev = { type: 'UI_SELECT', payload: { className } };
+                return { model, events: [ev] } as any;
+            }
+            case 'EXPORT': {
+                const fmt = (inputDto as any).format;
+                // JSON export -> reuse saveJson message
+                if (!fmt || fmt === 'json') {
+                    postMessage({ command: 'saveJson', payload: model.getClasses() as any });
+                    return { model, events: [] };
+                }
+                if (fmt === 'plantuml') {
+                    postMessage({ command: 'generateCode', payload: { model: model.getClasses(), language: 'plantuml' } as any });
+                    return { model, events: [] };
+                }
+                // Unsupported direct export: log
+                postMessage({ command: 'log', level: 'warn', text: `Export format not supported: ${fmt}` });
+                return { model, events: [] };
+            }
+            case 'IMPORT': {
+                // request host to load JSON (host handles file picker)
+                postMessage({ command: 'loadJson' });
+                return { model, events: [] };
+            }
+            case 'SAVE': {
+                // trigger save; host will handle destination
+                postMessage({ command: 'saveJson', payload: model.getClasses() as any });
+                return { model, events: [] };
+            }
+            case 'LOAD': {
+                postMessage({ command: 'loadJson' });
+                return { model, events: [] };
+            }
+            case 'CLEAR': {
+                // Replace classes with empty array
+                service.replaceClassesFromArray([] as any);
+                const ev = { type: 'MODEL_REPLACED', payload: { classes: [] } };
+                return { model: service.getModel(), events: [ev] } as any;
+            }
+            case 'LIST': {
+                const subject = (inputDto as any).subject;
+                if (!subject || subject === 'classes') {
+                    const names = model.getClasses().map(c => c.name).join(', ') || '(no classes)';
+                    postMessage({ command: 'showAlert', text: `Classes: ${names}` });
+                    return { model, events: [] };
+                }
+                // list commands - show brief help
+                postMessage({ command: 'showAlert', text: 'Available commands: help, sel, export, import, save, load, clear, list' });
+                return { model, events: [] };
+            }
+        }
+
+
 
         // Add Type (has name + kind)
         if ((inputDto as any).name && (inputDto as any).kind !== undefined) {
@@ -129,7 +191,8 @@ export function executeCommands(commands: CliCommand[] | null, model: DomainMode
     return { model: currentModel, events: currentEvents };
 }
 
-export function executeAction(command: CliCommand, model: DomainModel): HandlerResult {
-    // 旧 executeCommand を保持している場合はそちらを呼び出す（互換性のため）
+export function executeAction(command: CliCommand | null, model: DomainModel): HandlerResult {
+    // 常に HandlerResult を返す（互換性のため空イベントを返す）
+    if (!command) return { model, events: [] };
     return executeCommand(command, model);
 }

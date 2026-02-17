@@ -120,3 +120,37 @@ export interface UpdateClassInput {
     classId: string;
     patch: Partial<ClassInfo>;
 }
+
+/* ---------- Utility / UI / Persistence commands ---------- */
+export interface HelpInput {
+    /** no payload needed */
+}
+
+export interface SelectInput {
+    className: string;
+}
+
+export interface ExportInput {
+    format?: string; // json | svg | png | plantuml
+    target?: string; // optional class name
+}
+
+export interface ImportInput {
+    format: string;
+    path: string;
+}
+
+export interface SaveInput {
+    path?: string;
+}
+
+export interface LoadInput {
+    path: string;
+}
+
+export interface ClearInput {
+}
+
+export interface ListInput {
+    subject?: 'classes' | 'commands';
+}

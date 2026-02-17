@@ -11,7 +11,15 @@ export type CliCommandType =
     | 'SET_IMPL'
     | 'RENAME'
     | 'DELETE'
-    | 'RELATION';
+    | 'RELATION'
+    | 'HELP'
+    | 'SELECT'
+    | 'EXPORT'
+    | 'IMPORT'
+    | 'SAVE'
+    | 'LOAD'
+    | 'CLEAR'
+    | 'LIST';
 
 export type TypePrefix = 'c' | 'ac' | 'i' | 's' | 'e';
 export type Visibility = 'public' | 'private' | 'protected' | 'package';
@@ -90,6 +98,47 @@ export interface RelationCommand extends CliCommand {
     multiplicity?: string;
 }
 
+// Utility command interfaces
+export interface HelpCommand extends CliCommand {
+    type: 'HELP';
+}
+
+export interface SelectCommand extends CliCommand {
+    type: 'SELECT';
+    className: string;
+}
+
+export interface ExportCommand extends CliCommand {
+    type: 'EXPORT';
+    format?: string;
+    target?: string; // optional class name to export
+}
+
+export interface ImportCommand extends CliCommand {
+    type: 'IMPORT';
+    format: string;
+    path: string;
+}
+
+export interface SaveCommand extends CliCommand {
+    type: 'SAVE';
+    path?: string;
+}
+
+export interface LoadCommand extends CliCommand {
+    type: 'LOAD';
+    path: string;
+}
+
+export interface ClearCommand extends CliCommand {
+    type: 'CLEAR';
+}
+
+export interface ListCommand extends CliCommand {
+    type: 'LIST';
+    subject?: 'classes' | 'commands';
+}
+
 export class CliParser {
     public parse(input: string): CliCommand | null {
         const line = input.trim();
@@ -144,9 +193,72 @@ export class CliParser {
                 return this.parseRename(line, parts);
             case 'del':
                 return this.parseDelete(line, parts);
+            case 'help':
+                return this.parseHelp(line, parts);
+            case 'sel':
+                return this.parseSelect(line, parts);
+            case 'export':
+                return this.parseExport(line, parts);
+            case 'import':
+                return this.parseImport(line, parts);
+            case 'save':
+                return this.parseSave(line, parts);
+            case 'load':
+                return this.parseLoad(line, parts);
+            case 'clear':
+                return this.parseClear(line, parts);
+            case 'list':
+                return this.parseList(line, parts);
             default:
                 return this.parseRelation(line);
         }
+    }
+
+    private parseHelp(raw: string, parts: string[]): HelpCommand | null {
+        return { type: 'HELP', raw };
+    }
+
+    private parseSelect(raw: string, parts: string[]): SelectCommand | null {
+        if (parts.length < 2) return null;
+        return { type: 'SELECT', raw, className: parts.slice(1).join(' ') };
+    }
+
+    private parseExport(raw: string, parts: string[]): ExportCommand | null {
+        // export <format>? <identifier>?
+        if (parts.length === 1) return { type: 'EXPORT', raw };
+        if (parts.length === 2) {
+            return { type: 'EXPORT', raw, format: parts[1] };
+        }
+        return { type: 'EXPORT', raw, format: parts[1], target: parts.slice(2).join(' ') };
+    }
+
+    private parseImport(raw: string, parts: string[]): ImportCommand | null {
+        // import <format> <path>
+        if (parts.length < 3) return null;
+        return { type: 'IMPORT', raw, format: parts[1], path: parts.slice(2).join(' ') };
+    }
+
+    private parseSave(raw: string, parts: string[]): SaveCommand | null {
+        if (parts.length === 1) return { type: 'SAVE', raw };
+        return { type: 'SAVE', raw, path: parts.slice(1).join(' ') };
+    }
+
+    private parseLoad(raw: string, parts: string[]): LoadCommand | null {
+        if (parts.length < 2) return null;
+        return { type: 'LOAD', raw, path: parts.slice(1).join(' ') };
+    }
+
+    private parseClear(raw: string, parts: string[]): ClearCommand | null {
+        return { type: 'CLEAR', raw };
+    }
+
+    private parseList(raw: string, parts: string[]): ListCommand | null {
+        if (parts.length === 1) return { type: 'LIST', raw };
+        const subject = parts[1].toLowerCase();
+        if (subject === 'classes' || subject === 'commands') {
+            return { type: 'LIST', raw, subject } as ListCommand;
+        }
+        return null;
     }
 
     private parseAddType(raw: string, parts: string[]): AddTypeCommand | null {

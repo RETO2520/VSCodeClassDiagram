@@ -193,9 +193,17 @@ export function App({ service }: { service: ClassDiagramService }) {
     const handleExecuteCommand = useCallback((cmd: string) => {
         const action = parseCommand(cmd);
         if (action) {
-            commandHistory.executeCommand(action); // 履歴付きで実行
+            // 履歴管理側でモデルを更新し、その結果を使って shared service を一度だけ更新
+            try {
+                const result = commandHistory.executeCommand(action);
+                if (result && result.model) {
+                    service.replaceClassesFromArray(result.model.getClasses());
+                }
+            } catch (err) {
+                console.error('Error applying command to shared service:', err);
+            }
         }
-    }, [commandHistory])
+    }, [commandHistory, service])
     // キーボードショートカット
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {

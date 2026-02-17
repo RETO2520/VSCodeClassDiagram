@@ -1,6 +1,6 @@
 // hooks/use-command-history.ts
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { ClassInfo } from '@/lib/class-diagram-types';
 import { CliCommand } from '@/lib/CliParser';
 import { executeAction } from '@/lib/command-executor';
@@ -18,7 +18,7 @@ interface UseCommandHistoryResult {
     classes: ClassInfo[];
     history: HistoryEntry[];
     redoStack: HistoryEntry[];
-    executeCommand: (command: CliCommand) => void;
+    executeCommand: (command: CliCommand) => HandlerResult | undefined;
     undo: () => void;
     redo: () => void;
     canUndo: boolean;
@@ -30,9 +30,8 @@ const MAX_HISTORY_SIZE = 50;
 
 export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandHistoryResult {
     // DomainModel として状態を保持
-    const [model, setModel] = useState<DomainModel>(
-        DomainModel.from(initialClasses)
-    );
+    const modelRef = useRef<DomainModel>(DomainModel.from(initialClasses));
+    const [model, setModel] = useState<DomainModel>(modelRef.current);
     const [history, setHistory] = useState<HistoryEntry[]>([]);
     const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
 
@@ -40,33 +39,36 @@ export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandH
      * コマンドを実行して履歴に追加
      */
     const executeCommand = useCallback((command: CliCommand) => {
-        setModel(prevModel => {
-            // コマンド実行
-            const result = executeAction(command, prevModel);
+        const prevModel = modelRef.current;
 
-            // 履歴エントリを作成（スナップショットとして保存）
-            const historyEntry: HistoryEntry = {
-                command,
-                prevState: prevModel.getClasses(), // 実行前の状態をスナップショット
-                timestamp: Date.now(),
-                result
-            };
+        // コマンド実行（同期的に結果を取得）
+        const result = executeAction(command, prevModel) as HandlerResult;
 
-            // 履歴スタックを更新
-            setHistory(prevHistory => {
-                const newHistory = [...prevHistory, historyEntry];
-                // 最大サイズを超えたら古いものを削除
-                if (newHistory.length > MAX_HISTORY_SIZE) {
-                    newHistory.shift();
-                }
-                return newHistory;
-            });
+        // 履歴エントリを作成（スナップショットとして保存）
+        const historyEntry: HistoryEntry = {
+            command,
+            prevState: prevModel.getClasses(), // 実行前の状態をスナップショット
+            timestamp: Date.now(),
+            result
+        };
 
-            // 新しいコマンド実行時はredoスタックをクリア
-            setRedoStack([]);
-
-            return result.model;
+        // 履歴スタックを更新
+        setHistory(prevHistory => {
+            const newHistory = [...prevHistory, historyEntry];
+            if (newHistory.length > MAX_HISTORY_SIZE) {
+                newHistory.shift();
+            }
+            return newHistory;
         });
+
+        // 新しいコマンド実行時はredoスタックをクリア
+        setRedoStack([]);
+
+        // モデルを更新（かつ参照を更新）
+        setModel(result.model);
+        modelRef.current = result.model;
+
+        return result as HandlerResult;
     }, []);
 
     /**
@@ -92,7 +94,9 @@ export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandH
         setHistory(prev => prev.slice(0, -1));
 
         // 状態を戻す（スナップショットから復元）
-        setModel(DomainModel.from(lastEntry.prevState));
+        const restored = DomainModel.from(lastEntry.prevState);
+        setModel(restored);
+        modelRef.current = restored;
     }, [history, model]);
 
     /**
@@ -105,21 +109,19 @@ export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandH
         }
 
         const redoEntry = redoStack[redoStack.length - 1];
+        const prevModel = modelRef.current;
+        const newModelResult = executeAction(redoEntry.command, prevModel) as HandlerResult;
 
-        setModel(prevModel => {
-            // コマンドを再実行
-            const newModel = executeAction(redoEntry.command, prevModel);
+        // 履歴に追加
+        setHistory(prev => [...prev, {
+            command: redoEntry.command,
+            prevState: prevModel.getClasses(),
+            timestamp: Date.now(),
+            result: redoEntry.result
+        }]);
 
-            // 履歴に追加
-            setHistory(prev => [...prev, {
-                command: redoEntry.command,
-                prevState: prevModel.getClasses(),
-                timestamp: Date.now(),
-                result: redoEntry.result
-            }]);
-
-            return newModel.model;
-        });
+        setModel(newModelResult.model);
+        modelRef.current = newModelResult.model;
 
         // redoスタックから削除
         setRedoStack(prev => prev.slice(0, -1));
@@ -141,13 +143,16 @@ export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandH
             const prevClasses = prevModel.getClasses();
 
             // 関数が渡された場合
+            let newModel: DomainModel;
             if (typeof updaterOrClasses === 'function') {
                 const newClasses = updaterOrClasses(prevClasses);
-                return DomainModel.from(newClasses);
+                newModel = DomainModel.from(newClasses);
+            } else {
+                // 配列が直接渡された場合
+                newModel = DomainModel.from(updaterOrClasses);
             }
-
-            // 配列が直接渡された場合
-            return DomainModel.from(updaterOrClasses);
+            modelRef.current = newModel;
+            return newModel;
         });
     }, []);
     return {

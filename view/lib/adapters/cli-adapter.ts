@@ -23,6 +23,14 @@ import type {
     RenameInput,
     DeleteInput,
     AddRelationshipInput,
+    HelpInput,
+    SelectInput,
+    ExportInput,
+    ImportInput,
+    SaveInput,
+    LoadInput,
+    ClearInput,
+    ListInput,
     /* union type of all application inputs for return typing */
     /* If you have a common union type (e.g. ApplicationInput), import it instead */
 } from '../application/dtos';
@@ -143,6 +151,14 @@ export type ApplicationInput =
     RenameInput |
     DeleteInput |
     AddRelationshipInput |
+    HelpInput |
+    SelectInput |
+    ExportInput |
+    ImportInput |
+    SaveInput |
+    LoadInput |
+    ClearInput |
+    ListInput |
     null;
 
 type Transformer = (cmd: CliCommand) => ApplicationInput | null;
@@ -196,6 +212,24 @@ registerTransformer('SET_IMPL', (c) => toSetImplInput(c as CliSetImpl));
 registerTransformer('RENAME', (c) => toRenameInput(c as CliRename));
 registerTransformer('DELETE', (c) => toDeleteInput(c as CliDelete));
 registerTransformer('RELATION', (c) => toRelationInput(c as CliRelation));
+// Utility commands
+function toHelpInput(cmd: CliCommand): HelpInput { return {} }
+function toSelectInput(cmd: any): SelectInput { return { className: cmd.className } }
+function toExportInput(cmd: any): ExportInput { return { format: (cmd as any).format, target: (cmd as any).target } }
+function toImportInput(cmd: any): ImportInput { return { format: (cmd as any).format, path: (cmd as any).path } }
+function toSaveInput(cmd: any): SaveInput { return { path: (cmd as any).path } }
+function toLoadInput(cmd: any): LoadInput { return { path: (cmd as any).path } }
+function toClearInput(cmd: CliCommand): ClearInput { return {} }
+function toListInput(cmd: any): ListInput { return { subject: (cmd as any).subject } }
+
+registerTransformer('HELP', (c) => toHelpInput(c));
+registerTransformer('SELECT', (c) => toSelectInput(c));
+registerTransformer('EXPORT', (c) => toExportInput(c));
+registerTransformer('IMPORT', (c) => toImportInput(c));
+registerTransformer('SAVE', (c) => toSaveInput(c));
+registerTransformer('LOAD', (c) => toLoadInput(c));
+registerTransformer('CLEAR', (c) => toClearInput(c));
+registerTransformer('LIST', (c) => toListInput(c));
 
 /* ---------- Usage note ----------
   - To extend: import { registerTransformer } and call with new type / transformer.

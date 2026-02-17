@@ -163,5 +163,49 @@ Examples:
 <number> ::= <digit>+
 
 ========================================
+10. Utility & Misc Commands
+----------------------------------------
+
+These commands are convenience/operation commands for UI and persistence.
+
+<help> ::= "help"
+  ; Shows CLI help text or brief command list
+
+<select> ::= "sel" <identifier>
+  ; Selects/focuses a class by name in the UI
+
+<export> ::= "export" <format>? <identifier>?
+<format> ::= "json" | "svg" | "png" | "plantuml"
+  ; Export the whole diagram or a single class in a given format
+
+<import> ::= "import" <format> <path>
+  ; Import diagram/data from a given path in the specified format
+
+<save> ::= "save" <path>?
+  ; Save workspace/diagram to disk (optional path)
+
+<load> ::= "load" <path>
+  ; Load workspace/diagram from a path
+
+<clear> ::= "clear"
+  ; Remove all classes / reset diagram
+
+<list> ::= "list" ("classes" | "commands")?
+  ; List classes or available commands
+
+Examples:
+  help
+  sel User
+  export json
+  export svg Admin
+  import json /path/to/file.json
+  save
+  save /path/to/save.json
+  load /path/to/save.json
+  clear
+  list classes
+
+========================================
   End of Specification
+========================================
 ========================================

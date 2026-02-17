@@ -158,9 +158,9 @@ suite('executeAction', () => {
         const model = DomainModel.createEmpty();
         const invalidCommand = null;
 
-        const result = executeAction(invalidCommand!, model);
+        const result = executeAction(invalidCommand!, model) as HandlerResult;
 
-        assert.strictEqual(result, model); // 同じ参照を返す
+        assert.strictEqual(result.model, model); // 同じ参照を返す
     });
     test('should support command chaining', () => {
         let model = DomainModel.createEmpty();
