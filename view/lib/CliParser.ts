@@ -19,6 +19,8 @@ export type CliCommandType =
     | 'SAVE'
     | 'LOAD'
     | 'CLEAR'
+    | 'UNDO'
+    | 'REDO'
     | 'LIST';
 
 export type TypePrefix = 'c' | 'ac' | 'i' | 's' | 'e';
@@ -135,6 +137,14 @@ export interface ClearCommand extends CliCommand {
     type: 'CLEAR';
 }
 
+export interface UndoCommand extends CliCommand {
+    type: 'UNDO';
+}
+
+export interface RedoCommand extends CliCommand {
+    type: 'REDO';
+}
+
 export interface ListCommand extends CliCommand {
     type: 'LIST';
     subject?: 'classes' | 'commands';
@@ -208,6 +218,10 @@ export class CliParser {
                 return this.parseLoad(line, parts);
             case 'clear':
                 return this.parseClear(line, parts);
+            case 'undo':
+                return this.parseUndo(line, parts);
+            case 'redo':
+                return this.parseRedo(line, parts);
             case 'list':
                 return this.parseList(line, parts);
             default:
@@ -261,6 +275,14 @@ export class CliParser {
 
     private parseClear(raw: string, parts: string[]): ClearCommand | null {
         return { type: 'CLEAR', raw };
+    }
+
+    private parseUndo(raw: string, parts: string[]): UndoCommand | null {
+        return { type: 'UNDO', raw };
+    }
+
+    private parseRedo(raw: string, parts: string[]): RedoCommand | null {
+        return { type: 'REDO', raw };
     }
 
     private parseList(raw: string, parts: string[]): ListCommand | null {

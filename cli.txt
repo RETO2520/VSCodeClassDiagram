@@ -195,6 +195,12 @@ These commands are convenience/operation commands for UI and persistence.
 <list> ::= "list" ("classes" | "commands")?
   ; List classes or available commands
 
+<undo> ::= "undo"
+  ; Undo last action
+
+<redo> ::= "redo:
+  ; Redo last undone action
+
 Examples:
   help
   sel User

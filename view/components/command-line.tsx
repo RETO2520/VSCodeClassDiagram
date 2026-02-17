@@ -73,6 +73,8 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
                 { id: 'load', label: 'load (Load model)', group: 'Utilities' },
                 { id: 'clear', label: 'clear (Clear canvas)', group: 'Utilities' },
                 { id: 'list', label: 'list (List classes/commands)', group: 'Utilities' },
+                { id: 'undo', label: 'undo (Undo last action)', group: 'Utilities' },
+                { id: 'redo', label: 'redo (Redo last undone action)', group: 'Utilities' },
             ]
             return allCommands.filter(c => c.id.startsWith(currentPart)).map(c => ({
                 ...c,

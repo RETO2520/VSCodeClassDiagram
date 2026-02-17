@@ -215,16 +215,27 @@ export function App({ service }: { service: ClassDiagramService }) {
 
     const handleExecuteCommand = useCallback((cmd: string) => {
         const action = parseCommand(cmd);
-        if (action) {
-            // 履歴管理側でモデルを更新し、その結果を使って shared service を一度だけ更新
-            try {
-                const result = commandHistory.executeCommand(action);
-                if (result && result.model) {
-                    service.replaceClassesFromArray(result.model.getClasses());
-                }
-            } catch (err) {
-                console.error('Error applying command to shared service:', err);
+
+        if (!action) {
+            return;
+        }
+        // UNDO/REDO はフック側で処理してリターン
+        if (action.type === 'UNDO') {
+            handleUndo();
+            return;
+        }
+        if (action.type === 'REDO') {
+            handleRedo();
+            return;
+        }
+        // 履歴管理側でモデルを更新し、その結果を使って shared service を一度だけ更新
+        try {
+            const result = commandHistory.executeCommand(action);
+            if (result && result.model) {
+                service.replaceClassesFromArray(result.model.getClasses());
             }
+        } catch (err) {
+            console.error('Error applying command to shared service:', err);
         }
     }, [commandHistory, service])
     // キーボードショートカット

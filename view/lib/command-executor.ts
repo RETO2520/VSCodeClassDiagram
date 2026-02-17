@@ -102,6 +102,16 @@ export function executeCommand(command: CliCommand | null, model: DomainModel): 
                 const ev = { type: 'MODEL_REPLACED', payload: { classes: [] } };
                 return { model: service.getModel(), events: [ev] } as any;
             }
+            case 'UNDO': {
+                //useCommandHistory().undo();
+                const ev = { type: 'MODEL_UNDO' };
+                return { model: service.getModel(), events: [ev] } as any;
+            }
+            case 'REDO': {
+                //.redo();
+                const ev = { type: 'MODEL_REDO' };
+                return { model: service.getModel(), events: [ev] } as any;
+            }
             case 'LIST': {
                 const subject = (inputDto as any).subject;
                 if (!subject || subject === 'classes') {
