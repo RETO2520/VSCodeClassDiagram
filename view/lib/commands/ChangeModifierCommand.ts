@@ -1,5 +1,6 @@
 import { Command } from './Command';
 import { DomainModel } from '../DomainModel';
+import { DesignGraphAggregate } from '../DesignGraphModel';
 import { HandlerResult } from '../handler-registry';
 import { ClassDiagramService } from '../application/ClassDiagramService';
 import { ChangeModifierInput } from '../application/dtos';
@@ -31,7 +32,7 @@ export class ChangeModifierCommand extends Command {
         this.modifierSpecified = modifierSpecified;
     }
 
-    execute(model: DomainModel): HandlerResult {
+    execute(model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
         const input: ChangeModifierInput = {
             target: this.target === 'a' ? 'member' : 'operation',
             className: this.className,

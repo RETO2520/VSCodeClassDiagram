@@ -1,7 +1,9 @@
 import { Command } from './Command';
 import { DomainModel } from '../DomainModel';
+import { DesignGraphAggregate } from '../DesignGraphModel';
 import { HandlerResult } from '../handler-registry';
 import { ClassDiagramService } from '../application/ClassDiagramService';
+import { DesignGraphService } from '../application/DesignGraphService';
 import { AddInterfaceImplInput } from '../application/dtos';
 
 export class SetImplCommand extends Command {
@@ -15,12 +17,27 @@ export class SetImplCommand extends Command {
         this.interfaceName = interfaceName;
     }
 
-    execute(model: DomainModel): HandlerResult {
+    execute(model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
         const input: AddInterfaceImplInput = {
             className: this.className,
             interfaceName: this.interfaceName
         };
         const service = new ClassDiagramService(model);
-        return service.addInterfaceImplFromCli(input);
+        const result = service.addInterfaceImplFromCli(input);
+
+        let nextGraph = graph;
+        let graphEvents: any[] = [];
+        if (graph) {
+            const graphService = new DesignGraphService(graph);
+            const r = graphService.addInterfaceImpl(input);
+            nextGraph = r.graph;
+            graphEvents = r.events;
+        }
+
+        return {
+            ...result,
+            designGraph: nextGraph,
+            graphEvents
+        };
     }
 }

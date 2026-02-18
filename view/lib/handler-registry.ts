@@ -1,14 +1,17 @@
 import { Command } from "./commands/Command"
 import { DomainEvent, DomainModel } from "./DomainModel"
+import { DesignGraphAggregate } from "./DesignGraphModel"
 
 export interface HandlerResult {
     readonly model: DomainModel
     readonly events: DomainEvent[]
+    readonly designGraph?: DesignGraphAggregate
+    readonly graphEvents?: any[]
 }
 export interface CommandHandler<C extends Command = Command> {
     readonly commandType: C["type"]
 
-    execute(command: C, model: DomainModel): HandlerResult
+    execute(command: C, model: DomainModel, graph?: DesignGraphAggregate): HandlerResult
 }
 export class HandlerRegistry {
 
@@ -24,7 +27,7 @@ export class HandlerRegistry {
         this.handlers.set(handler.commandType, handler)
     }
 
-    dispatch<C extends Command>(command: C, model: DomainModel): HandlerResult {
+    dispatch<C extends Command>(command: C, model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
         const handler: CommandHandler<Command> | undefined = this.handlers.get(command.type)
 
         if (!handler) {
@@ -33,6 +36,6 @@ export class HandlerRegistry {
             )
         }
 
-        return handler.execute(command, model)
+        return handler.execute(command, model, graph)
     }
 }

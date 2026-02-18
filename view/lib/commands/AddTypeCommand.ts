@@ -3,6 +3,8 @@ import { DomainModel } from '../DomainModel';
 import { HandlerResult } from '../handler-registry';
 import { TypePrefix } from '../CliParser';
 import { ClassDiagramService } from '../application/ClassDiagramService';
+import { DesignGraphService } from '../application/DesignGraphService';
+import { DesignGraphAggregate } from '../DesignGraphModel';
 import { AddTypeInput } from '../application/dtos';
 import { ClassKind } from '../class-diagram-types';
 
@@ -19,7 +21,7 @@ export class AddTypeCommand extends Command {
         this.extends = ext;
     }
 
-    execute(model: DomainModel): HandlerResult {
+    execute(model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
         const kindMap: Record<TypePrefix, ClassKind> = {
             'c': 'class', 'ac': 'class', 'i': 'interface', 's': 'struct', 'e': 'class'
         };
@@ -30,6 +32,21 @@ export class AddTypeCommand extends Command {
             extendsNames: this.extends && this.extends.length ? this.extends.slice() : undefined
         };
         const service = new ClassDiagramService(model);
-        return service.addTypeFromCli(input);
+        const result = service.addTypeFromCli(input);
+
+        let nextGraph = graph;
+        let graphEvents: any[] = [];
+        if (graph) {
+            const graphService = new DesignGraphService(graph);
+            const r = graphService.addNode(input);
+            nextGraph = r.graph;
+            graphEvents = r.events;
+        }
+
+        return {
+            ...result,
+            designGraph: nextGraph,
+            graphEvents
+        };
     }
 }

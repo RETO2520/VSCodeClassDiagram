@@ -1,5 +1,6 @@
 import { Command } from './Command';
 import { DomainModel } from '../DomainModel';
+import { DesignGraphAggregate } from '../DesignGraphModel';
 import { HandlerResult } from '../handler-registry';
 import { ClassDiagramService } from '../application/ClassDiagramService';
 import { AddRelationshipInput } from '../application/dtos';
@@ -20,7 +21,7 @@ export class RelationCommand extends Command {
         this.multiplicity = multiplicity;
     }
 
-    execute(model: DomainModel): HandlerResult {
+    execute(model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
         const relationship: Relationship = {
             id: '',
             type: this.symbol || 'dependency',

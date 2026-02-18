@@ -1,5 +1,6 @@
 import { Command } from './Command';
 import { DomainModel } from '../DomainModel';
+import { DesignGraphAggregate } from '../DesignGraphModel';
 import { HandlerResult } from '../handler-registry';
 import { ClassDiagramService } from '../application/ClassDiagramService';
 import { DeleteInput } from '../application/dtos';
@@ -17,7 +18,7 @@ export class DeleteCommand extends Command {
         this.name = name;
     }
 
-    execute(model: DomainModel): HandlerResult {
+    execute(model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
         const targetMap = { 'c': 'type' as const, 'a': 'member' as const, 'm': 'operation' as const };
         const input: DeleteInput = {
             target: targetMap[this.target],

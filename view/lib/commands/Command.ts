@@ -1,5 +1,6 @@
 import { HandlerResult } from "../handler-registry";
 import { DomainModel } from '../DomainModel';
+import { DesignGraphAggregate } from '../DesignGraphModel';
 import { CliCommandType } from "../CliParser";
 
 export abstract class Command {
@@ -10,5 +11,5 @@ export abstract class Command {
         this.raw = raw;
     }
 
-    abstract execute(model: DomainModel): HandlerResult;
+    abstract execute(model: DomainModel, graph?: DesignGraphAggregate): HandlerResult;
 }

@@ -1,5 +1,6 @@
 import { Command } from './Command';
 import { DomainModel } from '../DomainModel';
+import { DesignGraphAggregate } from '../DesignGraphModel';
 import { HandlerResult } from '../handler-registry';
 import { postMessage } from '../../../frontend/src/bridge/vscode-bridge';
 
@@ -12,7 +13,7 @@ export class ListCommand extends Command {
         this.subject = subject;
     }
 
-    execute(model: DomainModel): HandlerResult {
+    execute(model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
         if (!this.subject || this.subject === 'classes') {
             const names = model.getClasses().map(c => c.name).join(', ') || '(no classes)';
             postMessage({ command: 'showAlert', text: `Classes: ${names}` });

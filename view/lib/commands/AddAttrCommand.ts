@@ -3,6 +3,8 @@ import { DomainModel } from '../DomainModel';
 import { HandlerResult } from '../handler-registry';
 import { Visibility, Modifier } from '../CliParser';
 import { ClassDiagramService } from '../application/ClassDiagramService';
+import { DesignGraphService } from '../application/DesignGraphService';
+import { DesignGraphAggregate } from '../DesignGraphModel';
 import { AddMemberInput } from '../application/dtos';
 import { createEmptyMember } from '../class-diagram-types';
 
@@ -23,7 +25,7 @@ export class AddAttrCommand extends Command {
         this.modifier = modifier;
     }
 
-    execute(model: DomainModel): HandlerResult {
+    execute(model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
         const m = createEmptyMember();
         m.name = this.name;
         m.type = this.dataType || 'string';
@@ -34,6 +36,21 @@ export class AddAttrCommand extends Command {
             member: m
         };
         const service = new ClassDiagramService(model);
-        return service.addMemberFromCli(input);
+        const result = service.addMemberFromCli(input);
+
+        let nextGraph = graph;
+        let graphEvents: any[] = [];
+        if (graph) {
+            const graphService = new DesignGraphService(graph);
+            const r = graphService.addMember(input);
+            nextGraph = r.graph;
+            graphEvents = r.events;
+        }
+
+        return {
+            ...result,
+            designGraph: nextGraph,
+            graphEvents
+        };
     }
 }
