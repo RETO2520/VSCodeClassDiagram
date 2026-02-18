@@ -1,13 +1,14 @@
 import { HandlerResult } from "../handler-registry";
 import { DomainModel } from '../DomainModel';
-import { CliCommand } from "../CliParser";
-import { DomainEvent } from "../DomainModel";
-import { ClassInfo, ClassMember, ClassOperation, OperationParameter } from "../class-diagram-types";
-
+import { CliCommandType } from "../CliParser";
 
 export abstract class Command {
+    abstract readonly type: CliCommandType;
+    readonly raw: string;
 
-    abstract readonly type: string;
+    constructor(raw: string) {
+        this.raw = raw;
+    }
 
     abstract execute(model: DomainModel): HandlerResult;
 }

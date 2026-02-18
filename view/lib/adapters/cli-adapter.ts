@@ -1,16 +1,14 @@
 // src/adapters/cli-adapter.ts
-import type {
-    CliCommand,
-    AddTypeCommand as CliAddType,
-    AddAttrCommand as CliAddAttr,
-    AddMethodCommand as CliAddMethod,
-    AddParamCommand as CliAddParam,
-    SetBaseCommand as CliSetBase,
-    SetImplCommand as CliSetImpl,
-    RenameCommand as CliRename,
-    DeleteCommand as CliDelete,
-    RelationCommand as CliRelation
-} from '../CliParser';
+import { Command } from '../commands/Command';
+import { AddTypeCommand } from '../commands/AddTypeCommand';
+import { AddAttrCommand } from '../commands/AddAttrCommand';
+import { AddMethodCommand } from '../commands/AddMethodCommand';
+import { AddParamCommand } from '../commands/AddParamCommand';
+import { SetBaseCommand } from '../commands/SetBaseCommand';
+import { SetImplCommand } from '../commands/SetImplCommand';
+import { RenameCommand } from '../commands/RenameCommand';
+import { DeleteCommand } from '../commands/DeleteCommand';
+import { RelationCommand } from '../commands/RelationCommand';
 
 import { createEmptyMember, createEmptyOperation, createEmptyParameter } from '../class-diagram-types';
 import type {
@@ -33,22 +31,20 @@ import type {
     ClearInput,
     ListInput,
     ChangeModifierInput,
-    /* union type of all application inputs for return typing */
-    /* If you have a common union type (e.g. ApplicationInput), import it instead */
 } from '../application/dtos';
 import type { Relationship } from '../class-diagram-types';
 
 /**
  * CLI Adapter (switch-free)
  *
- * - transform raw CliCommand DTOs (from CliParser) into application DTOs
+ * - transform Command objects into application DTOs
  * - do NOT call DomainModel here (name->id resolution is AppService job)
  * - use transformer registry: registerTransformer(type, fn)
  */
 
-/* ---------- Basic conversion functions (kept similar to prior implementation) ---------- */
+/* ---------- Basic conversion functions (kept as utilities) ---------- */
 
-export function toAddTypeInput(cmd: CliAddType): AddTypeInput {
+export function toAddTypeInput(cmd: AddTypeCommand): AddTypeInput {
     const kind = (cmd.kind === 'i') ? 'interface' : (cmd.kind === 's') ? 'struct' : (cmd.kind === 'ac') ? 'class' : 'class';
     const isAbstract = cmd.kind === 'ac';
     return {
@@ -59,7 +55,7 @@ export function toAddTypeInput(cmd: CliAddType): AddTypeInput {
     };
 }
 
-export function toAddAttrInput(cmd: CliAddAttr): AddMemberInput {
+export function toAddAttrInput(cmd: AddAttrCommand): AddMemberInput {
     const m = createEmptyMember();
     m.name = cmd.name;
     m.type = cmd.dataType || 'string';
@@ -71,7 +67,7 @@ export function toAddAttrInput(cmd: CliAddAttr): AddMemberInput {
     };
 }
 
-export function toAddMethodInput(cmd: CliAddMethod): AddOperationInput {
+export function toAddMethodInput(cmd: AddMethodCommand): AddOperationInput {
     const o = createEmptyOperation();
     o.name = cmd.name;
     o.returnType = cmd.returnType || 'void';
@@ -83,7 +79,7 @@ export function toAddMethodInput(cmd: CliAddMethod): AddOperationInput {
     };
 }
 
-export function toAddParamInput(cmd: CliAddParam): AddParameterInput {
+export function toAddParamInput(cmd: AddParamCommand): AddParameterInput {
     const p = createEmptyParameter();
     p.name = cmd.name;
     p.type = cmd.dataType || 'string';
@@ -94,21 +90,21 @@ export function toAddParamInput(cmd: CliAddParam): AddParameterInput {
     };
 }
 
-export function toSetBaseInput(cmd: CliSetBase): SetBaseInput {
+export function toSetBaseInput(cmd: SetBaseCommand): SetBaseInput {
     return {
         className: cmd.className,
         baseClassName: cmd.baseClassName
     };
 }
 
-export function toSetImplInput(cmd: CliSetImpl): AddInterfaceImplInput {
+export function toSetImplInput(cmd: SetImplCommand): AddInterfaceImplInput {
     return {
         className: cmd.className,
         interfaceName: cmd.interfaceName
     };
 }
 
-export function toRenameInput(cmd: CliRename): RenameInput {
+export function toRenameInput(cmd: RenameCommand): RenameInput {
     const target = (cmd.target === 'c') ? 'type' : (cmd.target === 'a') ? 'member' : 'operation';
     return {
         target,
@@ -118,7 +114,7 @@ export function toRenameInput(cmd: CliRename): RenameInput {
     };
 }
 
-export function toDeleteInput(cmd: CliDelete): DeleteInput {
+export function toDeleteInput(cmd: DeleteCommand): DeleteInput {
     const target = (cmd.target === 'c') ? 'type' : (cmd.target === 'a') ? 'member' : 'operation';
     return {
         target,
@@ -127,7 +123,7 @@ export function toDeleteInput(cmd: CliDelete): DeleteInput {
     };
 }
 
-export function toRelationInput(cmd: CliRelation): AddRelationshipInput {
+export function toRelationInput(cmd: RelationCommand): AddRelationshipInput {
     const relationship: Relationship = {
         id: '', // AppService should generate id if needed
         type: cmd.symbol || 'dependency',
@@ -164,7 +160,7 @@ export type ApplicationInput =
     ListInput |
     null;
 
-type Transformer = (cmd: CliCommand) => ApplicationInput | null;
+type Transformer = (cmd: Command) => ApplicationInput | null;
 
 const transformerRegistry = new Map<string, Transformer>();
 
@@ -184,10 +180,10 @@ export function unregisterTransformer(commandType: string): void {
 }
 
 /**
- * Convert a CliCommand into an application DTO using the registered transformer.
+ * Convert a Command into an application DTO using the registered transformer.
  * No switch statement here — behaviour is driven by registry entries.
  */
-export function cliCommandToInput(command: CliCommand): ApplicationInput | null {
+export function cliCommandToInput(command: Command): ApplicationInput | null {
     if (!command) return null;
     const transformer = transformerRegistry.get(command.type);
     if (!transformer) {
@@ -198,7 +194,6 @@ export function cliCommandToInput(command: CliCommand): ApplicationInput | null 
         return transformer(command);
     } catch (err) {
         // Adapter should not throw domain errors; caller can log/handle
-        // You may choose to throw to fail-fast in dev
         console.error('cliCommandToInput transformer error for', command.type, err);
         return null;
     }
@@ -206,23 +201,23 @@ export function cliCommandToInput(command: CliCommand): ApplicationInput | null 
 
 /* ---------- Default registrations (register built-in transformers) ---------- */
 
-registerTransformer('ADD_TYPE', (c) => toAddTypeInput(c as CliAddType));
-registerTransformer('ADD_ATTR', (c) => toAddAttrInput(c as CliAddAttr));
-registerTransformer('ADD_METHOD', (c) => toAddMethodInput(c as CliAddMethod));
-registerTransformer('ADD_PARAM', (c) => toAddParamInput(c as CliAddParam));
-registerTransformer('SET_BASE', (c) => toSetBaseInput(c as CliSetBase));
-registerTransformer('SET_IMPL', (c) => toSetImplInput(c as CliSetImpl));
-registerTransformer('RENAME', (c) => toRenameInput(c as CliRename));
-registerTransformer('DELETE', (c) => toDeleteInput(c as CliDelete));
-registerTransformer('RELATION', (c) => toRelationInput(c as CliRelation));
+registerTransformer('ADD_TYPE', (c) => toAddTypeInput(c as AddTypeCommand));
+registerTransformer('ADD_ATTR', (c) => toAddAttrInput(c as AddAttrCommand));
+registerTransformer('ADD_METHOD', (c) => toAddMethodInput(c as AddMethodCommand));
+registerTransformer('ADD_PARAM', (c) => toAddParamInput(c as AddParamCommand));
+registerTransformer('SET_BASE', (c) => toSetBaseInput(c as SetBaseCommand));
+registerTransformer('SET_IMPL', (c) => toSetImplInput(c as SetImplCommand));
+registerTransformer('RENAME', (c) => toRenameInput(c as RenameCommand));
+registerTransformer('DELETE', (c) => toDeleteInput(c as DeleteCommand));
+registerTransformer('RELATION', (c) => toRelationInput(c as RelationCommand));
 // Utility commands
-function toHelpInput(cmd: CliCommand): HelpInput { return {} }
+function toHelpInput(cmd: Command): HelpInput { return {} }
 function toSelectInput(cmd: any): SelectInput { return { className: cmd.className } }
 function toExportInput(cmd: any): ExportInput { return { format: (cmd as any).format, target: (cmd as any).target } }
 function toImportInput(cmd: any): ImportInput { return { format: (cmd as any).format, path: (cmd as any).path } }
 function toSaveInput(cmd: any): SaveInput { return { path: (cmd as any).path } }
 function toLoadInput(cmd: any): LoadInput { return { path: (cmd as any).path } }
-function toClearInput(cmd: CliCommand): ClearInput { return {} }
+function toClearInput(cmd: Command): ClearInput { return {} }
 function toListInput(cmd: any): ListInput { return { subject: (cmd as any).subject } }
 
 function toGenerateCodeInput(cmd: any): any { return { language: (cmd as any).language, path: (cmd as any).path } }
@@ -253,6 +248,6 @@ registerTransformer('CHANGE_MODIFIER', (c) => toChangeModifierInput(c));
 
 /* ---------- Usage note ----------
   - To extend: import { registerTransformer } and call with new type / transformer.
-  - Transformer should accept the raw CliCommand object and return the corresponding DTO.
+  - Transformer should accept the raw Command object and return the corresponding DTO.
   - Keep adapters pure: do not mutate domain state here.
 ------------------------------------ */

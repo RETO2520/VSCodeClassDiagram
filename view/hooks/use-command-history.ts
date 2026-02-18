@@ -2,13 +2,13 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { ClassInfo } from '@/lib/class-diagram-types';
-import { CliCommand } from '@/lib/CliParser';
+import { Command } from '@/lib/commands/Command';
 import { executeAction } from '@/lib/command-executor';
 import { DomainModel } from '@/lib/DomainModel';
 import { HandlerResult } from '@/lib/handler-registry';
 
 interface HistoryEntry {
-    command: CliCommand;
+    command: Command;
     prevState: ClassInfo[];
     timestamp: number;
     result: HandlerResult;
@@ -18,7 +18,7 @@ interface UseCommandHistoryResult {
     classes: ClassInfo[];
     history: HistoryEntry[];
     redoStack: HistoryEntry[];
-    executeCommand: (command: CliCommand) => HandlerResult | undefined;
+    executeCommand: (command: Command) => HandlerResult | undefined;
     undo: () => HandlerResult | undefined;
     redo: () => HandlerResult | undefined;
     canUndo: boolean;
@@ -38,7 +38,7 @@ export function useCommandHistory(initialClasses: ClassInfo[] = []): UseCommandH
     /**
      * コマンドを実行して履歴に追加
      */
-    const executeCommand = useCallback((command: CliCommand) => {
+    const executeCommand = useCallback((command: Command) => {
         const prevModel = modelRef.current;
 
         // コマンド実行（同期的に結果を取得）

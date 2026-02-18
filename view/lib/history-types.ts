@@ -1,14 +1,14 @@
 // types/history-types.ts
 
 import { ClassInfo } from './class-diagram-types';
-import { CliCommand } from './CliParser';
+import { Command } from './commands/Command';
 
 /**
  * 履歴エントリ
  * コマンドと実行前の状態を保持
  */
 export interface HistoryEntry {
-    command: CliCommand;      // 実行されたコマンド
+    command: Command;         // 実行されたコマンド
     prevState: ClassInfo[];   // コマンド実行前の状態
     timestamp: number;        // 実行日時
 }

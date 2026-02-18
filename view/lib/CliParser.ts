@@ -2,6 +2,28 @@
  * CLI Command Parser based on cli.txt grammar version 1.1
  */
 
+import { Command } from './commands/Command';
+import { AddTypeCommand } from './commands/AddTypeCommand';
+import { AddAttrCommand } from './commands/AddAttrCommand';
+import { AddMethodCommand } from './commands/AddMethodCommand';
+import { AddParamCommand } from './commands/AddParamCommand';
+import { SetBaseCommand } from './commands/SetBaseCommand';
+import { SetImplCommand } from './commands/SetImplCommand';
+import { RenameCommand } from './commands/RenameCommand';
+import { DeleteCommand } from './commands/DeleteCommand';
+import { RelationCommand } from './commands/RelationCommand';
+import { HelpCommand } from './commands/HelpCommand';
+import { SelectCommand } from './commands/SelectCommand';
+import { GenerateCodeCommand } from './commands/GenerateCodeCommand';
+import { ImportCommand } from './commands/ImportCommand';
+import { SaveCommand } from './commands/SaveCommand';
+import { LoadCommand } from './commands/LoadCommand';
+import { ClearCommand } from './commands/ClearCommand';
+import { UndoCommand } from './commands/UndoCommand';
+import { RedoCommand } from './commands/RedoCommand';
+import { ListCommand } from './commands/ListCommand';
+import { ChangeModifierCommand } from './commands/ChangeModifierCommand';
+
 export type CliCommandType =
     | 'ADD_TYPE'
     | 'ADD_ATTR'
@@ -28,141 +50,31 @@ export type TypePrefix = 'c' | 'ac' | 'i' | 's' | 'e';
 export type Visibility = 'public' | 'private' | 'protected' | 'package';
 export type Modifier = 'static' | 'abstract' | 'virtual';
 
-export interface CliCommand {
-    type: CliCommandType;
-    raw: string;
-}
-
-export interface AddTypeCommand extends CliCommand {
-    type: 'ADD_TYPE';
-    kind: TypePrefix;
-    name: string;
-    extends?: string[];
-}
-
-export interface AddAttrCommand extends CliCommand {
-    type: 'ADD_ATTR';
-    className: string;
-    visibility: Visibility;
-    modifier?: Modifier;
-    name: string;
-    dataType: string;
-}
-
-export interface AddMethodCommand extends CliCommand {
-    type: 'ADD_METHOD';
-    className: string;
-    visibility: Visibility;
-    modifier?: Modifier;
-    name: string;
-    returnType: string;
-}
-
-export interface AddParamCommand extends CliCommand {
-    type: 'ADD_PARAM';
-    className: string;
-    methodName: string;
-    name: string;
-    dataType: string;
-}
-
-export interface SetBaseCommand extends CliCommand {
-    type: 'SET_BASE';
-    className: string;
-    baseClassName: string;
-}
-
-export interface SetImplCommand extends CliCommand {
-    type: 'SET_IMPL';
-    className: string;
-    interfaceName: string;
-}
-
-export interface RenameCommand extends CliCommand {
-    type: 'RENAME';
-    target: 'c' | 'a' | 'm';
-    className: string;
-    oldName: string;
-    newName: string;
-}
-
-export interface DeleteCommand extends CliCommand {
-    type: 'DELETE';
-    target: 'c' | 'a' | 'm';
-    className: string;
-    name?: string;
-}
-
-export interface RelationCommand extends CliCommand {
-    type: 'RELATION';
-    source: string;
-    target: string;
-    symbol: string;
-    multiplicity?: string;
-}
-
-// Utility command interfaces
-export interface HelpCommand extends CliCommand {
-    type: 'HELP';
-}
-
-export interface SelectCommand extends CliCommand {
-    type: 'SELECT';
-    className: string;
-}
-
-
-export interface GenerateCodeCommand extends CliCommand {
-    type: 'GENERATE_CODE';
-    language: string; // csharp | java | ts | rust | cpp
-    path?: string;
-}
-
-export interface ImportCommand extends CliCommand {
-    type: 'IMPORT';
-    format: string;
-    path: string;
-}
-
-export interface SaveCommand extends CliCommand {
-    type: 'SAVE';
-    path?: string;
-}
-
-export interface LoadCommand extends CliCommand {
-    type: 'LOAD';
-    path: string;
-}
-
-export interface ClearCommand extends CliCommand {
-    type: 'CLEAR';
-}
-
-export interface UndoCommand extends CliCommand {
-    type: 'UNDO';
-}
-
-export interface RedoCommand extends CliCommand {
-    type: 'REDO';
-}
-
-export interface ListCommand extends CliCommand {
-    type: 'LIST';
-    subject?: 'classes' | 'commands';
-}
-
-export interface ChangeModifierCommand extends CliCommand {
-    type: 'CHANGE_MODIFIER';
-    target: 'a' | 'm';        // attribute or method
-    className: string;
-    memberName: string;
-    visibility: string | null;
-    modifier: string | null;
-    modifierSpecified: boolean; // true if a modifier was specified (even if it's just "change-modifier a Class attr +")
-}
+// Re-export Command class and all subclasses for convenience
+export { Command } from './commands/Command';
+export { AddTypeCommand } from './commands/AddTypeCommand';
+export { AddAttrCommand } from './commands/AddAttrCommand';
+export { AddMethodCommand } from './commands/AddMethodCommand';
+export { AddParamCommand } from './commands/AddParamCommand';
+export { SetBaseCommand } from './commands/SetBaseCommand';
+export { SetImplCommand } from './commands/SetImplCommand';
+export { RenameCommand } from './commands/RenameCommand';
+export { DeleteCommand } from './commands/DeleteCommand';
+export { RelationCommand } from './commands/RelationCommand';
+export { HelpCommand } from './commands/HelpCommand';
+export { SelectCommand } from './commands/SelectCommand';
+export { GenerateCodeCommand } from './commands/GenerateCodeCommand';
+export { ImportCommand } from './commands/ImportCommand';
+export { SaveCommand } from './commands/SaveCommand';
+export { LoadCommand } from './commands/LoadCommand';
+export { ClearCommand } from './commands/ClearCommand';
+export { UndoCommand } from './commands/UndoCommand';
+export { RedoCommand } from './commands/RedoCommand';
+export { ListCommand } from './commands/ListCommand';
+export { ChangeModifierCommand } from './commands/ChangeModifierCommand';
 
 export class CliParser {
-    public parse(input: string): CliCommand | null {
+    public parse(input: string): Command | null {
         const line = input.trim();
         if (!line) return null;
 
@@ -171,20 +83,12 @@ export class CliParser {
         if (relationSymbols.some(s => line.includes(s))) {
             const rel = this.parseRelation(line);
             if (rel) {
-                // Check if it's not actually an add-attr command misidentified as relation
-                // (e.g. "a Class -> type" where -> is part of type)
-                // However, our grammar says relation symbols are special.
-
-                // If it starts with a command prefix, but contains a relation symbol,
-                // we should be careful. But generally symbols win.
                 const firstPart = line.split(/\s+/)[0].toLowerCase();
                 const prefixes = ['c', 'ac', 'i', 's', 'e', 'a', 'm', 'p', 'base', 'impl', 'ren', 'del'];
                 if (!prefixes.includes(firstPart)) {
                     return rel;
                 }
 
-                // If it is a prefix but the relation symbol is prominent (e.g. "A -> B"), return rel
-                // If it's "a User +name string", no relation symbol.
                 if (relationSymbols.some(s => line.split(/\s+/)[1] === s || line.split(/\s+/)[1]?.startsWith(s))) {
                     return rel;
                 }
@@ -243,12 +147,12 @@ export class CliParser {
     }
 
     private parseHelp(raw: string, parts: string[]): HelpCommand | null {
-        return { type: 'HELP', raw };
+        return new HelpCommand(raw);
     }
 
     private parseSelect(raw: string, parts: string[]): SelectCommand | null {
         if (parts.length < 2) return null;
-        return { type: 'SELECT', raw, className: parts.slice(1).join(' ') };
+        return new SelectCommand(raw, parts.slice(1).join(' '));
     }
 
 
@@ -267,42 +171,42 @@ export class CliParser {
         };
         const language = map[langRaw] || langRaw;
         const path = parts.length >= 3 ? parts.slice(2).join(' ') : undefined;
-        return { type: 'GENERATE_CODE', raw, language, path };
+        return new GenerateCodeCommand(raw, language, path);
     }
 
     private parseImport(raw: string, parts: string[]): ImportCommand | null {
         // import <format> <path>
         if (parts.length < 3) return null;
-        return { type: 'IMPORT', raw, format: parts[1], path: parts.slice(2).join(' ') };
+        return new ImportCommand(raw, parts[1], parts.slice(2).join(' '));
     }
 
     private parseSave(raw: string, parts: string[]): SaveCommand | null {
-        if (parts.length === 1) return { type: 'SAVE', raw };
-        return { type: 'SAVE', raw, path: parts.slice(1).join(' ') };
+        if (parts.length === 1) return new SaveCommand(raw);
+        return new SaveCommand(raw, parts.slice(1).join(' '));
     }
 
     private parseLoad(raw: string, parts: string[]): LoadCommand | null {
         if (parts.length < 2) return null;
-        return { type: 'LOAD', raw, path: parts.slice(1).join(' ') };
+        return new LoadCommand(raw, parts.slice(1).join(' '));
     }
 
     private parseClear(raw: string, parts: string[]): ClearCommand | null {
-        return { type: 'CLEAR', raw };
+        return new ClearCommand(raw);
     }
 
     private parseUndo(raw: string, parts: string[]): UndoCommand | null {
-        return { type: 'UNDO', raw };
+        return new UndoCommand(raw);
     }
 
     private parseRedo(raw: string, parts: string[]): RedoCommand | null {
-        return { type: 'REDO', raw };
+        return new RedoCommand(raw);
     }
 
     private parseList(raw: string, parts: string[]): ListCommand | null {
-        if (parts.length === 1) return { type: 'LIST', raw };
+        if (parts.length === 1) return new ListCommand(raw);
         const subject = parts[1].toLowerCase();
         if (subject === 'classes' || subject === 'commands') {
-            return { type: 'LIST', raw, subject } as ListCommand;
+            return new ListCommand(raw, subject);
         }
         return null;
     }
@@ -340,16 +244,15 @@ export class CliParser {
             }
         }
 
-        return {
-            type: 'CHANGE_MODIFIER',
+        return new ChangeModifierCommand(
             raw,
             target,
             className,
             memberName,
             visibility,
             modifier,
-            modifierSpecified: rest.length > 0 || /* 元々修飾子が書かれていた */ modifier !== null
-        };
+            rest.length > 0 || modifier !== null
+        );
     }
 
     private parseAddType(raw: string, parts: string[]): AddTypeCommand | null {
@@ -366,7 +269,7 @@ export class CliParser {
             extendsList = splitted[1].split(',').map(s => s.trim()).filter(s => s.length > 0);
         }
 
-        return { type: 'ADD_TYPE', raw, kind, name, extends: extendsList };
+        return new AddTypeCommand(raw, kind, name, extendsList);
     }
 
     private parseAddAttr(raw: string, parts: string[]): AddAttrCommand | null {
@@ -417,15 +320,7 @@ export class CliParser {
         if (idx >= parts.length) return null;
         const dataType = parts.slice(idx).join(' ');
 
-        return {
-            type: 'ADD_ATTR',
-            raw,
-            className,
-            visibility: visibility || 'private',
-            modifier: modifier || undefined,
-            name,
-            dataType
-        };
+        return new AddAttrCommand(raw, className, visibility || 'private', name, dataType, modifier || undefined);
     }
 
     private parseAddMethod(raw: string, parts: string[]): AddMethodCommand | null {
@@ -474,15 +369,7 @@ export class CliParser {
         if (idx >= parts.length) return null;
         const returnType = parts.slice(idx).join(' ');
 
-        return {
-            type: 'ADD_METHOD',
-            raw,
-            className,
-            visibility: visibility || 'public',
-            modifier: modifier || undefined,
-            name,
-            returnType
-        };
+        return new AddMethodCommand(raw, className, visibility || 'public', name, returnType, modifier || undefined);
     }
 
     private consumeVisibilityAndModifier(parts: string[], startIdx: number): { visibility: Visibility | null, modifier: Modifier | null, name: string, nextIdx: number } {
@@ -526,46 +413,33 @@ export class CliParser {
 
     private parseAddParam(raw: string, parts: string[]): AddParamCommand | null {
         if (parts.length < 5) return null;
-        return {
-            type: 'ADD_PARAM',
-            raw,
-            className: parts[1],
-            methodName: parts[2],
-            name: parts[3],
-            dataType: parts.slice(4).join(' ')
-        };
+        return new AddParamCommand(raw, parts[1], parts[2], parts[3], parts.slice(4).join(' '));
     }
 
     private parseSetBase(raw: string, parts: string[]): SetBaseCommand | null {
         if (parts.length < 3) return null;
-        return { type: 'SET_BASE', raw, className: parts[1], baseClassName: parts[2] };
+        return new SetBaseCommand(raw, parts[1], parts[2]);
     }
 
     private parseSetImpl(raw: string, parts: string[]): SetImplCommand | null {
         if (parts.length < 3) return null;
-        return { type: 'SET_IMPL', raw, className: parts[1], interfaceName: parts[2] };
+        return new SetImplCommand(raw, parts[1], parts[2]);
     }
 
     private parseRename(raw: string, parts: string[]): RenameCommand | null {
         if (parts.length < 4) return null;
         const target = parts[1].toLowerCase() as 'c' | 'a' | 'm';
         if (target === 'c') {
-            return { type: 'RENAME', raw, target, className: parts[2], oldName: parts[2], newName: parts[3] };
+            return new RenameCommand(raw, target, parts[2], parts[2], parts[3]);
         }
         if (parts.length < 5) return null;
-        return { type: 'RENAME', raw, target, className: parts[2], oldName: parts[3], newName: parts[4] };
+        return new RenameCommand(raw, target, parts[2], parts[3], parts[4]);
     }
 
     private parseDelete(raw: string, parts: string[]): DeleteCommand | null {
         if (parts.length < 3) return null;
         const target = parts[1].toLowerCase() as 'c' | 'a' | 'm';
-        return {
-            type: 'DELETE',
-            raw,
-            target,
-            className: parts[2],
-            name: parts[3] || undefined
-        };
+        return new DeleteCommand(raw, target, parts[2], parts[3] || undefined);
     }
 
     private parseRelation(raw: string): RelationCommand | null {
@@ -585,13 +459,13 @@ export class CliParser {
                     const content = rest.substring(1).trim();
                     const firstSpace = content.indexOf(' ');
                     if (firstSpace === -1) {
-                        return { type: 'RELATION', raw, source, target: '', symbol, multiplicity: content };
+                        return new RelationCommand(raw, source, '', symbol, content);
                     }
                     const multiplicity = content.substring(0, firstSpace).trim();
                     const target = content.substring(firstSpace).trim();
-                    return { type: 'RELATION', raw, source, target, symbol, multiplicity };
+                    return new RelationCommand(raw, source, target, symbol, multiplicity);
                 } else {
-                    return { type: 'RELATION', raw, source, target: rest, symbol };
+                    return new RelationCommand(raw, source, rest, symbol);
                 }
             }
         }
