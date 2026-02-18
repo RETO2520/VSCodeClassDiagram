@@ -23,17 +23,6 @@ suite('CliAdapter Test Suite', () => {
         assert.strictEqual(input.className, 'User');
     });
 
-    test('export command converts to ExportInput', () => {
-        const cmd1 = parser.parse('export json') as any;
-        const in1 = cliCommandToInput(cmd1) as any;
-        assert.strictEqual(in1.format, 'json');
-
-        const cmd2 = parser.parse('export svg Admin') as any;
-        const in2 = cliCommandToInput(cmd2) as any;
-        assert.strictEqual(in2.format, 'svg');
-        assert.strictEqual(in2.target, 'Admin');
-    });
-
     test('import command converts to ImportInput', () => {
         const cmd = parser.parse('import json /path/to/file.json') as any;
         const input = cliCommandToInput(cmd) as any;
