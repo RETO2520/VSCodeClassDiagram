@@ -2,7 +2,8 @@ import * as React from 'react'
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from './ui/command'
 import { cn } from '@/lib/utils'
 import { ClassInfo } from '../lib/class-diagram-types'
-
+import { Search } from 'lucide-react'
+import { Command as CommandPrimitive } from 'cmdk'
 interface CommandLineProps {
     onExecute: (command: string) => void;
     classes: ClassInfo[];
@@ -68,6 +69,7 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
                 { id: 'help', label: 'help (Show help)', group: 'Utilities' },
                 { id: 'sel', label: 'sel (Select class)', group: 'Utilities' },
                 { id: 'generate-code', label: 'generate-code (Codegen)', group: 'Utilities' },
+                { id: 'change-modifier', label: 'change-modifier (Change modifier)', group: 'Utilities' },
                 { id: 'import', label: 'import (Import model)', group: 'Utilities' },
                 { id: 'save', label: 'save (Save model)', group: 'Utilities' },
                 { id: 'load', label: 'load (Load model)', group: 'Utilities' },
@@ -100,11 +102,25 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
             }))
         }
 
+        if ((cmd === 'change-modifier') && currentIdx === 1) {
+            const targets = [
+                { id: 'a', label: 'a (Attribute)' },
+                { id: 'm', label: 'm (Method)' }
+            ]
+            return targets.filter(t => t.id.startsWith(currentPart)).map(t => ({
+                id: t.id,
+                label: t.label,
+                group: 'Target Type',
+                valueToInsert: t.id
+            }))
+        }
+
         // Class suggestions
         const needsClassAt = {
             'a': [1], 'm': [1], 'p': [1], 'base': [1, 2], 'impl': [1, 2],
             'ren': { 'c': [2], 'a': [2], 'm': [2] },
-            'del': { 'c': [2], 'a': [2], 'm': [2] }
+            'del': { 'c': [2], 'a': [2], 'm': [2] },
+            'change-modifier': { 'a': [2], 'm': [2] },
         } as any
 
         let showClasses = false
@@ -148,7 +164,7 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
         }
 
         // Member suggestions
-        if ((cmd === 'ren' || cmd === 'del') && (effectiveParts[1] === 'a' || effectiveParts[1] === 'm') && currentIdx === 3) {
+        if ((cmd === 'ren' || cmd === 'del' || cmd === 'change-modifier') && (effectiveParts[1] === 'a' || effectiveParts[1] === 'm') && currentIdx === 3) {
             const cls = classes.find(c => c.name === effectiveParts[2])
             const sub = effectiveParts[1]
             const items = sub === 'a' ? cls?.members : cls?.operations
@@ -162,6 +178,25 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
                     valueToInsert: i.name
                 }))
         }
+
+        // Visibility & Modifiers
+        if ((cmd === 'change-modifier') && currentIdx === 4) {
+            const items = [
+                { id: '+s', label: '+s (public static)', group: 'Visibility' },
+                { id: '-s', label: '-s (private static)', group: 'Visibility' },
+                { id: '#s', label: '#s (protected static)', group: 'Visibility' },
+                { id: '~s', label: '~s (package static)', group: 'Visibility' },
+                { id: 's', label: 's (static)', group: 'Modifiers' },
+
+            ]
+            return items.filter(i => i.id.startsWith(currentPart) || currentPart === '').map(i => ({
+                id: i.id,
+                label: i.label,
+                group: i.group,
+                valueToInsert: i.id
+            }))
+        }
+
 
         // p <class> <method>
         if (cmd === 'p' && currentIdx === 2) {
@@ -229,12 +264,12 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
                     const firstIdx = 0
                     setSelectedIdx(firstIdx)
                     // Insert completion and add a trailing space to advance to next arg
-                    setInput(prefix + activeSuggestions[firstIdx].valueToInsert + ' ')
+                    setInput(prefix + activeSuggestions[firstIdx].valueToInsert)
                 } else {
                     // Continue cycling
                     const nextIdx = (selectedIdx + 1) % lockedSuggestions.length
                     setSelectedIdx(nextIdx)
-                    setInput(prefixAtLock + lockedSuggestions[nextIdx].valueToInsert + ' ')
+                    setInput(prefixAtLock + lockedSuggestions[nextIdx].valueToInsert)
                 }
             }
         } else if (e.key === 'ArrowUp') {
@@ -294,16 +329,24 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
     return (
         <div className={cn("bg-background border-t p-2 shadow-sm", className)}>
             <Command shouldFilter={false} className="rounded-lg border shadow-md">
-                <div className="flex items-center px-3 border-b">
+                <div className="flex items-center px-3 border-b flex-grow">
                     <span className="text-muted-foreground font-mono mr-2">:</span>
-                    <CommandInput
-                        ref={inputRef}
-                        placeholder="c:class, i:interface, m:method, a:attr..."
-                        value={input}
-                        onValueChange={onInputChange}
-                        onKeyDown={handleKeyDown}
-                        className="border-none focus:ring-0 h-9"
-                    />
+                    <div className="flex flex-grow items-center border-b px-3" cmdk-input-wrapper="">
+                        <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                        <CommandPrimitive.Input
+                            ref={inputRef}
+                            placeholder="c:class, i:interface, m:method, a:attr..."
+                            value={input}
+                            onValueChange={onInputChange}
+                            onKeyDown={handleKeyDown}
+                            className={cn(
+                                'flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50',
+                                className,
+                            )}
+
+                        />
+                    </div>
+
                 </div>
                 <CommandList className={cn("max-h-[300px] overflow-y-auto", input === '' && "hidden")}>
                     <CommandEmpty>No suggestions found.</CommandEmpty>
