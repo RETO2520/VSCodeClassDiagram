@@ -25,6 +25,7 @@ import { RedoCommand } from './commands/RedoCommand';
 import { ListCommand } from './commands/ListCommand';
 import { ChangeModifierCommand } from './commands/ChangeModifierCommand';
 import { ApplySignletonPatternCommand } from './commands/ApplySignleotnPatternCommand';
+import { ApplyAdapterPatternCommand } from './commands/ApplyAdapterPatternCommand';
 
 export type CliCommandType =
     | 'ADD_TYPE'
@@ -48,7 +49,8 @@ export type CliCommandType =
     | 'CHANGE_MODIFIER'
     | 'LIST'
     | 'APPLY_FACTORY'
-    | 'APPLY_SINGLETON';
+    | 'APPLY_SINGLETON'
+    | 'APPLY_ADAPTER';
 
 
 export type TypePrefix = 'c' | 'ac' | 'i' | 's' | 'e';
@@ -151,6 +153,8 @@ export class CliParser {
                 return this.parseApplyFactory(line, parts);
             case 'apply-singleton':
                 return this.parseApplySingleton(line, parts);
+            case 'apply-adapter':
+                return this.parseApplyAdapter(line, parts);
             default:
                 return this.parseRelation(line);
         }
@@ -518,5 +522,16 @@ export class CliParser {
         const className = parts[1];
 
         return new ApplySignletonPatternCommand(raw, className);
+    }
+
+    private parseApplyAdapter(raw: string, parts: string[]) {
+        // apply-adapter <adapterName> <targetName> <adapteeName>...
+        if (parts.length < 4) return null;
+
+        const adapterName = parts[1];
+        const targetName = parts[2];
+        const adapteeNames = parts.slice(3);
+
+        return new ApplyAdapterPatternCommand(raw, adapterName, targetName, adapteeNames);
     }
 }

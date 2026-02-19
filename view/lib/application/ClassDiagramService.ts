@@ -677,5 +677,74 @@ export class ClassDiagramService {
 
         return { model: this.model, events };
     }
+
+    applyAdapterPattern(
+        input: {
+            adapterName: string,
+            targetName: string,
+            adapteeNames: string[]
+        }
+    ): HandlerResult {
+        const events: DomainEvent[] = [];
+        let currentModel = this.model;
+        // 1. Adapterクラスの取得
+        const adaperClass = this.model.findClassByName(input.adapterName);
+        if (!adaperClass) {
+            throw new DomainRuleViolation(`Adapter class '${input.adapterName}' not found.`);
+        }
+
+        // 2. Targetクラスの取得
+        const targetClass = this.model.findClassByName(input.targetName);
+        if (!targetClass) {
+            throw new DomainRuleViolation(`Target class '${input.targetName}' not found.`);
+        }
+
+        if (targetClass.kind !== 'interface') {
+            throw new DomainRuleViolation(`Target class is not kind of interface`);
+        }
+
+        currentModel = currentModel.addInterfaceImplementation(adaperClass.id, targetClass.id);
+
+        // 3. Adapteeクラスの取得
+        const adapteeClasses = input.adapteeNames.map(name => {
+            const cls = this.model.findClassByName(name);
+            if (!cls) {
+                throw new DomainRuleViolation(`Adaptee class '${name}' not found.`);
+            }
+            return cls;
+        });
+
+        if (adapteeClasses.length === 0) {
+            throw new DomainRuleViolation(`Adaptee class needs length > 0.`);
+        }
+
+        for (const adaptee of adapteeClasses) {
+            // Adapteeクラスのメンバを付与する
+
+            const adapteeMember: ClassMember = {
+                id: createId(),
+                name: this.toCamelCase(adaptee.name),
+                visibility: 'private',
+                type: adaptee.name,
+                isStatic: false,
+                relationship: 'auto',
+                sourceMultiplicity: "",
+                targetMultiplicity: ""
+            };
+            currentModel = currentModel.addMember(adaperClass.name, adapteeMember);
+        }
+        this.model = currentModel;
+        this.notifyModelChanged();
+        this.dispatcher?.dispatchAll(events);
+        return { model: this.model, events: [] };
+    }
+
+    toPasscalName(name: string): string {
+        return name.charAt(0).toUpperCase() + name.slice(1);
+    }
+
+    toCamelCase(name: string): string {
+        return name.charAt(0).toLowerCase() + name.slice(1);
+    }
 }
 
