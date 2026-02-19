@@ -169,4 +169,160 @@ export class DesignGraphService {
         events.push({ type: 'GRAPH_EDGE_ADDED', payload: edge });
         return { graph: this.graph, events };
     }
+
+    addEdgeByNames(fromName: string, toName: string, kind: EdgeKind): { graph: DesignGraphAggregate, events: any[] } {
+        const events: any[] = [];
+        const fromNode = Object.values(this.graph.nodes).find(n => n.name === fromName);
+        const toNode = Object.values(this.graph.nodes).find(n => n.name === toName);
+
+        if (!fromNode || !toNode) {
+            console.warn(`addEdgeByNames: Node not found. from=${fromName}(${!!fromNode}), to=${toName}(${!!toNode})`);
+            return { graph: this.graph, events };
+        }
+
+        const existingEdge = Object.values(this.graph.edges).find(e =>
+            e.from === fromNode.id && e.to === toNode.id && e.kind === kind
+        );
+        if (existingEdge) return { graph: this.graph, events };
+
+        const edgeId = createId();
+        const edge: DesignEdge = {
+            id: edgeId,
+            from: fromNode.id,
+            to: toNode.id,
+            kind: kind
+        };
+
+        this.graph = this.graph.addEdge(edge);
+        events.push({ type: 'GRAPH_EDGE_ADDED', payload: edge });
+        return { graph: this.graph, events };
+    }
+
+
+    applyFactoryPattern(input: {
+        factoryName: string,
+        abstractName: string,
+        concreteNames: string[]
+    }): { graph: DesignGraphAggregate, events: any[] } {
+        const events: any[] = [];
+
+        // Step 1: Validation
+        // · All concrete names must exist and be classes
+        const concreteNodes: DesignNode[] = [];
+        for (const name of input.concreteNames) {
+            const node = Object.values(this.graph.nodes).find(n => n.name === name);
+            if (!node || node.kind !== 'class') {
+                throw new Error(`Concrete type '${name}' must be an existing class.`);
+            }
+            concreteNodes.push(node);
+        }
+
+        // · Concrete classes must not inherit from each other
+        for (const node of concreteNodes) {
+            const inherits = Object.values(this.graph.edges).some(e =>
+                e.kind === 'inherits' &&
+                ((e.from === node.id && concreteNodes.some(n => n.id === e.to)) ||
+                    (e.to === node.id && concreteNodes.some(n => n.id === e.from)))
+            );
+            if (inherits) {
+                throw new Error(`Concrete types must not inherit from each other.`);
+            }
+        }
+
+        // · Instantiates edge check - at least one concrete should be instantiated?
+        // Requirement says "at least one instantiates edge exists"
+        // Let's check generally for now, or per concrete?
+        // at least one instantiates edge exists
+        // We will assume this is a global check or check if any of the concrete classes are instantiated.
+        const instantiatedEdges = Object.values(this.graph.edges).filter(e =>
+            e.kind === 'instantiates' && concreteNodes.some(n => n.id === e.to)
+        );
+        if (instantiatedEdges.length === 0) {
+            throw new Error(`At least one 'instantiates' edge must exist targeting the concrete types.`);
+        }
+
+        // Step 2: Create Abstract Node
+        const abstractId = createId();
+        const abstractNode: DesignNode = {
+            id: abstractId,
+            kind: 'interface', // or 'class' with abstract? requirement says "abstract node". Interface usually.
+            name: input.abstractName,
+            metadata: { isAbstract: true }
+        };
+        this.graph = this.graph.addNode(abstractNode);
+        events.push({ type: 'GRAPH_NODE_ADDED', payload: abstractNode });
+
+        // Step 3: Implement Edges (Concrete -> Abstract)
+        for (const concrete of concreteNodes) {
+            const edgeId = createId();
+            const edge: DesignEdge = {
+                id: edgeId,
+                from: concrete.id,
+                to: abstractNode.id,
+                kind: 'implements'
+            };
+            this.graph = this.graph.addEdge(edge);
+            events.push({ type: 'GRAPH_EDGE_ADDED', payload: edge });
+        }
+
+        // Step 4: Factory Node
+        const factoryId = createId();
+        const factoryNode: DesignNode = {
+            id: factoryId,
+            kind: 'class',
+            name: input.factoryName,
+            metadata: { isFactory: true }
+        };
+        this.graph = this.graph.addNode(factoryNode);
+        events.push({ type: 'GRAPH_NODE_ADDED', payload: factoryNode });
+
+        // Step 5: Instantiates Edges Reconfiguration
+        // For each concrete:
+        // · Remove existing instantiates pointing TO concrete
+        // · Add Factory -> Concrete (instantiates)
+        // · Add Caller -> Abstract (references) (replace original)
+
+        for (const concrete of concreteNodes) {
+            const incomingInstantiates = Object.values(this.graph.edges).filter(e =>
+                e.kind === 'instantiates' && e.to === concrete.id
+            );
+
+            for (const oldEdge of incomingInstantiates) {
+                // Remove old edge
+                this.graph = this.graph.removeEdge(oldEdge.id);
+                events.push({ type: 'GRAPH_EDGE_REMOVED', payload: { id: oldEdge.id } });
+
+                // Add Caller -> Abstract (references)
+                // Check if reference already exists to avoid duplicates?
+                const existingRef = Object.values(this.graph.edges).find(e =>
+                    e.from === oldEdge.from && e.to === abstractNode.id && e.kind === 'references'
+                );
+
+                if (!existingRef) {
+                    const refEdgeId = createId();
+                    const refEdge: DesignEdge = {
+                        id: refEdgeId,
+                        from: oldEdge.from,
+                        to: abstractNode.id,
+                        kind: 'references'
+                    };
+                    this.graph = this.graph.addEdge(refEdge);
+                    events.push({ type: 'GRAPH_EDGE_ADDED', payload: refEdge });
+                }
+            }
+
+            // Factory -> Concrete (instantiates)
+            const factoryEdgeId = createId();
+            const factoryEdge: DesignEdge = {
+                id: factoryEdgeId,
+                from: factoryNode.id,
+                to: concrete.id,
+                kind: 'instantiates'
+            };
+            this.graph = this.graph.addEdge(factoryEdge);
+            events.push({ type: 'GRAPH_EDGE_ADDED', payload: factoryEdge });
+        }
+
+        return { graph: this.graph, events };
+    }
 }

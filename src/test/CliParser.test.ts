@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { CliParser, AddTypeCommand, AddAttrCommand, AddMethodCommand, AddParamCommand, SetBaseCommand, SetImplCommand, RenameCommand, DeleteCommand, RelationCommand } from '../../view/lib/CliParser';
+import { CliParser, AddTypeCommand, AddAttrCommand, AddMethodCommand, AddParamCommand, SetBaseCommand, SetImplCommand, RenameCommand, DeleteCommand, RelationCommand, ApplyFactoryPatternCommand } from '../../view/lib/CliParser';
 
 suite('CliParser Test Suite', () => {
     let parser: CliParser;
@@ -151,5 +151,14 @@ suite('CliParser Test Suite', () => {
         assert.strictEqual(parser.parse(''), null);
         assert.strictEqual(parser.parse('   '), null);
         assert.strictEqual(parser.parse('invalidCommand'), null);
+    });
+
+    // 10. Design Pattern Commands
+    test('parse should handle apply-factory command', () => {
+        const result = parser.parse('apply-factory ShapeFactory Shape Circle Square') as ApplyFactoryPatternCommand;
+        assert.strictEqual(result.type, 'APPLY_FACTORY');
+        assert.strictEqual(result.factoryName, 'ShapeFactory');
+        assert.strictEqual(result.abstractName, 'Shape');
+        assert.deepStrictEqual(result.concreteNames, ['Circle', 'Square']);
     });
 });

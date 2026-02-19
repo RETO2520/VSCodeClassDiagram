@@ -1,8 +1,9 @@
 import { Command } from './Command';
 import { DomainModel } from '../DomainModel';
-import { DesignGraphAggregate } from '../DesignGraphModel';
+import { DesignGraphAggregate, EdgeKind } from '../DesignGraphModel';
 import { HandlerResult } from '../handler-registry';
 import { ClassDiagramService } from '../application/ClassDiagramService';
+import { DesignGraphService } from '../application/DesignGraphService';
 import { AddRelationshipInput } from '../application/dtos';
 import { Relationship } from '../class-diagram-types';
 
@@ -22,17 +23,57 @@ export class RelationCommand extends Command {
     }
 
     execute(model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
-        const relationship: Relationship = {
-            id: '',
-            type: this.symbol || 'dependency',
-            sourceId: this.source,
-            targetId: this.target,
-            label: undefined,
-            sourceMultiplicity: this.multiplicity,
-            targetMultiplicity: undefined
-        } as Relationship;
-        const input: AddRelationshipInput = { relationship };
-        const service = new ClassDiagramService(model);
-        return service.applyAddRelationship(input);
+        const classDiagramService = new ClassDiagramService(model);
+        let result: HandlerResult = { model, events: [] };
+
+        // 1. Logical Synchronization (DomainModel)
+        switch (this.symbol) {
+            case '>|':
+                result = classDiagramService.setBaseFromCli({ className: this.source, baseClassName: this.target });
+                break;
+            case '>/':
+                result = classDiagramService.addInterfaceImplFromCli({ className: this.source, interfaceName: this.target });
+                break;
+            default:
+                // Other associations/dependencies are currently handled as generic relationships if needed
+                const relationship: Relationship = {
+                    id: '',
+                    type: this.symbol,
+                    sourceId: this.source,
+                    targetId: this.target,
+                    label: undefined,
+                    sourceMultiplicity: this.multiplicity,
+                    targetMultiplicity: undefined
+                } as Relationship;
+                result = classDiagramService.applyAddRelationship({ relationship });
+                break;
+        }
+
+        // 2. Visual Synchronization (DesignGraph)
+        if (graph) {
+            const graphService = new DesignGraphService(graph);
+            let edgeKind: EdgeKind | undefined;
+
+            switch (this.symbol) {
+                case '>|': edgeKind = 'inherits'; break;
+                case '>/': edgeKind = 'implements'; break;
+                case '+>': edgeKind = 'instantiates'; break;
+                case '->': edgeKind = 'references'; break;
+                case 'o>': edgeKind = 'delegates'; break;
+                case '*>': edgeKind = 'references'; break;
+                case '-/>': edgeKind = 'calls'; break;
+            }
+
+            if (edgeKind) {
+                const graphResult = graphService.addEdgeByNames(this.source, this.target, edgeKind);
+                result = {
+                    ...result,
+                    designGraph: graphResult.graph,
+                    graphEvents: graphResult.events
+                };
+            }
+        }
+
+        return result;
     }
 }

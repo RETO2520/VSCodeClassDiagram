@@ -5,6 +5,7 @@
 import { CliParser } from './CliParser';
 import { Command } from './commands/Command';
 import { DomainModel } from './DomainModel';
+import { DesignGraphAggregate } from './DesignGraphModel';
 import { HandlerResult } from './handler-registry';
 import { postMessage } from '../../frontend/src/bridge/vscode-bridge';
 
@@ -22,41 +23,55 @@ export function parseCommand(input: string): Command | null {
  * executeCommand
  * - Command.execute() に委譲するだけのシンプルな関数
  */
-export function executeCommand(command: Command | null, model: DomainModel): HandlerResult {
+export function executeCommand(command: Command | null, model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
     if (!command) {
-        return { model, events: [] };
+        return { model, events: [], designGraph: graph };
     }
 
     postMessage({ command: 'log', level: 'info', text: `Executing command: ${command.type}` });
 
     try {
-        return command.execute(model);
+        return command.execute(model, graph);
     } catch (err) {
         postMessage({ command: 'log', level: 'error', text: `Error executing command: ${String(err)}` });
-        return { model, events: [] };
+        return { model, events: [], designGraph: graph };
     }
 }
 
 /**
  * executeCommands - バッチ実行（互換）
  */
-export function executeCommands(commands: Command[] | null, model: DomainModel): HandlerResult {
-    if (!commands || commands.length === 0) return { model, events: [] };
+export function executeCommands(commands: Command[] | null, model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
+    if (!commands || commands.length === 0) return { model, events: [], designGraph: graph };
 
     let currentModel = model;
+    let currentGraph = graph;
     let currentEvents: any[] = [];
+    let currentGraphEvents: any[] = [];
 
     for (const cmd of commands) {
-        const result = executeCommand(cmd, currentModel);
+        const result = executeCommand(cmd, currentModel, currentGraph);
         currentModel = result.model;
-        if (result.events && result.events.length) currentEvents = currentEvents.concat(result.events);
+        currentGraph = result.designGraph;
+
+        if (result.events && result.events.length) {
+            currentEvents = currentEvents.concat(result.events);
+        }
+        if (result.graphEvents && result.graphEvents.length) {
+            currentGraphEvents = currentGraphEvents.concat(result.graphEvents);
+        }
     }
 
-    return { model: currentModel, events: currentEvents };
+    return {
+        model: currentModel,
+        events: currentEvents,
+        designGraph: currentGraph,
+        graphEvents: currentGraphEvents
+    };
 }
 
-export function executeAction(command: Command | null, model: DomainModel): HandlerResult {
+export function executeAction(command: Command | null, model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
     // 常に HandlerResult を返す（互換性のため空イベントを返す）
-    if (!command) return { model, events: [] };
-    return executeCommand(command, model);
+    if (!command) return { model, events: [], designGraph: graph };
+    return executeCommand(command, model, graph);
 }

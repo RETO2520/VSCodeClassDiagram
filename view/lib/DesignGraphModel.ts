@@ -81,12 +81,12 @@ export interface DesignNode {
  * エッジ種別
  */
 export type EdgeKind =
-    | "inherits"
-    | "implements"
-    | "instantiates"
-    | "references"
-    | "calls"
-    | "delegates";
+    | "inherits" /** 継承責務 */
+    | "implements" /** 実装責務 */
+    | "instantiates" /** 生成責務 */
+    | "references" /** 参照責務 */
+    | "calls" /** 呼び出し責務 */
+    | "delegates" /** 委譲責務 */;
 
 /**
  * エッジ
@@ -188,6 +188,24 @@ export class DesignGraphAggregate {
                 ...this.state.edges,
                 [edge.id]: edge,
             },
+        };
+
+        return new DesignGraphAggregate(newState);
+    }
+
+    /**
+     * エッジ削除
+     */
+    removeEdge(edgeId: string): DesignGraphAggregate {
+        if (!this.state.edges[edgeId]) {
+            throw new Error(`Edge with id ${edgeId} does not exist.`);
+        }
+
+        const { [edgeId]: _, ...remainingEdges } = this.state.edges;
+
+        const newState: DesignGraphState = {
+            nodes: this.state.nodes,
+            edges: remainingEdges,
         };
 
         return new DesignGraphAggregate(newState);

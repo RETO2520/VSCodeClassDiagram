@@ -145,6 +145,7 @@ Examples:
 
 <relation-symbol> ::= ">|"     ; inheritance
                     | ">/"     ; interface realization
+                    | "+>"     ; instantiation
                     | "->"     ; association
                     | "o>"     ; aggregation
                     | "*>"     ; composition

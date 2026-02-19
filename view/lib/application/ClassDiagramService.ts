@@ -16,7 +16,7 @@ import {
 } from './dtos'
 import { HandlerResult } from '../handler-registry'
 import type { ClassInfo, ClassKind, ClassMember, ClassOperation, OperationParameter, Relationship, Visibility } from '../class-diagram-types'
-
+import { createId } from '../class-diagram-types';
 /**
  * Optional EventDispatcher interface - if you have one.
  * If not available, you can omit dispatcher and call service methods directly and handle returned events.
@@ -521,4 +521,87 @@ export class ClassDiagramService {
         this.dispatcher?.dispatchAll([ev])
         return { model: this.model, events: [ev] }
     }
+
+    applyFactoryPattern(input: {
+        factoryName: string,
+        abstractName: string,
+        concreteNames: string[]
+    }): HandlerResult {
+        const events: DomainEvent[] = [];
+        let currentModel = this.model;
+
+        // 1. Validate and resolve concrete types
+        const concreteClasses: ClassInfo[] = [];
+        for (const name of input.concreteNames) {
+            const cls = currentModel.findClassByName(name);
+            if (!cls) {
+                throw new DomainRuleViolation(`Concrete type '${name}' not found.`);
+            }
+            concreteClasses.push(cls);
+        }
+
+        // 2. Create Abstract Node (Interface by default for Factory Pattern)
+        const abstractKind: ClassKind = 'interface';
+        const { model: modelWithAbstract, target: abstractClassInfo } = this.getOrCreateClass(currentModel, input.abstractName, abstractKind);
+        currentModel = modelWithAbstract;
+
+        // Force kind to interface if it was existing as something else
+        let abstractClass = abstractClassInfo;
+        if (abstractClass.kind !== 'interface') {
+            currentModel = currentModel.updateClassByName(abstractClass.name, cls => ({ ...cls, kind: 'interface' }));
+            abstractClass = currentModel.findClassByName(abstractClass.name)!;
+        }
+
+        events.push({
+            type: 'TYPE_ADDED',
+            payload: { className: abstractClass.name, classInfo: abstractClass }
+        });
+
+        // 3. Update Concrete Classes to implement Abstract Node
+        for (const concrete of concreteClasses) {
+            currentModel = currentModel.addInterfaceImplementation(concrete.id, abstractClass.id);
+            events.push({
+                type: 'IMPLEMENTED_INTERFACE_ADDED',
+                payload: { className: concrete.name, interfaceName: abstractClass.name }
+            });
+        }
+
+        // 4. Create Factory Class
+        const { model: modelWithFactory, target: factoryClassInfo } = this.getOrCreateClass(currentModel, input.factoryName, 'class');
+        currentModel = modelWithFactory;
+
+        // Add create() method to Factory
+        const createOp: ClassOperation = {
+            id: createId(),
+            name: 'create',
+            returnType: abstractClass.name,
+            visibility: 'public',
+            parameters: [],
+            isStatic: false
+        };
+        currentModel = currentModel.addOperation(factoryClassInfo.name, createOp);
+        const factoryClass = currentModel.findClassByName(factoryClassInfo.name)!;
+
+        events.push({
+            type: 'TYPE_ADDED',
+            payload: { className: factoryClass.name, classInfo: factoryClass }
+        });
+
+        // 5. Add creation method added event
+        events.push({
+            type: 'MEMBER_ADDED', // Simplified event for operation addition
+            payload: { className: factoryClass.name, member: createOp }
+        });
+
+        // Note: Relationship updates (like Caller -> Abstract, Factory -> Concrete) 
+        // are handled by the DesignGraphService in this architecture for now, 
+        // as DomainModel relationships are primarily expressed through members/interfaces.
+
+        this.model = currentModel;
+        this.notifyModelChanged();
+        this.dispatcher?.dispatchAll(events);
+
+        return { model: this.model, events };
+    }
 }
+

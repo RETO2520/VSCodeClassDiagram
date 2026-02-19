@@ -4,6 +4,7 @@
 
 import { Command } from './commands/Command';
 import { AddTypeCommand } from './commands/AddTypeCommand';
+import { ApplyFactoryPatternCommand } from './commands/ApplyFactoryPatternCommand';
 import { AddAttrCommand } from './commands/AddAttrCommand';
 import { AddMethodCommand } from './commands/AddMethodCommand';
 import { AddParamCommand } from './commands/AddParamCommand';
@@ -44,7 +45,9 @@ export type CliCommandType =
     | 'UNDO'
     | 'REDO'
     | 'CHANGE_MODIFIER'
-    | 'LIST';
+    | 'CHANGE_MODIFIER'
+    | 'LIST'
+    | 'APPLY_FACTORY';
 
 export type TypePrefix = 'c' | 'ac' | 'i' | 's' | 'e';
 export type Visibility = 'public' | 'private' | 'protected' | 'package';
@@ -72,6 +75,7 @@ export { UndoCommand } from './commands/UndoCommand';
 export { RedoCommand } from './commands/RedoCommand';
 export { ListCommand } from './commands/ListCommand';
 export { ChangeModifierCommand } from './commands/ChangeModifierCommand';
+export { ApplyFactoryPatternCommand } from './commands/ApplyFactoryPatternCommand';
 
 export class CliParser {
     public parse(input: string): Command | null {
@@ -79,12 +83,12 @@ export class CliParser {
         if (!line) return null;
 
         // PRIORITIZE Relationship commands if relation symbols are present outside of a clear command
-        const relationSymbols = ['>|', '>/', '->', 'o>', '*>', '-/>'];
+        const relationSymbols = ['+>', '>|', '>/', '->', 'o>', '*>', '-/>'];
         if (relationSymbols.some(s => line.includes(s))) {
             const rel = this.parseRelation(line);
             if (rel) {
                 const firstPart = line.split(/\s+/)[0].toLowerCase();
-                const prefixes = ['c', 'ac', 'i', 's', 'e', 'a', 'm', 'p', 'base', 'impl', 'ren', 'del'];
+                const prefixes = ['c', 'ac', 'i', 's', 'e', 'a', 'm', 'p', 'base', 'impl', 'ren', 'del', 'mod', 'change-modifier'];
                 if (!prefixes.includes(firstPart)) {
                     return rel;
                 }
@@ -141,6 +145,12 @@ export class CliParser {
                 return this.parseChangeModifier(line, parts);
             case 'list':
                 return this.parseList(line, parts);
+
+            // TODO :
+            //  - エッジ種別を全てサポートする
+            //  - 
+            case 'apply-factory':
+                return this.parseApplyFactory(line, parts);
             default:
                 return this.parseRelation(line);
         }
@@ -443,7 +453,7 @@ export class CliParser {
     }
 
     private parseRelation(raw: string): RelationCommand | null {
-        const symbols = ['>|', '>/', '->', 'o>', '*>', '-/>'];
+        const symbols = ['>|', '>/', '+>', '->', 'o>', '*>', '-/>'];
         // Sort symbols by length descending to match longer ones first (like -/> before -> if it existed)
         const sortedSymbols = [...symbols].sort((a, b) => b.length - a.length);
 
@@ -489,5 +499,16 @@ export class CliParser {
             case 'v': return 'virtual';
             default: return null;
         }
+    }
+
+    private parseApplyFactory(raw: string, parts: string[]): ApplyFactoryPatternCommand | null {
+        // apply-factory <factoryName> <abstractName> <concreteName>...
+        if (parts.length < 4) return null;
+
+        const factoryName = parts[1];
+        const abstractName = parts[2];
+        const concreteNames = parts.slice(3);
+
+        return new ApplyFactoryPatternCommand(raw, factoryName, abstractName, concreteNames);
     }
 }

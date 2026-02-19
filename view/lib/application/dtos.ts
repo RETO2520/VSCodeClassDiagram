@@ -171,3 +171,10 @@ export interface ClearInput {
 export interface ListInput {
     subject?: 'classes' | 'commands';
 }
+
+export interface ApplyFactoryPatternInput {
+    factoryName: string;
+    abstractName: string;
+    concreteNames: string[];
+}
+
