@@ -24,6 +24,7 @@ import { UndoCommand } from './commands/UndoCommand';
 import { RedoCommand } from './commands/RedoCommand';
 import { ListCommand } from './commands/ListCommand';
 import { ChangeModifierCommand } from './commands/ChangeModifierCommand';
+import { ApplySignletonPatternCommand } from './commands/ApplySignleotnPatternCommand';
 
 export type CliCommandType =
     | 'ADD_TYPE'
@@ -46,7 +47,9 @@ export type CliCommandType =
     | 'REDO'
     | 'CHANGE_MODIFIER'
     | 'LIST'
-    | 'APPLY_FACTORY';
+    | 'APPLY_FACTORY'
+    | 'APPLY_SINGLETON';
+
 
 export type TypePrefix = 'c' | 'ac' | 'i' | 's' | 'e';
 export type Visibility = 'public' | 'private' | 'protected' | 'package';
@@ -146,6 +149,8 @@ export class CliParser {
                 return this.parseList(line, parts);
             case 'apply-factory':
                 return this.parseApplyFactory(line, parts);
+            case 'apply-singleton':
+                return this.parseApplySingleton(line, parts);
             default:
                 return this.parseRelation(line);
         }
@@ -441,6 +446,51 @@ export class CliParser {
         }
     }
 
+    private consumeVisibility(parts: string[], idx: number): { visibility: Visibility | null, nextIdx: number, currentToken: string } {
+        let visibility: Visibility | null = null;
+        let currentToken = parts[idx];
+
+        if (currentToken && currentToken.length >= 1) {
+            const visSymbol = this.parseVisibility(currentToken[0]);
+            if (visSymbol) {
+                visibility = visSymbol;
+                currentToken = currentToken.substring(1);
+                if (currentToken === '') {
+                    idx++;
+                    currentToken = parts[idx];
+                }
+            }
+        }
+        return { visibility, nextIdx: idx, currentToken };
+    }
+
+    private consumeModifier(parts: string[], idx: number, currentToken: string): { modifier: Modifier | null, nextIdx: number, currentToken: string } {
+        let modifier: Modifier | null = null;
+        if (currentToken && currentToken.length === 1) {
+            const modSymbol = this.parseModifier(currentToken);
+            if (modSymbol) {
+                modifier = modSymbol;
+                idx++;
+                currentToken = parts[idx];
+            }
+        }
+        return { modifier, nextIdx: idx, currentToken };
+    }
+
+    private parseMember(parts: string[], startIdx: number) {
+        let { visibility, nextIdx, currentToken } = this.consumeVisibility(parts, startIdx);
+        let { modifier, nextIdx: finalIdx, currentToken: finalToken } = this.consumeModifier(parts, nextIdx, currentToken);
+
+        if (!finalToken) return null;
+        const name = finalToken;
+        let idx = finalIdx + 1;
+
+        if (idx >= parts.length) return null;
+        const type = parts.slice(idx).join(' ');
+
+        return { visibility, modifier, name, type };
+    }
+
     private parseModifier(symbol: string): Modifier | null {
         switch (symbol) {
             case 's': return 'static';
@@ -459,5 +509,14 @@ export class CliParser {
         const concreteNames = parts.slice(3);
 
         return new ApplyFactoryPatternCommand(raw, factoryName, abstractName, concreteNames);
+    }
+
+    private parseApplySingleton(raw: string, parts: string[]): ApplySignletonPatternCommand | null {
+        // apply-singleton <className>
+        if (parts.length !== 2) return null;
+
+        const className = parts[1];
+
+        return new ApplySignletonPatternCommand(raw, className);
     }
 }

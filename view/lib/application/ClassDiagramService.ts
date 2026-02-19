@@ -625,5 +625,57 @@ export class ClassDiagramService {
 
         return { model: this.model, events };
     }
+
+    applySingletonPattern(input: {
+        className: string
+    }): HandlerResult {
+        const events: DomainEvent[] = [];
+        let currentModel = this.model;
+
+        // 1. Find the class
+        const cls = currentModel.findClassByName(input.className);
+        if (!cls) {
+            throw new DomainRuleViolation(`Class '${input.className}' not found.`);
+        }
+
+        // 2. instanceメンバの追加
+        const instanceMember: ClassMember = {
+            id: createId(),
+            name: 'instance',
+            visibility: 'private',
+            type: cls.name,
+            isStatic: true,
+            relationship: 'auto',
+            sourceMultiplicity: "",
+            targetMultiplicity: ""
+        };
+        currentModel = currentModel.addMember(cls.name, instanceMember);
+        events.push({
+            type: 'MEMBER_ADDED',
+            payload: { className: cls.name, member: instanceMember }
+        });
+
+        // 3. getInstanceメソッドの追加
+        const getInstanceOp: ClassOperation = {
+            id: createId(),
+            name: 'getInstance',
+            returnType: cls.name,
+            visibility: 'public',
+            parameters: [],
+            isStatic: true
+        };
+        currentModel = currentModel.addOperation(cls.name, getInstanceOp);
+        events.push({
+            type: 'OPERATION_ADDED',
+            payload: { className: cls.name, operation: getInstanceOp }
+        });
+
+
+        this.model = currentModel;
+        this.notifyModelChanged();
+        this.dispatcher?.dispatchAll(events);
+
+        return { model: this.model, events };
+    }
 }
 
