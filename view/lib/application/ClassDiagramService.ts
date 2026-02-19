@@ -795,6 +795,68 @@ export class ClassDiagramService {
         return { model: this.model, events: [] };
 
     }
+
+    applyStrategyPattern(
+        input: {
+            contextClassName: string,
+            strategyInterfaceName: string,
+            strategyConcreteClassNames: string[]
+        }
+    ): HandlerResult {
+        const events: DomainEvent[] = [];
+        let currentModel = this.model;
+
+
+        const contextClass = currentModel.findClassByName(input.contextClassName);
+        if (!contextClass) {
+            throw new DomainRuleViolation(`Concrete class '${input.contextClassName}' not found.`);
+        }
+
+        const strategyInterface = currentModel.findClassByName(input.strategyInterfaceName);
+        if (!strategyInterface) {
+            throw new DomainRuleViolation(`Interface class '${input.strategyInterfaceName}' not found.`);
+        }
+
+        if (strategyInterface.kind !== 'interface') {
+            throw new DomainRuleViolation(`Interface class is not kind of interface : '${input.strategyInterfaceName}'`);
+        }
+
+
+        const contextStrategyMember: ClassMember = {
+            id: createId(),
+            name: this.toCamelCase(strategyInterface.name),
+            visibility: 'private',
+            type: strategyInterface.name,
+            isStatic: false,
+            isAbstract: false,
+            relationship: 'auto',
+            sourceMultiplicity: "",
+            targetMultiplicity: ""
+        };
+        currentModel = currentModel.addMember(contextClass.name, contextStrategyMember);
+        if (input.strategyConcreteClassNames.length === 0) {
+            throw new DomainRuleViolation(`Strategy concrete class needs length > 0.`);
+        }
+
+        for (const concreteName of input.strategyConcreteClassNames) {
+            const concreteClass = currentModel.findClassByName(concreteName);
+            if (!concreteClass) {
+                postMessage({ command: 'log', level: 'warn', text: `Strategy concrete class '${concreteName}' not found.` })
+                continue;
+            }
+            if (concreteClass.kind !== 'class') {
+                throw new DomainRuleViolation(`Strategy concrete class is not kind of class : '${concreteName}'`);
+            }
+
+            currentModel = currentModel.addInterfaceImplementation(concreteClass.id, strategyInterface.id);
+        }
+
+        this.model = currentModel;
+        this.notifyModelChanged();
+        this.dispatcher?.dispatchAll(events);
+        return { model: this.model, events: [] };
+    }
+
     toPasscalName(name: string): string {
         return name.charAt(0).toUpperCase() + name.slice(1);
     }
