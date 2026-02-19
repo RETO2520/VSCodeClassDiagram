@@ -471,6 +471,19 @@ function MemberRow({
             {"static"}
           </Label>
         </div>
+        <div className="flex items-center gap-1.5">
+          <Checkbox
+            id={`abstract-${member.id}`}
+            checked={member.isAbstract}
+            onCheckedChange={(checked) =>
+              onChange({ ...member, isAbstract: checked === true })
+            }
+            className="h-3.5 w-3.5"
+          />
+          <Label htmlFor={`abstract-${member.id}`} className="text-[10px] text-muted-foreground cursor-pointer">
+            {"abstract"}
+          </Label>
+        </div>
       </div>
 
       {/* Relationship & Multiplicity (only when type references another class) */}
@@ -624,19 +637,34 @@ function OperationRow({
         </Button>
       </div>
 
-      {/* Static checkbox */}
-      <div className="flex items-center gap-1.5 pl-1">
-        <Checkbox
-          id={`static-op-${operation.id}`}
-          checked={operation.isStatic}
-          onCheckedChange={(checked) =>
-            onChange({ ...operation, isStatic: checked === true })
-          }
-          className="h-3.5 w-3.5"
-        />
-        <Label htmlFor={`static-op-${operation.id}`} className="text-[10px] text-muted-foreground cursor-pointer">
-          {"static"}
-        </Label>
+      {/* Options row */}
+      <div className="flex items-center gap-3 pl-1">
+        <div className="flex items-center gap-1.5">
+          <Checkbox
+            id={`static-op-${operation.id}`}
+            checked={operation.isStatic}
+            onCheckedChange={(checked) =>
+              onChange({ ...operation, isStatic: checked === true })
+            }
+            className="h-3.5 w-3.5"
+          />
+          <Label htmlFor={`static-op-${operation.id}`} className="text-[10px] text-muted-foreground cursor-pointer">
+            {"static"}
+          </Label>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Checkbox
+            id={`abstract-op-${operation.id}`}
+            checked={operation.isAbstract}
+            onCheckedChange={(checked) =>
+              onChange({ ...operation, isAbstract: checked === true })
+            }
+            className="h-3.5 w-3.5"
+          />
+          <Label htmlFor={`abstract-op-${operation.id}`} className="text-[10px] text-muted-foreground cursor-pointer">
+            {"abstract"}
+          </Label>
+        </div>
       </div>
 
       {/* Parameters toggle */}

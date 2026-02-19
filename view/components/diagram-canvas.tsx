@@ -109,12 +109,12 @@ function calculateClassDimensions(
   let maxTextWidth = Math.max(stereotypeWidth, nameWidth)
 
   for (const m of classInfo.members) {
-    const w = measureText(ctx, formatMember(m), SMALL_FONT_SIZE)
+    const w = measureText(ctx, formatMember(m), SMALL_FONT_SIZE, false, m.isAbstract)
     maxTextWidth = Math.max(maxTextWidth, w)
   }
 
   for (const op of classInfo.operations) {
-    const w = measureText(ctx, formatOperation(op), SMALL_FONT_SIZE)
+    const w = measureText(ctx, formatOperation(op), SMALL_FONT_SIZE, false, op.isAbstract)
     maxTextWidth = Math.max(maxTextWidth, w)
   }
 
@@ -223,7 +223,7 @@ function drawClassBox(
       const text = formatMember(m)
 
       if (m.isStatic) {
-        ctx.font = `${SMALL_FONT_SIZE}px ${MONO_FONT}`
+        ctx.font = `${m.isAbstract ? "italic " : ""}${SMALL_FONT_SIZE}px ${MONO_FONT}`
         ctx.fillText(text, x + HORIZONTAL_PAD, my)
         const tw = ctx.measureText(text).width
         ctx.beginPath()
@@ -233,7 +233,7 @@ function drawClassBox(
         ctx.lineWidth = 1
         ctx.stroke()
       } else {
-        ctx.font = `${SMALL_FONT_SIZE}px ${MONO_FONT}`
+        ctx.font = `${m.isAbstract ? "italic " : ""}${SMALL_FONT_SIZE}px ${MONO_FONT}`
         ctx.fillText(text, x + HORIZONTAL_PAD, my)
       }
     })
@@ -246,7 +246,7 @@ function drawClassBox(
       const text = formatOperation(op)
 
       if (op.isStatic) {
-        ctx.font = `${SMALL_FONT_SIZE}px ${MONO_FONT}`
+        ctx.font = `${op.isAbstract ? "italic " : ""}${SMALL_FONT_SIZE}px ${MONO_FONT}`
         ctx.fillStyle = colors.bodyText
         ctx.fillText(text, x + HORIZONTAL_PAD, oy)
         const tw = ctx.measureText(text).width
@@ -257,7 +257,7 @@ function drawClassBox(
         ctx.lineWidth = 1
         ctx.stroke()
       } else {
-        ctx.font = `${SMALL_FONT_SIZE}px ${MONO_FONT}`
+        ctx.font = `${op.isAbstract ? "italic " : ""}${SMALL_FONT_SIZE}px ${MONO_FONT}`
         ctx.fillStyle = colors.bodyText
         ctx.fillText(text, x + HORIZONTAL_PAD, oy)
       }

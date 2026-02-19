@@ -31,6 +31,7 @@ export class AddMethodCommand extends Command {
         o.returnType = this.returnType || 'void';
         o.visibility = this.visibility;
         o.isStatic = this.modifier === 'static';
+        o.isAbstract = this.modifier === 'abstract';
         const input: AddOperationInput = {
             className: this.className,
             operation: o

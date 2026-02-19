@@ -31,6 +31,7 @@ export class AddAttrCommand extends Command {
         m.type = this.dataType || 'string';
         m.visibility = this.visibility;
         m.isStatic = this.modifier === 'static';
+        m.isAbstract = this.modifier === 'abstract';
         const input: AddMemberInput = {
             className: this.className,
             member: m
