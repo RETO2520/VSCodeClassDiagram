@@ -45,7 +45,6 @@ export type CliCommandType =
     | 'UNDO'
     | 'REDO'
     | 'CHANGE_MODIFIER'
-    | 'CHANGE_MODIFIER'
     | 'LIST'
     | 'APPLY_FACTORY';
 
@@ -145,15 +144,6 @@ export class CliParser {
                 return this.parseChangeModifier(line, parts);
             case 'list':
                 return this.parseList(line, parts);
-
-            // TODO :
-            //  - エッジ種別を全てサポートする
-            //  - 
-            case 'apply':
-                if (parts[1]?.toLowerCase() === 'factory') {
-                    return this.parseApplyFactory(line, ['apply-factory', ...parts.slice(2)]);
-                }
-                return null;
             case 'apply-factory':
                 return this.parseApplyFactory(line, parts);
             default:
@@ -227,16 +217,11 @@ export class CliParser {
     }
 
     private parseChangeModifier(raw: string, parts: string[]): ChangeModifierCommand | null {
-        const kind = parts[0].toLowerCase();
+        if (parts.length < 5) return null;
         const target = parts[1].toLowerCase() as 'a' | 'm';
         const className = parts[2];
         const memberName = parts[3];
         const modifierSpec = parts[4];
-
-        if (!kind || !target || !className || !memberName || !modifierSpec) {
-            // 引数不足
-            return null;
-        }
 
         const VISIBILITY = new Set(['+', '-', '#', '~']);
         const MODIFIER_ATTR = new Set(['s', 'a']);
@@ -300,14 +285,12 @@ export class CliParser {
 
         // 現在のトークンを取得
         let currentToken = parts[idx];
-
         // visibilityを解析（先頭が記号の場合）
         if (currentToken && currentToken.length >= 1) {
             const visSymbol = this.parseVisibility(currentToken[0]);
             if (visSymbol) {
                 visibility = visSymbol;
                 currentToken = currentToken.substring(1); // 記号を削除
-
                 // トークンが空になったら次へ
                 if (currentToken === '') {
                     idx++;
@@ -385,45 +368,6 @@ export class CliParser {
         const returnType = parts.slice(idx).join(' ');
 
         return new AddMethodCommand(raw, className, visibility || 'public', name, returnType, modifier || undefined);
-    }
-
-    private consumeVisibilityAndModifier(parts: string[], startIdx: number): { visibility: Visibility | null, modifier: Modifier | null, name: string, nextIdx: number } {
-        let visibility: Visibility | null = null;
-        let modifier: Modifier | null = null;
-        let name = '';
-        let currentIdx = startIdx;
-
-        let token = parts[currentIdx];
-        if (!token) return { visibility, modifier, name, nextIdx: currentIdx };
-
-        // 1. Try to extract visibility from the start of the token
-        const vis = this.parseVisibility(token[0]);
-        if (vis) {
-            visibility = vis;
-            token = token.substring(1);
-        }
-
-        // If token became empty, move to next and continue
-        if (token === '' && currentIdx + 1 < parts.length) {
-            currentIdx++;
-            token = parts[currentIdx];
-        }
-
-        // 2. Try to extract modifier
-        const mod = this.parseModifier(token[0]);
-        if (mod) {
-            modifier = mod;
-            token = token.substring(1);
-        }
-
-        // If token became empty, move to next
-        if (token === '' && currentIdx + 1 < parts.length) {
-            currentIdx++;
-            token = parts[currentIdx];
-        }
-
-        name = token;
-        return { visibility, modifier, name, nextIdx: currentIdx + 1 };
     }
 
     private parseAddParam(raw: string, parts: string[]): AddParamCommand | null {

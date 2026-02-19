@@ -37,6 +37,7 @@ suite('CliParser Test Suite', () => {
     test('parse should handle ADD_ATTR with visibility and modifiers', () => {
         const testCases = [
             { input: 'a User +name string', visibility: 'public', modifier: undefined, name: 'name', dataType: 'string' },
+            { input: 'a User + name string', visibility: 'public', modifier: undefined, name: 'name', dataType: 'string' },
             { input: 'a Point -x int', visibility: 'private', modifier: undefined, name: 'x', dataType: 'int' },
             { input: 'a Config ~s instance Config', visibility: 'package', modifier: 'static', name: 'instance', dataType: 'Config' },
             { input: 'a Shape #a area float', visibility: 'protected', modifier: 'abstract', name: 'area', dataType: 'float' }

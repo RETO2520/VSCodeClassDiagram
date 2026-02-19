@@ -199,7 +199,7 @@ These commands are convenience/operation commands for UI and persistence.
 <undo> ::= "undo"
   ; Undo last action
 
-<redo> ::= "redo:
+<redo> ::= "redo"
   ; Redo last undone action
 
 <modify> ::= "modify" <modify-target>
@@ -210,7 +210,20 @@ These commands are convenience/operation commands for UI and persistence.
 <mod-spec> ::= <visibility>? <modifier>?
              ; visibility: + | - | # | ~
              ; modifier:   s | a | v (メソッドのみ v が有効)
-  
+
+<apply-factory> ::= "apply-factory" <identifier> { <identifier> }
+  ; <identifier> : factory class
+  ; { <identifier> } : class name list
+
+<apply-singleton> ::= "apply-singleton" <identifier>
+  ; <identifier> : class name
+
+<apply-adapter> ::= "apply-adapter" <identifier> <identifier> { <identifier> }
+  ; <identifier> : adapter class
+  ; <identifier> : target interface
+  ; { <identifier> } : adaptee class list
+
+
 Examples:
   help
   sel User
