@@ -79,8 +79,22 @@ export function detectRelationships(classes: ClassInfo[]): Relationship[] {
       }
     }
 
-    // --- 2. 操作パラメータの型による依存検出 ---
+    // --- 2. 操作パラメータ・戻り値の型による依存検出 ---
     for (const op of cls.operations) {
+      // 戻り値の型による検出
+      const returnTypeName = extractBaseType(op.returnType)
+      const returnTargetClass = classNameMap.get(returnTypeName)
+
+      if (returnTargetClass && returnTargetClass.id !== cls.id) {
+        addRelationship(
+          cls.id,
+          returnTargetClass.id,
+          "dependency",
+          `${op.name}(): ${op.returnType}`,
+        )
+      }
+
+      // パラメータの型による検出
       for (const param of op.parameters) {
         const typeName = extractBaseType(param.type)
         const targetClass = classNameMap.get(typeName)

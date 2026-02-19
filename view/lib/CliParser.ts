@@ -149,6 +149,11 @@ export class CliParser {
             // TODO :
             //  - エッジ種別を全てサポートする
             //  - 
+            case 'apply':
+                if (parts[1]?.toLowerCase() === 'factory') {
+                    return this.parseApplyFactory(line, ['apply-factory', ...parts.slice(2)]);
+                }
+                return null;
             case 'apply-factory':
                 return this.parseApplyFactory(line, parts);
             default:

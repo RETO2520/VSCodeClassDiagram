@@ -5,7 +5,7 @@ import { HandlerResult } from '../handler-registry';
 import { ClassDiagramService } from '../application/ClassDiagramService';
 import { DesignGraphService } from '../application/DesignGraphService';
 import { AddRelationshipInput } from '../application/dtos';
-import { Relationship } from '../class-diagram-types';
+import { Relationship, createId } from '../class-diagram-types';
 
 export class RelationCommand extends Command {
     readonly type = 'RELATION' as const;
@@ -71,6 +71,26 @@ export class RelationCommand extends Command {
                     designGraph: graphResult.graph,
                     graphEvents: graphResult.events
                 };
+
+                // If it's an instantiation (+>), also add a generation method to the model
+                if (this.symbol === '+>') {
+                    const methodResult = classDiagramService.applyAddOperation({
+                        className: this.source,
+                        operation: {
+                            id: createId(),
+                            name: `create${this.target}`,
+                            returnType: this.target,
+                            visibility: 'public',
+                            parameters: [],
+                            isStatic: false
+                        }
+                    });
+                    result = {
+                        ...result,
+                        model: methodResult.model,
+                        events: [...result.events, ...methodResult.events]
+                    };
+                }
             }
         }
 

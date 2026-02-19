@@ -84,7 +84,7 @@ export class WorkflowDiagramHandler {
         html = html.replace(/<head>/i, `<head><base href="${baseUri}/">`);
 
         // CSP
-        const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource};">`;
+        const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource}; connect-src ${webview.cspSource}; worker-src 'self' blob:;">`;
 
         // Replace placeholders
         html = html.replace(/__STYLE_URI__/g, styleUri.toString());

@@ -545,12 +545,12 @@ export class ClassDiagramService {
         const { model: modelWithAbstract, target: abstractClassInfo } = this.getOrCreateClass(currentModel, input.abstractName, abstractKind);
         currentModel = modelWithAbstract;
 
-        // Force kind to interface if it was existing as something else
-        let abstractClass = abstractClassInfo;
-        if (abstractClass.kind !== 'interface') {
-            currentModel = currentModel.updateClassByName(abstractClass.name, cls => ({ ...cls, kind: 'interface' }));
-            abstractClass = currentModel.findClassByName(abstractClass.name)!;
+        // Force kind to interface if it was existing as something else (REQUIRED for addInterfaceImplementation)
+        if (currentModel.findClassByName(input.abstractName)!.kind !== 'interface') {
+            currentModel = currentModel.updateClassByName(input.abstractName, cls => ({ ...cls, kind: 'interface' }));
         }
+
+        const abstractClass = currentModel.findClassByName(input.abstractName)!;
 
         events.push({
             type: 'TYPE_ADDED',
@@ -593,9 +593,31 @@ export class ClassDiagramService {
             payload: { className: factoryClass.name, member: createOp }
         });
 
-        // Note: Relationship updates (like Caller -> Abstract, Factory -> Concrete) 
-        // are handled by the DesignGraphService in this architecture for now, 
-        // as DomainModel relationships are primarily expressed through members/interfaces.
+        // 6. Migrate existing generation methods from Callers
+        // Search for methods named "create[ConcreteClassName]" across all classes
+        for (const concrete of concreteClasses) {
+            const methodName = `create${concrete.name}`;
+
+            // Get current list of classes from latest model
+            const allClasses = currentModel.getClasses();
+            for (const cls of allClasses) {
+                if (cls.name === factoryClass.name) continue;
+
+                const opsToMigrate = cls.operations.filter(o => o.name === methodName);
+                if (opsToMigrate.length > 0) {
+
+                    // Use updateClass to remove operations in one go per class if possible,
+                    // but for simplicity and events, we can just use removeOperation correctly.
+                    for (const op of opsToMigrate) {
+                        currentModel = currentModel.removeOperation(cls.name, op.name);
+                        events.push({
+                            type: 'OPERATION_REMOVED',
+                            payload: { className: cls.name, operation: op }
+                        });
+                    }
+                }
+            }
+        }
 
         this.model = currentModel;
         this.notifyModelChanged();
