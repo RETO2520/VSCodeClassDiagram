@@ -28,6 +28,7 @@ import { ApplySignletonPatternCommand } from './commands/ApplySignleotnPatternCo
 import { ApplyAdapterPatternCommand } from './commands/ApplyAdapterPatternCommand';
 import { ApplyTemplatePatternCommand } from './commands/ApplyTemplatePatternCommand';
 import { ApplyStrategyPatternCommand } from './commands/ApplyStrategyPatternCommand';
+import { ApplyObserverPatternCommand } from './commands/ApplyObserverPatternCommand';
 
 export type CliCommandType =
     | 'ADD_TYPE'
@@ -54,7 +55,8 @@ export type CliCommandType =
     | 'APPLY_SINGLETON'
     | 'APPLY_ADAPTER'
     | 'APPLY_TEMPLATE'
-    | 'APPLY_STRATEGY';
+    | 'APPLY_STRATEGY'
+    | 'APPLY_OBSERVER';
 
 
 export type TypePrefix = 'c' | 'ac' | 'i' | 's' | 'e';
@@ -163,6 +165,8 @@ export class CliParser {
                 return this.parseApplyTemplate(line, parts);
             case 'apply-strategy':
                 return this.parseApplyStrategy(line, parts);
+            case 'apply-observer':
+                return this.parseApplyObserver(line, parts);
             default:
                 return this.parseRelation(line);
         }
@@ -562,5 +566,16 @@ export class CliParser {
         const strategyConcreteClassNames = parts.slice(3);
 
         return new ApplyStrategyPatternCommand(raw, contextName, strategyInterfaceName, strategyConcreteClassNames);
+    }
+
+    private parseApplyObserver(raw: string, parts: string[]) {
+        // apply-observer <subjectClassName> <observerInterfaceName> <observerConcreteClassName>...
+        if (parts.length < 4) return null;
+
+        const subjectClassName = parts[1];
+        const observerInterfaceName = parts[2];
+        const observerConcreteClassNames = parts.slice(3);
+
+        return new ApplyObserverPatternCommand(raw, subjectClassName, observerInterfaceName, observerConcreteClassNames);
     }
 }

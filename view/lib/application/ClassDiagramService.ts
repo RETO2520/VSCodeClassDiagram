@@ -857,6 +857,123 @@ export class ClassDiagramService {
         return { model: this.model, events: [] };
     }
 
+    applyObserverPattern(
+        input: {
+            subjectClassName: string,
+            observerInterfaceName: string,
+            observerConcreteClassNames: string[]
+        }
+    ): HandlerResult {
+        const events: DomainEvent[] = [];
+        let currentModel = this.model;
+
+        // register observer interface 
+        currentModel = currentModel.registerClass(input.observerInterfaceName, 'interface', createId());
+        const observerInterface = currentModel.findClassByName(input.observerInterfaceName);
+        if (!observerInterface) {
+            throw new DomainRuleViolation(`observer interface '${input.observerInterfaceName}' not found.`);
+        }
+        const observerUpdateOperation: ClassOperation = {
+            id: createId(),
+            name: 'update',
+            returnType: 'void',
+            visibility: 'public',
+            parameters: [],
+            isStatic: false,
+            isAbstract: false
+        }
+        currentModel = currentModel.addOperation(observerInterface.name, observerUpdateOperation);
+
+
+
+        // register subject class if not exists
+        currentModel = currentModel.registerClass(input.subjectClassName, 'class', createId());
+        const subjectClass = currentModel.findClassByName(input.subjectClassName);
+        if (!subjectClass) {
+            throw new DomainRuleViolation(`subject class '${input.subjectClassName}' not found.`);
+        }
+        const subjectObserversAttribute: ClassMember = {
+            id: createId(),
+            name: this.toCamelCase(observerInterface.name),
+            visibility: 'private',
+            type: `${observerInterface.name}[]`,
+            isStatic: false,
+            isAbstract: false,
+            relationship: 'auto',
+            sourceMultiplicity: "1",
+            targetMultiplicity: "*"
+        }
+
+        currentModel = currentModel.addMember(subjectClass.name, subjectObserversAttribute);
+
+        const subjectAttachParameter: OperationParameter = {
+            id: createId(),
+            name: this.toCamelCase(observerInterface.name),
+            type: observerInterface.name,
+        }
+        const subjectDetachParameter: OperationParameter = {
+            id: createId(),
+            name: this.toCamelCase(observerInterface.name),
+            type: observerInterface.name,
+        }
+
+        const subjectAttachOperation: ClassOperation = {
+            id: createId(),
+            name: 'attach',
+            returnType: 'void',
+            visibility: 'public',
+            parameters: [],
+            isStatic: false,
+            isAbstract: false
+        };
+        const subjectDetachOperation: ClassOperation = {
+            id: createId(),
+            name: 'detach',
+            returnType: 'void',
+            visibility: 'public',
+            parameters: [],
+            isStatic: false,
+            isAbstract: false
+        };
+        const notifyOperation: ClassOperation = {
+            id: createId(),
+            name: 'notify',
+            returnType: 'void',
+            visibility: 'public',
+            parameters: [],
+            isStatic: false,
+            isAbstract: false
+        }
+        currentModel = currentModel.addOperation(subjectClass.name, subjectAttachOperation);
+        currentModel = currentModel.addParameter(subjectClass.name, subjectAttachOperation.name, subjectAttachParameter);
+
+        currentModel = currentModel.addOperation(subjectClass.name, subjectDetachOperation);
+        currentModel = currentModel.addParameter(subjectClass.name, subjectDetachOperation.name, subjectDetachParameter);
+
+        currentModel = currentModel.addOperation(subjectClass.name, notifyOperation);
+
+
+        // observer interfaceを付与する
+        for (const concreteName of input.observerConcreteClassNames) {
+            const concreteClass = currentModel.findClassByName(concreteName);
+            if (!concreteClass) {
+                postMessage({ command: 'log', level: 'warn', text: `Observer concrete class '${concreteName}' not found.` })
+                continue;
+            }
+            if (concreteClass.kind !== 'class') {
+                throw new DomainRuleViolation(`Observer concrete class is not kind of class : '${concreteName}'`);
+            }
+
+            currentModel = currentModel.addInterfaceImplementation(concreteClass.id, observerInterface.id);
+        }
+
+        this.model = currentModel;
+        this.notifyModelChanged();
+        this.dispatcher?.dispatchAll(events);
+        return { model: this.model, events: [] };
+
+    }
+
     toPasscalName(name: string): string {
         return name.charAt(0).toUpperCase() + name.slice(1);
     }
