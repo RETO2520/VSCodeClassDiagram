@@ -974,6 +974,67 @@ export class ClassDiagramService {
 
     }
 
+    applyFacadePattern(
+        input: {
+            facadeClassName: string,
+            subsystemClassNames: string[]
+        }
+    ): HandlerResult {
+        const events: DomainEvent[] = [];
+        let currentModel = this.model;
+
+
+        const facadeClass = currentModel.findClassByName(input.facadeClassName);
+        if (!facadeClass) {
+            throw new DomainRuleViolation(`Facade class '${input.facadeClassName}' not found.`);
+        }
+        if (input.subsystemClassNames.length < 2) {
+            throw new DomainRuleViolation(`Subsystem class names is less than 2.`);
+        }
+        // register subsystem classes if not exists
+        for (const subsystemName of input.subsystemClassNames) {
+            const subsystemClass = currentModel.findClassByName(subsystemName);
+            if (!subsystemClass) {
+                throw new DomainRuleViolation(`Subsystem class '${subsystemName}' not found.`);
+            }
+
+            // add composition relationship from facade to subsystem
+            const compositionMember: ClassMember = {
+                id: createId(),
+                name: this.toCamelCase(subsystemClass.name),
+                visibility: 'private',
+                type: subsystemClass.name,
+                isStatic: false,
+                isAbstract: false,
+                relationship: 'auto',
+                sourceMultiplicity: "1",
+                targetMultiplicity: "1"
+            };
+            currentModel = currentModel.addMember(facadeClass.name, compositionMember);
+        }
+
+        // facade classに operationを追加する(なければ)
+        if (facadeClass.operations.length === 0) {
+            const facadeOperation: ClassOperation = {
+                id: createId(),
+                name: 'operation',
+                returnType: 'void',
+                visibility: 'public',
+                parameters: [],
+                isStatic: false,
+                isAbstract: false
+            };
+            currentModel = currentModel.addOperation(facadeClass.name, facadeOperation);
+        } else {
+            postMessage({ command: 'log', level: 'warn', text: `Facade class '${input.facadeClassName}' already has operations. This message is output when the Facade class has one or more methods. ` })
+        }
+
+        this.model = currentModel;
+        this.notifyModelChanged();
+        this.dispatcher?.dispatchAll(events);
+        return { model: this.model, events: [] };
+    }
+
     toPasscalName(name: string): string {
         return name.charAt(0).toUpperCase() + name.slice(1);
     }

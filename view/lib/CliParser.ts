@@ -29,6 +29,7 @@ import { ApplyAdapterPatternCommand } from './commands/ApplyAdapterPatternComman
 import { ApplyTemplatePatternCommand } from './commands/ApplyTemplatePatternCommand';
 import { ApplyStrategyPatternCommand } from './commands/ApplyStrategyPatternCommand';
 import { ApplyObserverPatternCommand } from './commands/ApplyObserverPatternCommand';
+import { ApplyFacadePatternCommand } from './commands/ApplyFacadePatternCommand';
 
 export type CliCommandType =
     | 'ADD_TYPE'
@@ -56,7 +57,8 @@ export type CliCommandType =
     | 'APPLY_ADAPTER'
     | 'APPLY_TEMPLATE'
     | 'APPLY_STRATEGY'
-    | 'APPLY_OBSERVER';
+    | 'APPLY_OBSERVER'
+    | 'APPLY_FACADE';
 
 
 export type TypePrefix = 'c' | 'ac' | 'i' | 's' | 'e';
@@ -167,6 +169,8 @@ export class CliParser {
                 return this.parseApplyStrategy(line, parts);
             case 'apply-observer':
                 return this.parseApplyObserver(line, parts);
+            case 'apply-facade':
+                return this.parseApplyFacade(line, parts);
             default:
                 return this.parseRelation(line);
         }
@@ -577,5 +581,15 @@ export class CliParser {
         const observerConcreteClassNames = parts.slice(3);
 
         return new ApplyObserverPatternCommand(raw, subjectClassName, observerInterfaceName, observerConcreteClassNames);
+    }
+
+    private parseApplyFacade(raw: string, parts: string[]) {
+        // apply-facade <facadeClassName> <subsystemClassName>...
+        if (parts.length < 3) return null;
+
+        const facadeClassName = parts[1];
+        const subsystemClassNames = parts.slice(2);
+
+        return new ApplyFacadePatternCommand(raw, facadeClassName, subsystemClassNames);
     }
 }
