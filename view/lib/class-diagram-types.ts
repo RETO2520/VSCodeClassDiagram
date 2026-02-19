@@ -41,6 +41,7 @@ export interface ClassMember {
   type: string
   visibility: Visibility
   isStatic: boolean
+  isAbstract: boolean
   /** メンバ固有のリレーションシップ指定 (auto = 自動判定) */
   relationship: MemberRelationshipType
   /** ソース側の多重度 */
@@ -57,6 +58,7 @@ export interface ClassOperation {
   visibility: Visibility
   parameters: OperationParameter[]
   isStatic: boolean
+  isAbstract: boolean
 }
 
 /** クラス情報 */
@@ -155,6 +157,7 @@ export function createEmptyMember(): ClassMember {
     type: "string",
     visibility: "private",
     isStatic: false,
+    isAbstract: false,
     relationship: "auto",
     sourceMultiplicity: "1",
     targetMultiplicity: "1",
@@ -169,6 +172,7 @@ export function createEmptyOperation(): ClassOperation {
     visibility: "public",
     parameters: [],
     isStatic: false,
+    isAbstract: false
   }
 }
 

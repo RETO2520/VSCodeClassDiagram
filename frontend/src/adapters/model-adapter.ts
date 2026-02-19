@@ -110,6 +110,7 @@ function mediaAttributeToMember(attr: MediaAttribute, idx: number): ClassMember 
         type: attr.type,
         visibility: mediaVisibilityToView(attr.visibility),
         isStatic: mod === 'static',
+        isAbstract: mod === 'abstract',
         relationship: mediaModifierToRelationship(attr.modifier),
         sourceMultiplicity: '1',
         targetMultiplicity: '1',
@@ -124,6 +125,7 @@ function mediaOperationToView(op: MediaOperation, idx: number): ClassOperation {
         returnType: op.returnType,
         visibility: mediaVisibilityToView(op.visibility),
         isStatic: mod === 'static',
+        isAbstract: mod === 'abstract',
         parameters: op.parameters.map((p, pi) => ({
             id: `p_${idx}_${pi}`,
             name: p.name,

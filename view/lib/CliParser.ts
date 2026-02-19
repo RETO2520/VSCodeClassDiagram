@@ -26,6 +26,7 @@ import { ListCommand } from './commands/ListCommand';
 import { ChangeModifierCommand } from './commands/ChangeModifierCommand';
 import { ApplySignletonPatternCommand } from './commands/ApplySignleotnPatternCommand';
 import { ApplyAdapterPatternCommand } from './commands/ApplyAdapterPatternCommand';
+import { ApplyTemplatePatternCommand } from './commands/ApplyTemplatePatternCommand';
 
 export type CliCommandType =
     | 'ADD_TYPE'
@@ -50,7 +51,8 @@ export type CliCommandType =
     | 'LIST'
     | 'APPLY_FACTORY'
     | 'APPLY_SINGLETON'
-    | 'APPLY_ADAPTER';
+    | 'APPLY_ADAPTER'
+    | 'APPLY_TEMPLATE';
 
 
 export type TypePrefix = 'c' | 'ac' | 'i' | 's' | 'e';
@@ -155,6 +157,8 @@ export class CliParser {
                 return this.parseApplySingleton(line, parts);
             case 'apply-adapter':
                 return this.parseApplyAdapter(line, parts);
+            case 'apply-template':
+                return this.parseApplyTemplate(line, parts);
             default:
                 return this.parseRelation(line);
         }
@@ -533,5 +537,15 @@ export class CliParser {
         const adapteeNames = parts.slice(3);
 
         return new ApplyAdapterPatternCommand(raw, adapterName, targetName, adapteeNames);
+    }
+
+    private parseApplyTemplate(raw: string, parts: string[]) {
+        // apply-template <abstractName> <concreteName>...
+        if (parts.length < 3) return null;
+
+        const abstractName = parts[1];
+        const concreteNames = parts.slice(2);
+
+        return new ApplyTemplatePatternCommand(raw, abstractName, concreteNames);
     }
 }

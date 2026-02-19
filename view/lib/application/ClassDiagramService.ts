@@ -17,6 +17,7 @@ import {
 import { HandlerResult } from '../handler-registry'
 import type { ClassInfo, ClassKind, ClassMember, ClassOperation, OperationParameter, Relationship, Visibility } from '../class-diagram-types'
 import { createId } from '../class-diagram-types';
+import { postMessage } from '../../../frontend/src/bridge/vscode-bridge';
 /**
  * Optional EventDispatcher interface - if you have one.
  * If not available, you can omit dispatcher and call service methods directly and handle returned events.
@@ -577,7 +578,8 @@ export class ClassDiagramService {
             returnType: abstractClass.name,
             visibility: 'public',
             parameters: [],
-            isStatic: false
+            isStatic: false,
+            isAbstract: false
         };
         currentModel = currentModel.addOperation(factoryClassInfo.name, createOp);
         const factoryClass = currentModel.findClassByName(factoryClassInfo.name)!;
@@ -645,6 +647,7 @@ export class ClassDiagramService {
             visibility: 'private',
             type: cls.name,
             isStatic: true,
+            isAbstract: false,
             relationship: 'auto',
             sourceMultiplicity: "",
             targetMultiplicity: ""
@@ -662,7 +665,8 @@ export class ClassDiagramService {
             returnType: cls.name,
             visibility: 'public',
             parameters: [],
-            isStatic: true
+            isStatic: true,
+            isAbstract: false
         };
         currentModel = currentModel.addOperation(cls.name, getInstanceOp);
         events.push({
@@ -727,6 +731,7 @@ export class ClassDiagramService {
                 visibility: 'private',
                 type: adaptee.name,
                 isStatic: false,
+                isAbstract: false,
                 relationship: 'auto',
                 sourceMultiplicity: "",
                 targetMultiplicity: ""
@@ -739,6 +744,57 @@ export class ClassDiagramService {
         return { model: this.model, events: [] };
     }
 
+    applyTemplatePattern(
+        input: {
+            abstractClassName: string,
+            concreteNames: string[]
+        }
+    ): HandlerResult {
+        const events: DomainEvent[] = [];
+        let currentModel = this.model;
+
+        const abstractClass = currentModel.findClassByName(input.abstractClassName);
+        if (!abstractClass) {
+            throw new DomainRuleViolation(`Abstract class '${input.abstractClassName}' not found.`);
+        }
+
+        if (!abstractClass?.isAbstract) {
+            throw new DomainRuleViolation(`Class is not abstract class : '${input.abstractClassName}'`)
+        }
+
+        if (abstractClass.operations.length === 0) {
+            throw new DomainRuleViolation(`To apply the template pattern, you need at least one template method and an abstract method to be defined in child classes. : '${input.abstractClassName}'`);
+        }
+
+        const abstractOperations = abstractClass.operations.filter(op => op.isAbstract);
+        if (abstractOperations.length === 0) {
+            throw new DomainRuleViolation(`At least one abstract method must be defined in the child class. : '${input.abstractClassName}'`);
+        }
+
+        if (input.concreteNames.length === 0) {
+            throw new DomainRuleViolation(`At least one concrete class must be specified.`);
+        }
+
+        for (const concreteName of input.concreteNames) {
+            const concreteClass = currentModel.findClassByName(concreteName);
+
+            if (!concreteClass) {
+                postMessage({ command: 'log', level: 'warn', text: `Class '${concreteName}' not found.` })
+                continue;
+            }
+            if (concreteClass.kind !== 'class') {
+                throw new DomainRuleViolation(`Concrete class is not kind of class : '${concreteName}'`);
+            }
+
+            currentModel = currentModel.setBaseClass(concreteClass.id, abstractClass.id);
+        }
+
+        this.model = currentModel;
+        this.notifyModelChanged();
+        this.dispatcher?.dispatchAll(events);
+        return { model: this.model, events: [] };
+
+    }
     toPasscalName(name: string): string {
         return name.charAt(0).toUpperCase() + name.slice(1);
     }

@@ -82,7 +82,8 @@ export class RelationCommand extends Command {
                             returnType: this.target,
                             visibility: 'public',
                             parameters: [],
-                            isStatic: false
+                            isStatic: false,
+                            isAbstract: false
                         }
                     });
                     result = {
