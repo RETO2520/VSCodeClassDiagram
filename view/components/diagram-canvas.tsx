@@ -323,8 +323,8 @@ function drawRelationship(
   const { sy: initialTy } = getEdgePoint(target.x, target.y, tDims.width, tDims.height, sCx, sCy, tLocalY)
 
   // 2nd pass: use the (possibly shifted) Y from the other side as hint
-  const { sx, sy } = getEdgePoint(source.x, source.y, sDims.width, sDims.height, tCx, initialTy, sLocalY)
-  const { sx: tx, sy: ty } = getEdgePoint(target.x, target.y, tDims.width, tDims.height, sCx, initialSy, tLocalY)
+  const { sx, sy, side: sSide } = getEdgePoint(source.x, source.y, sDims.width, sDims.height, tCx, initialTy, sLocalY)
+  const { sx: tx, sy: ty, side: tSide } = getEdgePoint(target.x, target.y, tDims.width, tDims.height, sCx, initialSy, tLocalY)
 
   const lineColors: Record<string, string> = {
     association: "#64748b",
@@ -336,6 +336,33 @@ function drawRelationship(
   }
   const color = lineColors[rel.type] || "#64748b"
 
+  // --- Orthogonal Routing ---
+  const points: { x: number; y: number }[] = []
+  points.push({ x: sx, y: sy })
+
+  // Logic to determine intermediate points
+  if (sSide === "left" || sSide === "right") {
+    if (tSide === "left" || tSide === "right") {
+      const midX = (sx + tx) / 2
+      points.push({ x: midX, y: sy })
+      points.push({ x: midX, y: ty })
+    } else {
+      // tSide is top or bottom
+      points.push({ x: tx, y: sy })
+    }
+  } else {
+    // sSide is top or bottom
+    if (tSide === "top" || tSide === "bottom") {
+      const midY = (sy + ty) / 2
+      points.push({ x: sx, y: midY })
+      points.push({ x: tx, y: midY })
+    } else {
+      // tSide is left or right
+      points.push({ x: sx, y: ty })
+    }
+  }
+  points.push({ x: tx, y: ty })
+
   // Draw line
   ctx.save()
   if (rel.type === "dependency" || rel.type === "realization") {
@@ -344,46 +371,60 @@ function drawRelationship(
   ctx.strokeStyle = color
   ctx.lineWidth = 1.5
   ctx.beginPath()
-  ctx.moveTo(sx, sy)
-  ctx.lineTo(tx, ty)
+  ctx.moveTo(points[0].x, points[0].y)
+  for (let i = 1; i < points.length; i++) {
+    ctx.lineTo(points[i].x, points[i].y)
+  }
   ctx.stroke()
   ctx.restore()
 
-  const angleToTarget = Math.atan2(ty - sy, tx - sx)
+  // Angles for heads
+  const lastPoint = points[points.length - 1]
+  const prevPoint = points[points.length - 2]
+  const targetAngle = Math.atan2(lastPoint.y - prevPoint.y, lastPoint.x - prevPoint.x)
+
+  const firstPoint = points[0]
+  const secondPoint = points[1]
+  const sourceAngle = Math.atan2(secondPoint.y - firstPoint.y, secondPoint.x - firstPoint.x)
 
   switch (rel.type) {
     case "aggregation":
-      drawDiamond(ctx, sx, sy, angleToTarget, color, false)
-      drawOpenArrow(ctx, tx, ty, angleToTarget, color)
+      drawDiamond(ctx, sx, sy, sourceAngle, color, false)
+      drawOpenArrow(ctx, tx, ty, targetAngle, color)
       break
     case "composition":
-      drawDiamond(ctx, sx, sy, angleToTarget, color, true)
-      drawOpenArrow(ctx, tx, ty, angleToTarget, color)
+      drawDiamond(ctx, sx, sy, sourceAngle, color, true)
+      drawOpenArrow(ctx, tx, ty, targetAngle, color)
       break
     case "dependency":
-      drawOpenArrow(ctx, tx, ty, angleToTarget, color)
+      drawOpenArrow(ctx, tx, ty, targetAngle, color)
       break
     case "realization":
-      drawHollowTriangle(ctx, tx, ty, angleToTarget, color)
+      drawHollowTriangle(ctx, tx, ty, targetAngle, color)
       break
     case "generalization":
-      drawHollowTriangle(ctx, tx, ty, angleToTarget, color)
+      drawHollowTriangle(ctx, tx, ty, targetAngle, color)
       break
     case "association":
     default:
-      drawOpenArrow(ctx, tx, ty, angleToTarget, color)
+      drawOpenArrow(ctx, tx, ty, targetAngle, color)
       break
   }
 
   // Label
   if (rel.label) {
-    const midX = (sx + tx) / 2
-    const midY = (sy + ty) / 2
+    // Find middle segment
+    const midIdx = Math.floor(points.length / 2)
+    const p1 = points[midIdx - 1]
+    const p2 = points[midIdx]
+    const labelX = (p1.x + p2.x) / 2
+    const labelY = (p1.y + p2.y) / 2
+
     ctx.save()
     ctx.font = `${STEREOTYPE_FONT_SIZE}px sans-serif`
     ctx.fillStyle = color
     ctx.textAlign = "center"
-    ctx.fillText(rel.label, midX, midY - 8)
+    ctx.fillText(rel.label, labelX, labelY - 8)
     ctx.restore()
   }
 
@@ -393,19 +434,26 @@ function drawRelationship(
     ctx.font = "bold 10px sans-serif"
     ctx.fillStyle = "#1e293b"
 
-    const perpAngle = angleToTarget + Math.PI / 2
-    const offset = 14
-
     if (rel.sourceMultiplicity) {
-      const smx = sx + Math.cos(perpAngle) * offset + Math.cos(angleToTarget) * 16
-      const smy = sy + Math.sin(perpAngle) * offset + Math.sin(angleToTarget) * 16
+      const p1 = points[0]
+      const p2 = points[1]
+      const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x)
+      const perpAngle = angle + Math.PI / 2
+      const offset = 14
+      const smx = p1.x + Math.cos(perpAngle) * offset + Math.cos(angle) * 16
+      const smy = p1.y + Math.sin(perpAngle) * offset + Math.sin(angle) * 16
       ctx.textAlign = "center"
       ctx.fillText(rel.sourceMultiplicity, smx, smy)
     }
 
     if (rel.targetMultiplicity) {
-      const tmx = tx + Math.cos(perpAngle) * offset - Math.cos(angleToTarget) * 16
-      const tmy = ty + Math.sin(perpAngle) * offset - Math.sin(angleToTarget) * 16
+      const p2 = points[points.length - 1]
+      const p1 = points[points.length - 2]
+      const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x)
+      const perpAngle = angle + Math.PI / 2
+      const offset = 14
+      const tmx = p2.x + Math.cos(perpAngle) * offset - Math.cos(angle) * 16
+      const tmy = p2.y + Math.sin(perpAngle) * offset - Math.sin(angle) * 16
       ctx.textAlign = "center"
       ctx.fillText(rel.targetMultiplicity, tmx, tmy)
     }
@@ -422,36 +470,39 @@ function getEdgePoint(
   px: number,
   py: number,
   fixedLocalY?: number,
-): { sx: number; sy: number } {
+): { sx: number; sy: number; side: "top" | "bottom" | "left" | "right" } {
   const cx = rx + rw / 2
   const cy = ry + rh / 2
 
   if (fixedLocalY !== undefined) {
     const sx = px > cx ? rx + rw : rx
     const sy = ry + fixedLocalY
-    return { sx, sy }
+    return { sx, sy, side: px > cx ? "right" : "left" }
   }
 
   const dx = px - cx
   const dy = py - cy
 
-  if (dx === 0 && dy === 0) return { sx: cx, sy: cy }
+  if (dx === 0 && dy === 0) return { sx: cx, sy: cy, side: "top" }
 
   const absDx = Math.abs(dx)
   const absDy = Math.abs(dy)
 
   let sx: number
   let sy: number
+  let side: "top" | "bottom" | "left" | "right"
 
   if (absDx / rw > absDy / rh) {
     sx = dx > 0 ? rx + rw : rx
     sy = cy + (dy * (rw / 2)) / absDx
+    side = dx > 0 ? "right" : "left"
   } else {
     sy = dy > 0 ? ry + rh : ry
     sx = cx + (dx * (rh / 2)) / absDy
+    side = dy > 0 ? "bottom" : "top"
   }
 
-  return { sx, sy }
+  return { sx, sy, side }
 }
 
 // --- Arrow head helpers ---
