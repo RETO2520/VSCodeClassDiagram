@@ -30,6 +30,7 @@ import { ApplyTemplatePatternCommand } from './commands/ApplyTemplatePatternComm
 import { ApplyStrategyPatternCommand } from './commands/ApplyStrategyPatternCommand';
 import { ApplyObserverPatternCommand } from './commands/ApplyObserverPatternCommand';
 import { ApplyFacadePatternCommand } from './commands/ApplyFacadePatternCommand';
+import { ExportSpecCommand } from './commands/ExportSpecCommand';
 
 export type CliCommandType =
     | 'ADD_TYPE'
@@ -58,7 +59,8 @@ export type CliCommandType =
     | 'APPLY_TEMPLATE'
     | 'APPLY_STRATEGY'
     | 'APPLY_OBSERVER'
-    | 'APPLY_FACADE';
+    | 'APPLY_FACADE'
+    | 'EXPORT_SPEC';
 
 
 export type TypePrefix = 'c' | 'ac' | 'i' | 's' | 'e';
@@ -171,6 +173,8 @@ export class CliParser {
                 return this.parseApplyObserver(line, parts);
             case 'apply-facade':
                 return this.parseApplyFacade(line, parts);
+            case 'export-spec':
+                return this.parseExportSpec(line, parts);
             default:
                 return this.parseRelation(line);
         }
@@ -591,5 +595,14 @@ export class CliParser {
         const subsystemClassNames = parts.slice(2);
 
         return new ApplyFacadePatternCommand(raw, facadeClassName, subsystemClassNames);
+    }
+
+    private parseExportSpec(raw: string, parts: string[]) {
+        // export-spec <output-path>
+        if (parts.length < 2) return null;
+
+        const outputPath = parts[1];
+
+        return new ExportSpecCommand(raw, outputPath);
     }
 }

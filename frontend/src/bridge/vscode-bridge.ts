@@ -15,13 +15,16 @@ export type WebviewToHostMessage =
     | { command: 'changedPrimitiveTypes'; language: string }
     | { command: 'saveJson'; payload: object }
     | { command: 'loadJson' }
+    | { command: 'loadDsl' }
     | { command: 'generateCode'; payload: { model: object; language: string } }
+    | { command: 'exportMarkdown'; payload: { markdown: string; fileName?: string } }
     | { command: 'showAlert'; text: string }
     | { command: 'log'; level: 'debug' | 'info' | 'warn' | 'error'; text: string }
 
 /** Messages sent FROM the extension host TO the webview */
 export type HostToWebviewMessage =
     | { command: 'loadedJson'; payload: unknown }
+    | { command: 'dslLoaded'; payload: unknown }
     | { command: 'changedPrimitiveTypes'; primitiveTypes: string[] }
 
 // ==============================

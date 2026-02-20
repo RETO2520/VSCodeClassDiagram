@@ -29,6 +29,7 @@ function Toolbar({
     onLanguageChange,
     onSaveJson,
     onLoadJson,
+    onLoadDsl,
     onGenerate,
     onUndo,
     onRedo,
@@ -40,6 +41,7 @@ function Toolbar({
     onLanguageChange: (lang: string) => void
     onSaveJson: () => void
     onLoadJson: () => void
+    onLoadDsl: () => void
     onGenerate: () => void
     onUndo: () => void
     onRedo: () => void
@@ -93,6 +95,12 @@ function Toolbar({
                 className="h-8 rounded-md bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90"
             >
                 Load JSON
+            </button>
+            <button
+                onClick={onLoadDsl}
+                className="h-8 rounded-md bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90"
+            >
+                Load DSL
             </button>
             <button
                 onClick={onGenerate}
@@ -149,6 +157,7 @@ export function App({ service }: { service: ClassDiagramService }) {
         setSelectedId,
         saveJson,
         loadJson,
+        loadDsl,
         generateCode,
         changePrimitiveTypes,
     } = vsCodeState
@@ -297,6 +306,7 @@ export function App({ service }: { service: ClassDiagramService }) {
                 onLanguageChange={handleLanguageChange}
                 onSaveJson={saveJson}
                 onLoadJson={loadJson}
+                onLoadDsl={loadDsl}
                 onGenerate={handleGenerate}
                 onUndo={handleUndo}
                 onRedo={handleRedo}

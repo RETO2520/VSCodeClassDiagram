@@ -196,4 +196,40 @@ export class FileService {
             filePath: uri.fsPath
         };
     }
+
+    /**
+     * Show save dialog and save content to a Markdown file
+     * @param content Markdown content to save
+     * @param options Optional dialog options
+     * @returns Save result or null if cancelled
+     */
+    public async saveMarkdown(
+        content: string,
+        options?: {
+            defaultUri?: vscode.Uri;
+            saveLabel?: string;
+            defaultFileName?: string;
+        }
+    ): Promise<SaveResult | null> {
+        const defaultUri = options?.defaultUri ??
+            (options?.defaultFileName ? this.getDefaultUri(options.defaultFileName) : this.getDefaultUri('spec.md'));
+
+        const uri = await vscode.window.showSaveDialog({
+            filters: { 'Markdown': ['md'] },
+            defaultUri,
+            saveLabel: options?.saveLabel ?? 'Export Markdown'
+        });
+
+        if (!uri) {
+            return null;
+        }
+
+        const encoder = new TextEncoder();
+        await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
+
+        return {
+            uri,
+            filePath: uri.fsPath
+        };
+    }
 }

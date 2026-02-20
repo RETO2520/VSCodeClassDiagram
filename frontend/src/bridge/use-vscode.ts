@@ -11,6 +11,7 @@ import {
     onMessage,
     type HostToWebviewMessage,
 } from './vscode-bridge'
+import { DslParser } from '../../../view/lib/DslParser'
 import {
     mediaDiagramToView,
     viewDiagramToMedia,
@@ -26,6 +27,7 @@ import {
 export function useVSCodeMessages(callbacks: {
     onLoadedJson: (classes: ClassInfo[]) => void
     onPrimitiveTypes: (types: string[]) => void
+    onDslLoaded: (dsl: string) => void
 }) {
     const callbacksRef = useRef(callbacks)
     callbacksRef.current = callbacks
@@ -44,6 +46,10 @@ export function useVSCodeMessages(callbacks: {
                 }
                 case 'changedPrimitiveTypes': {
                     callbacksRef.current.onPrimitiveTypes(msg.primitiveTypes)
+                    break
+                }
+                case 'dslLoaded': {
+                    callbacksRef.current.onDslLoaded((msg as any).payload.dsl)
                     break
                 }
             }
@@ -70,6 +76,11 @@ export function useVSCodeState(service: ClassDiagramService) {
         onPrimitiveTypes: (types) => {
             setPrimitiveTypes(types)
         },
+        onDslLoaded: (dsl) => {
+            const parser = new DslParser()
+            parser.parse(dsl, service)
+            // Model updates are handled by the service listener
+        }
     })
 
     // Subscribe to service model changes and request initial data on mount
@@ -106,6 +117,10 @@ export function useVSCodeState(service: ClassDiagramService) {
         postMessage({ command: 'loadJson' })
     }, [])
 
+    const loadDsl = useCallback(() => {
+        postMessage({ command: 'loadDsl' })
+    }, [])
+
     const generateCode = useCallback((language: string) => {
         const exportModel = modelForExport(service.getModel().getClasses())
         postMessage({
@@ -133,6 +148,7 @@ export function useVSCodeState(service: ClassDiagramService) {
         primitiveTypes,
         saveJson,
         loadJson,
+        loadDsl,
         generateCode,
         changePrimitiveTypes,
     }

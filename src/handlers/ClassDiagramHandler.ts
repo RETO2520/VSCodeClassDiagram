@@ -33,7 +33,9 @@ export class ClassDiagramHandler {
             .register('showAlert', this.handleShowAlert.bind(this))
             .register('saveJson', this.handleSaveJson.bind(this))
             .register('loadJson', this.handleLoadJson.bind(this))
+            .register('loadDsl', this.handleLoadDsl.bind(this))
             .register('generateCode', this.handleGenerateCode.bind(this))
+            .register('exportMarkdown', this.handleExportMarkdown.bind(this))
             .register('log', this.handleLog.bind(this))
             ;
     }
@@ -178,6 +180,49 @@ export class ClassDiagramHandler {
             } catch (e) {
                 vscode.window.showErrorMessage(`Invalid JSON: ${e}`);
             }
+        }
+    }
+
+    private async handleLoadDsl(msg: any, ctx: MessageContext): Promise<void> {
+        const fileUris = await vscode.window.showOpenDialog({
+            canSelectFiles: true,
+            canSelectMany: false,
+            openLabel: 'Load DSL',
+            filters: {
+                'DSL Files': ['dsl', 'txt'],
+                'All Files': ['*']
+            }
+        });
+
+        if (!fileUris || fileUris.length === 0) return;
+
+        const fileUri = fileUris[0];
+        try {
+            const content = fs.readFileSync(fileUri.fsPath, 'utf8');
+            ctx.panel.webview.postMessage({
+                command: 'dslLoaded',
+                payload: { dsl: content }
+            });
+            vscode.window.showInformationMessage(`Loaded DSL from ${path.basename(fileUri.fsPath)}`);
+        } catch (e: any) {
+            vscode.window.showErrorMessage(`Failed to read DSL: ${e.message}`);
+            this.logger.error(`Failed to read DSL: ${e.message}`);
+        }
+    }
+
+    private async handleExportMarkdown(msg: any, ctx: MessageContext): Promise<void> {
+        const payload = msg.payload || {};
+        const markdown = payload.markdown || '';
+        const fileName = payload.fileName || 'spec.md';
+
+        if (!markdown) {
+            vscode.window.showErrorMessage('No markdown content to export.');
+            return;
+        }
+
+        const result = await this.fileService.saveMarkdown(markdown, { defaultFileName: fileName });
+        if (result) {
+            vscode.window.showInformationMessage(`Exported specification to ${path.basename(result.filePath)}`);
         }
     }
 
