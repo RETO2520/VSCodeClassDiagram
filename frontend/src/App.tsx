@@ -309,7 +309,12 @@ export function App({ service }: { service: ClassDiagramService }) {
 
             <div className="flex flex-1 min-h-0 overflow-hidden">
                 {/* Left Panel - Editor */}
-                <ClassEditorContainer service={service} setGlobalClasses={setClasses} />
+                <ClassEditorContainer
+                    service={service}
+                    setGlobalClasses={setClasses}
+                    selectedId={selectedId}
+                    onSelectClass={setSelectedId}
+                />
 
                 {/* Right Panel - Canvas */}
                 <div className="flex-1 min-w-0">

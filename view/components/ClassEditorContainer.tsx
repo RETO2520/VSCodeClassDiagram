@@ -14,13 +14,33 @@ import { ClassDiagramService } from "../lib/application/ClassDiagramService";
  * このコンテナは UI を Service に接続する責務のみを持ちます。
  */
 
-export function ClassEditorContainer({ service, setGlobalClasses }: { service: ClassDiagramService, setGlobalClasses?: (classes: ClassInfo[]) => void }) {
+export function ClassEditorContainer({
+    service,
+    setGlobalClasses,
+    selectedId: externalSelectedId,
+    onSelectClass: externalOnSelectClass,
+}: {
+    service: ClassDiagramService
+    setGlobalClasses?: (classes: ClassInfo[]) => void
+    selectedId?: string | null
+    onSelectClass?: (id: string | null) => void
+}) {
     // service 内部の DomainModel を UI 用に同期して表示する
     const [classes, setClasses] = useState<ClassInfo[]>(() => service.getModel().getClasses());
-    const [selectedId, setSelectedId] = useState<string | null>(() => {
+    const [internalSelectedId, setInternalSelectedId] = useState<string | null>(() => {
         const cls = service.getModel().getClasses()[0];
         return cls ? cls.id : null;
     });
+
+    const selectedId = externalSelectedId !== undefined ? externalSelectedId : internalSelectedId;
+    const setSelectedId = useCallback((id: string | null) => {
+        if (externalOnSelectClass) {
+            externalOnSelectClass(id);
+        } else {
+            setInternalSelectedId(id);
+        }
+    }, [externalOnSelectClass]);
+
     const [busy, setBusy] = useState(false);
 
     // Helper: refresh local snapshot from service.model
@@ -37,7 +57,7 @@ export function ClassEditorContainer({ service, setGlobalClasses }: { service: C
         } catch (err) {
             console.error("refreshFromService error:", err);
         }
-    }, [service, selectedId]);
+    }, [service, selectedId, setGlobalClasses, setSelectedId]);
 
     // initial sync
 
@@ -82,10 +102,8 @@ export function ClassEditorContainer({ service, setGlobalClasses }: { service: C
             // prefer id-based delete
             service.applyDelete({ target: "type", classId: id, className: cls.name });
             refreshFromService();
-            setSelectedId((prev) => {
-                const all = service.getModel().getClasses();
-                return all.length ? all[0].id : null;
-            });
+            const all = service.getModel().getClasses();
+            setSelectedId(all.length ? all[0].id : null);
         } catch (err) {
             console.error("applyDelete error:", err);
         } finally {

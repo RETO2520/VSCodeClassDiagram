@@ -78,7 +78,11 @@ export function useVSCodeState(service: ClassDiagramService) {
             const dm = service.getModel()
             const cls = dm.getClasses()
             setClassesInternal(cls)
-            if (cls.length > 0) setSelectedId(cls[0].id)
+            // Only auto-select if nothing is selected or the selected id is gone
+            setSelectedId(current => {
+                if (current && cls.some(c => c.id === current)) return current
+                return cls.length > 0 ? cls[0].id : null
+            })
         }
         service.onModelChanged(listener)
         // initialize local state from service
