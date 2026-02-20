@@ -30,6 +30,12 @@ import {
   CircleDot,
   Layers,
   GripVertical,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Library,
+  Settings2,
 } from "lucide-react"
 import type {
   ClassInfo,
@@ -801,6 +807,8 @@ export function ClassEditorPanel({
   const selectedClass = classes.find((c) => c.id === selectedId)
   const [listWidth, setListWidth] = useState(DEFAULT_LIST_WIDTH)
   const [detailWidth, setDetailWidth] = useState(DEFAULT_DETAIL_WIDTH)
+  const [isListCollapsed, setIsListCollapsed] = useState(false)
+  const [isDetailCollapsed, setIsDetailCollapsed] = useState(false)
 
   const handleListResize = useCallback((deltaX: number) => {
     setListWidth((prev) => {
@@ -818,82 +826,115 @@ export function ClassEditorPanel({
 
   return (
     <div className="flex h-full border-r border-border bg-card">
-      {/* Left: Class list */}
-      <div
-        className="flex h-full flex-shrink-0 flex-col border-r border-border"
-        style={{ width: listWidth }}
-      >
-        <div className="flex items-center justify-between border-b border-border px-3 py-3">
-          <h2 className="text-xs font-semibold text-card-foreground">{"Classes"}</h2>
-          <Button variant="outline" size="sm" onClick={onAddClass} className="h-6 text-[10px] bg-transparent">
-            <Plus className="mr-1 h-3 w-3" />
-            {"New"}
-          </Button>
-        </div>
-        <ScrollArea className="flex-1">
-          <div className="flex flex-col">
-            {classes.map((c) => (
-              <div
-                key={c.id}
-                className={`group flex items-center gap-1 pr-1 transition-colors ${c.id === selectedId
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                  }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => onSelectClass(c.id)}
-                  className="flex flex-1 items-center gap-2 overflow-hidden px-3 py-2 text-left text-xs"
-                >
-                  {kindIcons[c.kind]}
-                  <span className="truncate flex-1">
-                    {c.isAbstract && c.kind === "class" ? (
-                      <span className="italic">{c.name}</span>
-                    ) : (
-                      c.name
-                    )}
-                  </span>
-                </button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onDeleteClass(c.id)
-                  }}
-                  className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
+      {/* Sidebar Navigation (Vertical Activity Bar style) */}
+      <div className="w-12 flex flex-col items-center py-4 gap-4 border-r border-border bg-muted/30">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setIsListCollapsed(!isListCollapsed)}
+          className={`h-9 w-9 ${!isListCollapsed ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}
+          title="Classes"
+        >
+          <Library className="h-5 w-5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setIsDetailCollapsed(!isDetailCollapsed)}
+          className={`h-9 w-9 ${!isDetailCollapsed ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}
+          title="Editor"
+        >
+          <Settings2 className="h-5 w-5" />
+        </Button>
       </div>
+
+      {/* Left: Class list */}
+      {!isListCollapsed && (
+        <div
+          className="flex h-full flex-shrink-0 flex-col"
+          style={{ width: listWidth }}
+        >
+          <div className="flex items-center justify-between border-b border-border px-3 py-3">
+            <h2 className="text-xs font-semibold text-card-foreground">{"Classes"}</h2>
+            <Button variant="outline" size="sm" onClick={onAddClass} className="h-6 text-[10px] bg-transparent">
+              <Plus className="mr-1 h-3 w-3" />
+              {"New"}
+            </Button>
+          </div>
+          <ScrollArea className="flex-1">
+            <div className="flex flex-col">
+              {classes.map((c) => (
+                <div
+                  key={c.id}
+                  className={`group flex items-center gap-1 pr-1 transition-colors ${c.id === selectedId
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                    }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onSelectClass(c.id)}
+                    className="flex flex-1 items-center gap-2 overflow-hidden px-3 py-2 text-left text-xs"
+                  >
+                    {kindIcons[c.kind]}
+                    <span className="truncate flex-1">
+                      {c.isAbstract && c.kind === "class" ? (
+                        <span className="italic">{c.name}</span>
+                      ) : (
+                        c.name
+                      )}
+                    </span>
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onDeleteClass(c.id)
+                    }}
+                    className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
+      )}
 
       {/* Resize handle between list and detail */}
-      <ResizeHandle onResize={handleListResize} />
+      {!isListCollapsed && !isDetailCollapsed && <ResizeHandle onResize={handleListResize} />}
 
       {/* Right: Class detail editor */}
-      <div className="flex-shrink-0 min-w-0" style={{ width: detailWidth }}>
-        {selectedClass ? (
-          <ClassEditor
-            classInfo={selectedClass}
-            allClasses={classes}
-            onChange={(updated) => onUpdateClass(selectedClass.id, updated)}
-            onDelete={() => onDeleteClass(selectedClass.id)}
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center p-4">
-            <p className="text-xs text-muted-foreground text-center">
-              {"Select a class to edit, or create a new one."}
-            </p>
+      {!isDetailCollapsed && (
+        <div className="flex-shrink-0 min-w-0 flex flex-col" style={{ width: detailWidth }}>
+          <div className="flex items-center justify-between border-b border-border px-3 py-3 bg-muted/20 h-[53px]">
+            <h2 className="text-xs font-semibold text-card-foreground truncate">
+              {selectedClass ? `${selectedClass.name} Editor` : "Editor"}
+            </h2>
           </div>
-        )}
-      </div>
+          <div className="flex-1 overflow-hidden">
+            {selectedClass ? (
+              <ClassEditor
+                classInfo={selectedClass}
+                allClasses={classes}
+                onChange={(updated) => onUpdateClass(selectedClass.id, updated)}
+                onDelete={() => onDeleteClass(selectedClass.id)}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center p-4">
+                <p className="text-xs text-muted-foreground text-center">
+                  {"Select a class to edit, or create a new one."}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Resize handle to adjust detail editor width */}
-      <ResizeHandle onResize={handleDetailResize} />
+      {!isDetailCollapsed && <ResizeHandle onResize={handleDetailResize} />}
     </div>
   )
 }
