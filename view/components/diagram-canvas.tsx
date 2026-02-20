@@ -99,7 +99,14 @@ function formatOperation(op: ClassOperation): string {
 function calculateClassDimensions(
   ctx: CanvasRenderingContext2D,
   classInfo: ClassInfo,
-): { width: number; height: number; headerHeight: number; membersHeight: number; operationsHeight: number } {
+): {
+  width: number
+  height: number
+  headerHeight: number
+  membersHeight: number
+  operationsHeight: number
+  memberOffsets: Record<string, number>
+} {
   const stereotype = classKindStereotype(classInfo)
   const stereotypeWidth = stereotype
     ? measureText(ctx, stereotype, STEREOTYPE_FONT_SIZE, false, true)
@@ -137,7 +144,26 @@ function calculateClassDimensions(
 
   const height = headerHeight + membersHeight + operationsHeight
 
-  return { width, height, headerHeight, membersHeight, operationsHeight }
+  // Calculate offsets for each member/operation center
+  const memberOffsets: Record<string, number> = {}
+  const membersSectionY = headerHeight
+  classInfo.members.forEach((m, i) => {
+    memberOffsets[m.id] = membersSectionY + SECTION_PADDING + (i + 0.5) * LINE_HEIGHT
+  })
+
+  const operationsSectionY = membersSectionY + membersHeight
+  classInfo.operations.forEach((op, i) => {
+    memberOffsets[op.id] = operationsSectionY + SECTION_PADDING + (i + 0.5) * LINE_HEIGHT
+  })
+
+  return {
+    width,
+    height,
+    headerHeight,
+    membersHeight,
+    operationsHeight,
+    memberOffsets,
+  }
 }
 
 // ==============================
@@ -287,8 +313,18 @@ function drawRelationship(
   const tCx = target.x + tDims.width / 2
   const tCy = target.y + tDims.height / 2
 
-  const { sx, sy } = getEdgePoint(source.x, source.y, sDims.width, sDims.height, tCx, tCy)
-  const { sx: tx, sy: ty } = getEdgePoint(target.x, target.y, tDims.width, tDims.height, sCx, sCy)
+  // Determine fixed Y offsets if members are specified
+  const sLocalY = rel.sourceMemberId ? sDims.memberOffsets[rel.sourceMemberId] : undefined
+  const tLocalY = rel.targetMemberId ? tDims.memberOffsets[rel.targetMemberId] : undefined
+
+  // Calculate connection points
+  // 1st pass: get potentially fixed Y
+  const { sy: initialSy } = getEdgePoint(source.x, source.y, sDims.width, sDims.height, tCx, tCy, sLocalY)
+  const { sy: initialTy } = getEdgePoint(target.x, target.y, tDims.width, tDims.height, sCx, sCy, tLocalY)
+
+  // 2nd pass: use the (possibly shifted) Y from the other side as hint
+  const { sx, sy } = getEdgePoint(source.x, source.y, sDims.width, sDims.height, tCx, initialTy, sLocalY)
+  const { sx: tx, sy: ty } = getEdgePoint(target.x, target.y, tDims.width, tDims.height, sCx, initialSy, tLocalY)
 
   const lineColors: Record<string, string> = {
     association: "#64748b",
@@ -385,9 +421,17 @@ function getEdgePoint(
   rh: number,
   px: number,
   py: number,
+  fixedLocalY?: number,
 ): { sx: number; sy: number } {
   const cx = rx + rw / 2
   const cy = ry + rh / 2
+
+  if (fixedLocalY !== undefined) {
+    const sx = px > cx ? rx + rw : rx
+    const sy = ry + fixedLocalY
+    return { sx, sy }
+  }
+
   const dx = px - cx
   const dy = py - cy
 

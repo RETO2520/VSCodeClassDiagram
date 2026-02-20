@@ -1131,6 +1131,7 @@ export class DomainModel {
                             label: member.name,
                             sourceMultiplicity: member.sourceMultiplicity,
                             targetMultiplicity: member.targetMultiplicity,
+                            sourceMemberId: member.id,
                         })
                         relationshipSet.add(key)
                     }
@@ -1152,6 +1153,7 @@ export class DomainModel {
                                 sourceId: cls.id,
                                 targetId: targetClass.id,
                                 label: `${operation.name}(${param.name})`,
+                                sourceMemberId: operation.id,
                             })
                             relationshipSet.add(key)
                         }

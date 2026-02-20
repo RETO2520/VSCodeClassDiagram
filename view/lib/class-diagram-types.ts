@@ -91,6 +91,10 @@ export interface Relationship {
   sourceMultiplicity?: string
   /** ターゲット側多重度 */
   targetMultiplicity?: string
+  /** 関連の起点となるメンバ/操作のID */
+  sourceMemberId?: string
+  /** 関連の終点となるメンバ/操作のID */
+  targetMemberId?: string
 }
 
 // ==============================

@@ -36,8 +36,9 @@ export function detectRelationships(classes: ClassInfo[]): Relationship[] {
     label?: string,
     sourceMultiplicity?: string,
     targetMultiplicity?: string,
+    sourceMemberId?: string,
   ) {
-    const key = `${sourceId}-${targetId}-${type}-${label || ""}`
+    const key = `${sourceId}-${targetId}-${type}-${label || ""}-${sourceMemberId || ""}`
     if (seen.has(key)) return
     seen.add(key)
 
@@ -49,6 +50,7 @@ export function detectRelationships(classes: ClassInfo[]): Relationship[] {
       label,
       sourceMultiplicity,
       targetMultiplicity,
+      sourceMemberId,
     })
   }
 
@@ -75,6 +77,7 @@ export function detectRelationships(classes: ClassInfo[]): Relationship[] {
           member.name,
           member.sourceMultiplicity,
           member.targetMultiplicity,
+          member.id,
         )
       }
     }
@@ -91,6 +94,9 @@ export function detectRelationships(classes: ClassInfo[]): Relationship[] {
           returnTargetClass.id,
           "dependency",
           `${op.name}(): ${op.returnType}`,
+          undefined,
+          undefined,
+          op.id,
         )
       }
 
@@ -105,6 +111,9 @@ export function detectRelationships(classes: ClassInfo[]): Relationship[] {
             targetClass.id,
             "dependency",
             `${op.name}(${param.name})`,
+            undefined,
+            undefined,
+            op.id,
           )
         }
       }
