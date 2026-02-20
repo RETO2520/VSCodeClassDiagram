@@ -329,25 +329,6 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
     return (
         <div className={cn("bg-background border-t p-2 shadow-sm", className)}>
             <Command shouldFilter={false} className="rounded-lg border shadow-md">
-                <div className="flex items-center px-3 border-b flex-grow">
-                    <span className="text-muted-foreground font-mono mr-2">:</span>
-                    <div className="flex flex-grow items-center border-b px-3" cmdk-input-wrapper="">
-                        <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-                        <CommandPrimitive.Input
-                            ref={inputRef}
-                            placeholder="c:class, i:interface, m:method, a:attr..."
-                            value={input}
-                            onValueChange={onInputChange}
-                            onKeyDown={handleKeyDown}
-                            className={cn(
-                                'flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50',
-                                className,
-                            )}
-
-                        />
-                    </div>
-
-                </div>
                 <CommandList className={cn("max-h-[300px] overflow-y-auto", input === '' && "hidden")}>
                     <CommandEmpty>No suggestions found.</CommandEmpty>
                     {['Types', 'Members', 'Operations', 'Relationships', 'Target Type', 'Classes', 'Visibility', 'Modifiers', 'Attributes', 'Methods', 'Utilities', 'Languages'].map(g => {
@@ -372,6 +353,25 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
                         )
                     })}
                 </CommandList>
+                <div className="flex items-center px-3 border-t flex-grow">
+                    <span className="text-muted-foreground font-mono mr-2">:</span>
+                    <div className="flex flex-grow items-center border-t px-3" cmdk-input-wrapper="">
+                        <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                        <CommandPrimitive.Input
+                            ref={inputRef}
+                            placeholder="c:class, i:interface, m:method, a:attr..."
+                            value={input}
+                            onValueChange={onInputChange}
+                            onKeyDown={handleKeyDown}
+                            className={cn(
+                                'flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50',
+                                className,
+                            )}
+
+                        />
+                    </div>
+
+                </div>
             </Command>
         </div>
     )
