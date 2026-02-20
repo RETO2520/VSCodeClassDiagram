@@ -11,6 +11,7 @@ import { JavaBuilder } from '../CodeComponents/JavaBuilder';
 import { CppBuilder } from '../CodeComponents/CppBuilder';
 import { RustBuilder } from '../CodeComponents/RustBuilder';
 
+
 export class ClassDiagramHandler {
     private panel: vscode.WebviewPanel | undefined;
     private readonly context: vscode.ExtensionContext;
@@ -36,6 +37,8 @@ export class ClassDiagramHandler {
             .register('loadDsl', this.handleLoadDsl.bind(this))
             .register('generateCode', this.handleGenerateCode.bind(this))
             .register('exportMarkdown', this.handleExportMarkdown.bind(this))
+            .register('importSpecDsl', this.handleImportSpecDsl.bind(this))
+            .register('exportSpecDsl', this.handleExportSpecDsl.bind(this))
             .register('log', this.handleLog.bind(this))
             ;
     }
@@ -210,6 +213,33 @@ export class ClassDiagramHandler {
         }
     }
 
+    private async handleImportSpecDsl(msg: any, ctx: MessageContext): Promise<void> {
+        const fileUris = await vscode.window.showOpenDialog({
+            canSelectFiles: true,
+            canSelectMany: false,
+            openLabel: 'Load DSL',
+            filters: {
+                'DSL Files': ['dsl', 'txt'],
+                'All Files': ['*']
+            }
+        });
+
+        if (!fileUris || fileUris.length === 0) return;
+
+        const fileUri = fileUris[0];
+        try {
+            const content = fs.readFileSync(fileUri.fsPath, 'utf8');
+            ctx.panel.webview.postMessage({
+                command: 'specDslImported',
+                payload: { dsl: content }
+            });
+            vscode.window.showInformationMessage(`Loaded DSL from ${path.basename(fileUri.fsPath)}`);
+        } catch (e: any) {
+            vscode.window.showErrorMessage(`Failed to read DSL: ${e.message}`);
+            this.logger.error(`Failed to read DSL: ${e.message}`);
+        }
+    }
+
     private async handleExportMarkdown(msg: any, ctx: MessageContext): Promise<void> {
         const payload = msg.payload || {};
         const markdown = payload.markdown || '';
@@ -225,6 +255,25 @@ export class ClassDiagramHandler {
             vscode.window.showInformationMessage(`Exported specification to ${path.basename(result.filePath)}`);
         }
     }
+
+    private async handleExportSpecDsl(msg: any, ctx: MessageContext): Promise<void> {
+        const payload = msg.payload || {};
+        const dsl = payload.dsl || '';
+        const fileName = payload.fileName || 'spec.dsl';
+
+        if (!dsl) {
+            vscode.window.showErrorMessage('No DSL content to export.');
+            return;
+        }
+
+        const result = await this.fileService.saveDsl(dsl, { defaultFileName: fileName });
+        if (result) {
+            vscode.window.showInformationMessage(`Exported DSL to ${path.basename(result.filePath)}`);
+        }
+    }
+
+
+
 
     private async handleGenerateCode(msg: any, ctx: MessageContext): Promise<void> {
         const payload = msg.payload || {};

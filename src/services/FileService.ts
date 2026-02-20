@@ -232,4 +232,40 @@ export class FileService {
             filePath: uri.fsPath
         };
     }
+
+    /**
+     * Show save dialog and save content to a DSL file
+     * @param content DSL content to save
+     * @param options Optional dialog options
+     * @returns Save result or null if cancelled
+     */
+    public async saveDsl(
+        content: string,
+        options?: {
+            defaultUri?: vscode.Uri;
+            saveLabel?: string;
+            defaultFileName?: string;
+        }
+    ): Promise<SaveResult | null> {
+        const defaultUri = options?.defaultUri ??
+            (options?.defaultFileName ? this.getDefaultUri(options.defaultFileName) : this.getDefaultUri('spec.dsl'));
+
+        const uri = await vscode.window.showSaveDialog({
+            filters: { 'DSL': ['dsl'] },
+            defaultUri,
+            saveLabel: options?.saveLabel ?? 'Export DSL'
+        });
+
+        if (!uri) {
+            return null;
+        }
+
+        const encoder = new TextEncoder();
+        await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
+
+        return {
+            uri,
+            filePath: uri.fsPath
+        };
+    }
 }

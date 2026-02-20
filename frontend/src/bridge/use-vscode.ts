@@ -19,6 +19,7 @@ import {
     modelForExport,
     type MediaDiagramModel,
 } from '../adapters/model-adapter'
+import { SpecDslParser } from '../../../view/lib/SpecDslParser'
 
 /**
  * Hook to listen for messages from the extension host.
@@ -28,6 +29,7 @@ export function useVSCodeMessages(callbacks: {
     onLoadedJson: (classes: ClassInfo[]) => void
     onPrimitiveTypes: (types: string[]) => void
     onDslLoaded: (dsl: string) => void
+    onImportSpecDsl: (dsl: string) => void
 }) {
     const callbacksRef = useRef(callbacks)
     callbacksRef.current = callbacks
@@ -50,6 +52,10 @@ export function useVSCodeMessages(callbacks: {
                 }
                 case 'dslLoaded': {
                     callbacksRef.current.onDslLoaded((msg as any).payload.dsl)
+                    break
+                }
+                case 'specDslImported': {
+                    callbacksRef.current.onImportSpecDsl((msg as any).payload.dsl)
                     break
                 }
             }
@@ -78,6 +84,12 @@ export function useVSCodeState(service: ClassDiagramService) {
         },
         onDslLoaded: (dsl) => {
             const parser = new DslParser()
+            parser.parse(dsl, service)
+            // Model updates are handled by the service listener
+        },
+        onImportSpecDsl: (dsl) => {
+
+            const parser = new SpecDslParser()
             parser.parse(dsl, service)
             // Model updates are handled by the service listener
         }
@@ -121,6 +133,10 @@ export function useVSCodeState(service: ClassDiagramService) {
         postMessage({ command: 'loadDsl' })
     }, [])
 
+    const importSpecDsl = useCallback(() => {
+        postMessage({ command: 'importSpecDsl' })
+    }, [])
+
     const generateCode = useCallback((language: string) => {
         const exportModel = modelForExport(service.getModel().getClasses())
         postMessage({
@@ -149,6 +165,7 @@ export function useVSCodeState(service: ClassDiagramService) {
         saveJson,
         loadJson,
         loadDsl,
+        importSpecDsl,
         generateCode,
         changePrimitiveTypes,
     }

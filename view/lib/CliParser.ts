@@ -31,6 +31,8 @@ import { ApplyStrategyPatternCommand } from './commands/ApplyStrategyPatternComm
 import { ApplyObserverPatternCommand } from './commands/ApplyObserverPatternCommand';
 import { ApplyFacadePatternCommand } from './commands/ApplyFacadePatternCommand';
 import { ExportSpecCommand } from './commands/ExportSpecCommand';
+import { ImportSpecDslCommand } from './commands/ImportSpecDslCommand';
+import { ExportSpecDslCommand } from './commands/ExportSpecDslCommand';
 
 export type CliCommandType =
     | 'ADD_TYPE'
@@ -60,7 +62,9 @@ export type CliCommandType =
     | 'APPLY_STRATEGY'
     | 'APPLY_OBSERVER'
     | 'APPLY_FACADE'
-    | 'EXPORT_SPEC';
+    | 'EXPORT_SPEC'
+    | 'EXPORT_SPEC_DSL'
+    | 'IMPORT_SPEC_DSL';
 
 
 export type TypePrefix = 'c' | 'ac' | 'i' | 's' | 'e';
@@ -175,6 +179,10 @@ export class CliParser {
                 return this.parseApplyFacade(line, parts);
             case 'export-spec':
                 return this.parseExportSpec(line, parts);
+            case 'import-spec-dsl':
+                return this.parseImportSpecDsl(line, parts);
+            case 'export-spec-dsl':
+                return this.parseExportSpecDsl(line, parts);
             default:
                 return this.parseRelation(line);
         }
@@ -604,5 +612,20 @@ export class CliParser {
         const outputPath = parts[1];
 
         return new ExportSpecCommand(raw, outputPath);
+    }
+
+    private parseImportSpecDsl(raw: string, parts: string[]) {
+        // import-spec
+
+        return new ImportSpecDslCommand(raw);
+    }
+
+    private parseExportSpecDsl(raw: string, parts: string[]) {
+        // export-spec <output-path>
+        if (parts.length < 2) return null;
+
+        const outputPath = parts[1];
+
+        return new ExportSpecDslCommand(raw, outputPath);
     }
 }

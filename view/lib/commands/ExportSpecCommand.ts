@@ -126,12 +126,22 @@ function generateMarkdown(model: DomainModel): string {
     }
     lines.push("");
 
+    // ---- 依存グラフ ----
+    lines.push("## 依存グラフ");
+    lines.push("");
+    lines.push(...renderDependencyGraph(classes, relationships, model));
+
     // ---- クラス詳細 ----
     lines.push("## クラス詳細");
     lines.push("");
     for (const cls of classes) {
         lines.push(...renderClass(cls, model));
     }
+
+    // ---- バリデーション結果 ----
+    lines.push("## バリデーション結果");
+    lines.push("");
+    lines.push(...renderValidation(model));
 
     return lines.join("\n");
 }
@@ -227,6 +237,87 @@ function renderOperation(op: ClassOperation): string[] {
         for (const p of op.parameters) {
             lines.push(`  - \`${p.name}\`: \`${p.type}\``);
         }
+    }
+
+    return lines;
+}
+
+
+// ============================================================
+// Dependency Graph Renderer
+// ============================================================
+
+function renderDependencyGraph(
+    classes: ClassInfo[],
+    relationships: Relationship[],
+    model: DomainModel
+): string[] {
+    const lines: string[] = [];
+
+    // クラスごとに「依存先」と「被依存元」を集計
+    const dependsOn = new Map<string, Set<string>>();   // このクラスが依存しているクラス
+    const dependedBy = new Map<string, Set<string>>();  // このクラスに依存しているクラス
+
+    for (const cls of classes) {
+        dependsOn.set(cls.id, new Set());
+        dependedBy.set(cls.id, new Set());
+    }
+
+    for (const rel of relationships) {
+        dependsOn.get(rel.sourceId)?.add(rel.targetId);
+        dependedBy.get(rel.targetId)?.add(rel.sourceId);
+    }
+
+    lines.push("| クラス名 | 依存先（uses） | 被依存元（used by） |");
+    lines.push("|----------|----------------|---------------------|");
+
+    for (const cls of classes) {
+        const uses = [...(dependsOn.get(cls.id) ?? [])]
+            .map((id) => model.findClassById(id)?.name ?? id)
+            .join(", ") || "-";
+        const usedBy = [...(dependedBy.get(cls.id) ?? [])]
+            .map((id) => model.findClassById(id)?.name ?? id)
+            .join(", ") || "-";
+        lines.push(`| \`${cls.name}\` | ${uses} | ${usedBy} |`);
+    }
+
+    lines.push("");
+    return lines;
+}
+
+// ============================================================
+// Validation Renderer
+// ============================================================
+
+function renderValidation(model: DomainModel): string[] {
+    const lines: string[] = [];
+    const result = model.validate();
+
+    const status = result.isValid ? "✅ **OK** — エラーなし" : "❌ **NG** — エラーあり";
+    lines.push(status);
+    lines.push("");
+
+    if (result.errors.length > 0) {
+        lines.push("### エラー");
+        lines.push("");
+        for (const err of result.errors) {
+            lines.push(`- 🔴 ${err}`);
+        }
+        lines.push("");
+    }
+
+    if (result.warnings && result.warnings.length > 0) {
+        lines.push("### 警告");
+        lines.push("");
+        for (const warn of result.warnings) {
+            lines.push(`- 🟡 ${warn}`);
+        }
+        lines.push("");
+    }
+
+    if (result.errors.length === 0 && (!result.warnings || result.warnings.length === 0)) {
+        lines.push("_問題は検出されませんでした。_");
+        lines.push("");
     }
 
     return lines;

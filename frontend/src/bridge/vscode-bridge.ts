@@ -18,6 +18,8 @@ export type WebviewToHostMessage =
     | { command: 'loadDsl' }
     | { command: 'generateCode'; payload: { model: object; language: string } }
     | { command: 'exportMarkdown'; payload: { markdown: string; fileName?: string } }
+    | { command: 'importSpecDsl' }
+    | { command: 'exportSpecDsl'; payload: { dsl: string; fileName?: string } }
     | { command: 'showAlert'; text: string }
     | { command: 'log'; level: 'debug' | 'info' | 'warn' | 'error'; text: string }
 
@@ -25,6 +27,7 @@ export type WebviewToHostMessage =
 export type HostToWebviewMessage =
     | { command: 'loadedJson'; payload: unknown }
     | { command: 'dslLoaded'; payload: unknown }
+    | { command: 'specDslImported'; payload: unknown }
     | { command: 'changedPrimitiveTypes'; primitiveTypes: string[] }
 
 // ==============================
