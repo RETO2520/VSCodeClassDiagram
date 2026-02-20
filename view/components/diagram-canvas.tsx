@@ -882,46 +882,120 @@ export function DiagramCanvas({
     setPanOffset({ x: newPanX, y: newPanY })
   }
 
-  function handleAlignAll() {
-    if (classes.length === 0) return
+  function calculateHierarchicalLayout() {
+    if (classes.length === 0) return []
     const canvas = canvasRef.current
-    if (!canvas) return
+    if (!canvas) return []
     const ctx = canvas.getContext("2d")
-    if (!ctx) return
+    if (!ctx) return []
 
-    const grid = 40
-    const placed: Array<{ x: number; y: number; w: number; h: number }> = []
+    // 1. Build adjacency list for inheritance/realization
+    // We want to go from Parent -> Children for level assignment
+    const adj = new Map<string, string[]>()
+    const inDegree = new Map<string, number>()
 
-    for (const cls of classes) {
-      const dims = calculateClassDimensions(ctx, cls)
+    classes.forEach(c => {
+      adj.set(c.id, [])
+      inDegree.set(c.id, 0)
+    })
 
-      // snap to grid
-      let nx = Math.round(cls.x / grid) * grid
-      let ny = Math.round(cls.y / grid) * grid
+    classes.forEach(c => {
+      const parents = []
+      if (c.baseClassId) parents.push(c.baseClassId)
+      if (c.interfaces) parents.push(...c.interfaces)
 
-      // if overlaps with already placed boxes, shift to the right until free
-      let attempts = 0
-      const maxAttempts = 200
-      const gap = 24
-      while (
-        placed.some(
-          (p) => !(nx + dims.width < p.x || nx > p.x + p.w || ny + dims.height < p.y || ny > p.y + p.h),
-        ) &&
-        attempts < maxAttempts
-      ) {
-        nx += Math.max(dims.width, grid) + gap
-        attempts++
+      parents.forEach(pId => {
+        if (adj.has(pId)) {
+          adj.get(pId)!.push(c.id)
+          inDegree.set(c.id, (inDegree.get(c.id) || 0) + 1)
+        }
+      })
+    })
+
+    // 2. Assign levels using BFS (Topological sort style)
+    const levels = new Map<string, number>()
+    const queue: { id: string; level: number }[] = []
+
+    // Start with nodes that have no parents in the diagram
+    classes.forEach(c => {
+      if (inDegree.get(c.id) === 0) {
+        queue.push({ id: c.id, level: 0 })
       }
+    })
 
-      placed.push({ x: nx, y: ny, w: dims.width, h: dims.height })
-      onMoveClass(cls.id, nx, ny)
+    while (queue.length > 0) {
+      const { id, level } = queue.shift()!
+      levels.set(id, Math.max(levels.get(id) || 0, level))
+
+      adj.get(id)?.forEach(childId => {
+        queue.push({ id: childId, level: level + 1 })
+      })
     }
 
+    // Handle nodes with cycles or disconnected (should be covered by queue init, but just in case)
+    classes.forEach(c => {
+      if (!levels.has(c.id)) levels.set(c.id, 0)
+    })
+
+    // 3. Group by levels and calculate positions
+    const levelGroups: Record<number, string[]> = {}
+    levels.forEach((level, id) => {
+      if (!levelGroups[level]) levelGroups[level] = []
+      levelGroups[level].push(id)
+    })
+
+    const VERTICAL_GAP = 100
+    const HORIZONTAL_GAP = 40
+    const results: { id: string; x: number; y: number }[] = []
+
+    let currentY = 0
+    const levelIndices = Object.keys(levelGroups).map(Number).sort((a, b) => a - b)
+
+    levelIndices.forEach(level => {
+      const ids = levelGroups[level]
+      let currentX = 0
+      let maxHeightInLevel = 0
+
+      // Calculate total width of this level to center it
+      const dimsList = ids.map(id => {
+        const cls = classes.find(c => c.id === id)!
+        const d = calculateClassDimensions(ctx, cls)
+        return { id, ...d }
+      })
+
+      const totalLevelWidth = dimsList.reduce((sum, d) => sum + d.width, 0) + (ids.length - 1) * HORIZONTAL_GAP
+
+      // Starting X to center the level
+      let startX = -totalLevelWidth / 2
+
+      dimsList.forEach(d => {
+        results.push({
+          id: d.id,
+          x: startX,
+          y: currentY
+        })
+        startX += d.width + HORIZONTAL_GAP
+        maxHeightInLevel = Math.max(maxHeightInLevel, d.height)
+      })
+
+      currentY += maxHeightInLevel + VERTICAL_GAP
+    })
+
+    return results
+  }
+
+  function handleAlignAll() {
+    const layout = calculateHierarchicalLayout()
+    if (layout.length === 0) return
+
+    layout.forEach(pos => {
+      onMoveClass(pos.id, pos.x, pos.y)
+    })
+
     // After repositioning all classes, fit to view
-    // Small timeout to allow parent state updates to propagate before fitting
     setTimeout(() => {
       handleFitAll()
-    }, 0)
+    }, 50)
   }
 
   return (
