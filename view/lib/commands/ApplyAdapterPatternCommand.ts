@@ -1,9 +1,7 @@
 import { Command } from './Command';
 import { CliCommandType } from '../CliParser';
 import { DomainModel } from '../DomainModel';
-import { DesignGraphAggregate } from '../DesignGraphModel';
 import { HandlerResult } from '../handler-registry';
-import { DesignGraphService } from '../application/DesignGraphService';
 import { ClassDiagramService } from '../application/ClassDiagramService';
 
 export class ApplyAdapterPatternCommand extends Command {
@@ -16,7 +14,7 @@ export class ApplyAdapterPatternCommand extends Command {
         super(raw);
     }
 
-    execute(model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
+    execute(model: DomainModel): HandlerResult {
         const classDiagramService = new ClassDiagramService(model);
         const { model: newModel, events: modelEvents } = classDiagramService.applyAdapterPattern({
             adapterName: this.adapterName,

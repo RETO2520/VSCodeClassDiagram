@@ -1,7 +1,6 @@
 import { Command } from "./Command";
 import { HandlerResult } from "../handler-registry";
 import { DomainModel } from "../DomainModel";
-import { DesignGraphAggregate } from "../DesignGraphModel";
 import { CliCommandType } from "../CliParser";
 import { ClassDiagramService } from "../application/ClassDiagramService";
 import {
@@ -50,7 +49,7 @@ export class ExportSpecDslCommand extends Command {
         this.outputPath = outputPath;
     }
 
-    execute(model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
+    execute(model: DomainModel): HandlerResult {
         const service = new ClassDiagramService(model);
         const currentModel = service.getModel();
 

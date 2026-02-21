@@ -1,6 +1,5 @@
 import { Command } from './Command';
 import { DomainModel } from '../DomainModel';
-import { DesignGraphAggregate } from '../DesignGraphModel';
 import { HandlerResult } from '../handler-registry';
 import { postMessage } from '../../../frontend/src/bridge/vscode-bridge';
 
@@ -15,7 +14,7 @@ export class ImportCommand extends Command {
         this.path = path;
     }
 
-    execute(model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
+    execute(model: DomainModel): HandlerResult {
         postMessage({ command: 'loadJson' });
         return { model, events: [] };
     }

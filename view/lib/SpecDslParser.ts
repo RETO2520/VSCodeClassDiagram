@@ -25,7 +25,7 @@ export interface ParsedClass {
 export interface ParsedRelation {
     source: string;
     target: string;
-    type: "association" | "aggregation" | "composition" | "dependency";
+    type: "generalization" | "realization" | "instantiation" | "association" | "aggregation" | "composition" | "dependency";
     label?: string;
     sourceMultiplicity?: string;
     targetMultiplicity?: string;
@@ -35,6 +35,8 @@ export interface ParsedDsl {
     classes: ParsedClass[];
     relations: ParsedRelation[];
 }
+
+
 
 // ============================================================
 // SpecDslParser
@@ -178,6 +180,59 @@ export class SpecDslParser {
 
         // Pass 4: 明示リレーションを追加
         for (const rel of relations) {
+            // if (rel.type === "realization") {
+            //     service.applyAddInterfaceImpl({
+            //         className: rel.source,
+            //         interfaceName: rel.target,
+            //     });
+            //     continue;
+            // }
+
+            // // それ以外は DesignGraphAggregate にエッジとして追加
+            // const currentModel = service.getModel();
+            // const srcClass = currentModel.findClassByName(rel.source);
+            // const tgtClass = currentModel.findClassByName(rel.target);
+            // if (!srcClass || !tgtClass) continue;
+
+            // // ノードが未登録なら追加（ClassInfo.id をそのまま DesignNode.id として使う）
+            // if (!graphModel.nodes[srcClass.id]) {
+            //     switch (srcClass.kind) {
+            //         case "class":
+            //             graphModel = graphModel.addNode({ id: srcClass.id, kind: "class", name: srcClass.name });
+            //             break;
+            //         case "interface":
+            //             graphModel = graphModel.addNode({ id: srcClass.id, kind: "interface", name: srcClass.name });
+            //             break;
+            //         case "struct":
+            //             graphModel = graphModel.addNode({ id: srcClass.id, kind: "struct", name: srcClass.name });
+            //             break;
+            //     }
+            // }
+            // if (!graphModel.nodes[tgtClass.id]) {
+            //     switch (tgtClass.kind) {
+            //         case "class":
+            //             graphModel = graphModel.addNode({ id: tgtClass.id, kind: "class", name: tgtClass.name });
+            //             break;
+            //         case "interface":
+            //             graphModel = graphModel.addNode({ id: tgtClass.id, kind: "interface", name: tgtClass.name });
+            //             break;
+            //         case "struct":
+            //             graphModel = graphModel.addNode({ id: tgtClass.id, kind: "struct", name: tgtClass.name });
+            //             break;
+            //     }
+            // }
+            // graphModel = graphModel.addEdge({
+            //     id: `${srcClass.id}:${tgtClass.id}:${rel.type}`,
+            //     from: srcClass.id,
+            //     to: tgtClass.id,
+            //     kind: RELATION_TO_EDGE_KIND[rel.type],
+            //     metadata: {
+            //         relationType: rel.type,
+            //         label: rel.label,
+            //         sourceMultiplicity: rel.sourceMultiplicity,
+            //         targetMultiplicity: rel.targetMultiplicity,
+            //     },
+            // });
             // service.applyAddRelationship({
             //     sourceClassName: rel.source,
             //     targetClassName: rel.target,
@@ -256,10 +311,14 @@ export class SpecDslParser {
 
     private matchRelation(line: string): ParsedRelation | null {
         // Source <symbol> Target [:label] [sourceMultiplicity targetMultiplicity]
+        // CliParser と同じ記号セット。長いものを先に評価して誤マッチを防ぐ
         const symbolMap: Record<string, ParsedRelation["type"]> = {
-            "-/>": "dependency",  // 長いものを先に評価
+            "-/>": "dependency",      // -/> を -> より先に評価
+            ">|": "generalization",
+            ">/": "realization",
+            "+>": "instantiation",
             "->": "association",
-            "+>": "aggregation",
+            "o>": "aggregation",
             "*>": "composition",
         };
 
@@ -289,6 +348,7 @@ export class SpecDslParser {
         }
 
         return null;
+
     }
 
     // ============================================================

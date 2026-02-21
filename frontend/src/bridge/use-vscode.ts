@@ -21,6 +21,7 @@ import {
 } from '../adapters/model-adapter'
 import { SpecDslParser } from '../../../view/lib/SpecDslParser'
 
+
 /**
  * Hook to listen for messages from the extension host.
  * Handles loadedJson and changedPrimitiveTypes messages.

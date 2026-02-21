@@ -21,6 +21,11 @@ export interface AddTypeInput {
     kind: ClassKind;
     isAbstract?: boolean;
     extendsNames?: string[]; // CLI may supply names; AppService resolves to IDs or creates classes
+    /**
+     * ClassInfo.id をそのまま DesignNode.id として使うために渡す。
+     * 省略時は DesignGraphService 側で createId() する。
+     */
+    id?: string;
 }
 
 export interface RemoveTypeInput {

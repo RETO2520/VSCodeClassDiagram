@@ -1,6 +1,5 @@
 import { Command } from './Command';
 import { DomainModel } from '../DomainModel';
-import { DesignGraphAggregate } from '../DesignGraphModel';
 import { HandlerResult } from '../handler-registry';
 import { postMessage } from '../../../frontend/src/bridge/vscode-bridge';
 import { modelForExport } from '../../../frontend/src/adapters/model-adapter';
@@ -16,7 +15,7 @@ export class GenerateCodeCommand extends Command {
         this.path = path;
     }
 
-    execute(model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
+    execute(model: DomainModel): HandlerResult {
         const allowed = new Set(['csharp', 'java', 'ts', 'rust', 'cpp']);
         if (!this.language) {
             postMessage({ command: 'log', level: 'warn', text: `generate-code requires a language argument` });

@@ -1,6 +1,5 @@
 import { Command } from './Command';
 import { DomainModel } from '../DomainModel';
-import { DesignGraphAggregate } from '../DesignGraphModel';
 import { HandlerResult } from '../handler-registry';
 import { ClassDiagramService } from '../application/ClassDiagramService';
 import { AddParameterInput } from '../application/dtos';
@@ -21,7 +20,7 @@ export class AddParamCommand extends Command {
         this.dataType = dataType;
     }
 
-    execute(model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
+    execute(model: DomainModel): HandlerResult {
         const p = createEmptyParameter();
         p.name = this.name;
         p.type = this.dataType || 'string';

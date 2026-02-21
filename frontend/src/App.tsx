@@ -19,7 +19,6 @@ import { getVSCodeApi, isVSCodeWebview } from './bridge/vscode-bridge'
 import { CommandLine } from '@/components/command-line'
 import { parseCommand, executeAction } from '@/lib/command-executor'
 import { useCommandHistory } from '@/hooks/use-command-history' // 
-
 // ==============================
 // Toolbar for VSCode webview integration
 // ==============================

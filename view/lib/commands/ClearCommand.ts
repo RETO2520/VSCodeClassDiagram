@@ -1,6 +1,5 @@
 import { Command } from './Command';
 import { DomainModel } from '../DomainModel';
-import { DesignGraphAggregate } from '../DesignGraphModel';
 import { HandlerResult } from '../handler-registry';
 import { ClassDiagramService } from '../application/ClassDiagramService';
 
@@ -11,7 +10,7 @@ export class ClearCommand extends Command {
         super(raw);
     }
 
-    execute(model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
+    execute(model: DomainModel): HandlerResult {
         const service = new ClassDiagramService(model);
         service.replaceClassesFromArray([] as any);
         const ev = { type: 'MODEL_REPLACED', payload: { classes: [] } };

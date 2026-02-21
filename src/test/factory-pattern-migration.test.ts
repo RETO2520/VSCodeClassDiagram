@@ -1,29 +1,18 @@
 import { executeAction, parseCommand } from '../../view/lib/command-executor';
 import * as assert from 'assert';
 import { DomainModel } from '../../view/lib/DomainModel';
-import { HandlerResult } from '../../view/lib/handler-registry';
-import { DesignGraphAggregate } from '../../view/lib/DesignGraphModel';
 
 suite('Generation Responsibility and Factory Migration', () => {
     test('RelationCommand (+>) should add a create[Target] method', () => {
         let model = DomainModel.createEmpty();
-        let graph = new DesignGraphAggregate({ nodes: {}, edges: {} });
 
         // Add two classes
         model = executeAction(parseCommand('c Caller')!, model).model;
         model = executeAction(parseCommand('c Target')!, model).model;
 
-        // Add nodes to graph (normally handled by command executor in a real app, 
-        // but here we need them for DesignGraphService to work)
-        const callerNodeId = Object.values(model.getClasses()).find(c => c.name === 'Caller')!.id;
-        const targetNodeId = Object.values(model.getClasses()).find(c => c.name === 'Target')!.id;
-
-        graph = graph.addNode({ id: callerNodeId, kind: 'class', name: 'Caller' });
-        graph = graph.addNode({ id: targetNodeId, kind: 'class', name: 'Target' });
-
         // Execute +> relationship
         const command = parseCommand('Caller +> Target')!;
-        const result = executeAction(command, model, graph);
+        const result = executeAction(command, model);
 
         const caller = result.model.findClassByName('Caller');
         const createMethod = caller?.operations.find(op => op.name === 'createTarget');
@@ -44,29 +33,18 @@ suite('Generation Responsibility and Factory Migration', () => {
         try {
             fs.writeFileSync(logFile, 'Starting ApplyFactoryPattern test\n');
             let model = DomainModel.createEmpty();
-            let graph = new DesignGraphAggregate({ nodes: {}, edges: {} });
 
             // Setup: Caller +> Concrete1, Caller +> Concrete2
             model = executeAction(parseCommand('c Caller')!, model).model;
             model = executeAction(parseCommand('c Concrete1')!, model).model;
             model = executeAction(parseCommand('c Concrete2')!, model).model;
 
-            const callerId = model.findClassByName('Caller')!.id;
-            const c1Id = model.findClassByName('Concrete1')!.id;
-            const c2Id = model.findClassByName('Concrete2')!.id;
-
-            graph = graph.addNode({ id: callerId, kind: 'class', name: 'Caller' })
-                .addNode({ id: c1Id, kind: 'class', name: 'Concrete1' })
-                .addNode({ id: c2Id, kind: 'class', name: 'Concrete2' });
-
             // Add instantiation relationships
-            let res1 = executeAction(parseCommand('Caller +> Concrete1')!, model, graph);
+            let res1 = executeAction(parseCommand('Caller +> Concrete1')!, model);
             model = res1.model;
-            graph = res1.designGraph!;
 
-            let res2 = executeAction(parseCommand('Caller +> Concrete2')!, model, graph);
+            let res2 = executeAction(parseCommand('Caller +> Concrete2')!, model);
             model = res2.model;
-            graph = res2.designGraph!;
 
             log('Setup complete');
 
@@ -79,7 +57,7 @@ suite('Generation Responsibility and Factory Migration', () => {
             log('Applying factory pattern');
             const factoryCmd = parseCommand('apply-factory MyFactory IProduct Concrete1 Concrete2')!;
             if (!factoryCmd) throw new Error('parseCommand returned null for apply-factory');
-            const finalResult = executeAction(factoryCmd, model, graph);
+            const finalResult = executeAction(factoryCmd, model);
             log('Factory pattern applied successfully');
 
             // console.log('Available classes after migration:', finalResult.model.getClasses().map(c => c.name).join(', '));
@@ -118,29 +96,18 @@ suite('Generation Responsibility and Factory Migration', () => {
 
     test('ApplyFactoryPattern should migrate methods even if caller is the abstract interface (Shape scenario)', () => {
         let model = DomainModel.createEmpty();
-        let graph = new DesignGraphAggregate({ nodes: {}, edges: {} });
 
         // Setup: Shape +> Circle, Shape +> Square
         model = executeAction(parseCommand('c Shape')!, model).model;
         model = executeAction(parseCommand('c Circle')!, model).model;
         model = executeAction(parseCommand('c Square')!, model).model;
 
-        const shapeId = model.findClassByName('Shape')!.id;
-        const circleId = model.findClassByName('Circle')!.id;
-        const squareId = model.findClassByName('Square')!.id;
-
-        graph = graph.addNode({ id: shapeId, kind: 'class', name: 'Shape' })
-            .addNode({ id: circleId, kind: 'class', name: 'Circle' })
-            .addNode({ id: squareId, kind: 'class', name: 'Square' });
-
         // Add instantiation relationships
-        let res1 = executeAction(parseCommand('Shape +> Circle')!, model, graph);
+        let res1 = executeAction(parseCommand('Shape +> Circle')!, model);
         model = res1.model;
-        graph = res1.designGraph!;
 
-        let res2 = executeAction(parseCommand('Shape +> Square')!, model, graph);
+        let res2 = executeAction(parseCommand('Shape +> Square')!, model);
         model = res2.model;
-        graph = res2.designGraph!;
 
         // Verify methods exist before migration
         const shapeBefore = model.findClassByName('Shape');
@@ -149,7 +116,7 @@ suite('Generation Responsibility and Factory Migration', () => {
 
         // Apply Factory Pattern: ShapeFactory as factory, Shape as abstract, Circle/Square as concrete
         const factoryCmd = parseCommand('apply-factory ShapeFactory Shape Circle Square')!;
-        const finalResult = executeAction(factoryCmd, model, graph);
+        const finalResult = executeAction(factoryCmd, model);
 
         const shapeAfter = finalResult.model.findClassByName('Shape');
         const op1 = shapeAfter?.operations.find(op => op.name === 'createCircle');

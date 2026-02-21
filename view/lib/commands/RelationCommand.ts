@@ -1,9 +1,7 @@
 import { Command } from './Command';
 import { DomainModel } from '../DomainModel';
-import { DesignGraphAggregate, EdgeKind } from '../DesignGraphModel';
 import { HandlerResult } from '../handler-registry';
 import { ClassDiagramService } from '../application/ClassDiagramService';
-import { DesignGraphService } from '../application/DesignGraphService';
 import { AddRelationshipInput } from '../application/dtos';
 import { Relationship, createId } from '../class-diagram-types';
 
@@ -22,7 +20,7 @@ export class RelationCommand extends Command {
         this.multiplicity = multiplicity;
     }
 
-    execute(model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
+    execute(model: DomainModel): HandlerResult {
         const classDiagramService = new ClassDiagramService(model);
         let result: HandlerResult = { model, events: [] };
 
@@ -33,6 +31,28 @@ export class RelationCommand extends Command {
                 break;
             case '>/':
                 result = classDiagramService.addInterfaceImplFromCli({ className: this.source, interfaceName: this.target });
+                break;
+            case '+>':
+                result = {
+                    ...result
+                };
+                const methodResult = classDiagramService.applyAddOperation({
+                    className: this.source,
+                    operation: {
+                        id: createId(),
+                        name: `create${this.target}`,
+                        returnType: this.target,
+                        visibility: 'public',
+                        parameters: [],
+                        isStatic: false,
+                        isAbstract: false
+                    }
+                });
+                result = {
+                    ...result,
+                    model: methodResult.model,
+                    events: [...result.events, ...methodResult.events]
+                };
                 break;
             default:
                 // Other associations/dependencies are currently handled as generic relationships if needed
@@ -49,51 +69,6 @@ export class RelationCommand extends Command {
                 break;
         }
 
-        // 2. Visual Synchronization (DesignGraph)
-        if (graph) {
-            const graphService = new DesignGraphService(graph);
-            let edgeKind: EdgeKind | undefined;
-
-            switch (this.symbol) {
-                case '>|': edgeKind = 'inherits'; break;
-                case '>/': edgeKind = 'implements'; break;
-                case '+>': edgeKind = 'instantiates'; break;
-                case '->': edgeKind = 'references'; break;
-                case 'o>': edgeKind = 'delegates'; break;
-                case '*>': edgeKind = 'references'; break;
-                case '-/>': edgeKind = 'calls'; break;
-            }
-
-            if (edgeKind) {
-                const graphResult = graphService.addEdgeByNames(this.source, this.target, edgeKind);
-                result = {
-                    ...result,
-                    designGraph: graphResult.graph,
-                    graphEvents: graphResult.events
-                };
-
-                // If it's an instantiation (+>), also add a generation method to the model
-                if (this.symbol === '+>') {
-                    const methodResult = classDiagramService.applyAddOperation({
-                        className: this.source,
-                        operation: {
-                            id: createId(),
-                            name: `create${this.target}`,
-                            returnType: this.target,
-                            visibility: 'public',
-                            parameters: [],
-                            isStatic: false,
-                            isAbstract: false
-                        }
-                    });
-                    result = {
-                        ...result,
-                        model: methodResult.model,
-                        events: [...result.events, ...methodResult.events]
-                    };
-                }
-            }
-        }
 
         return result;
     }

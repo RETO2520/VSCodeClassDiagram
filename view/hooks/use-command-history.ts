@@ -5,20 +5,17 @@ import { ClassInfo } from '@/lib/class-diagram-types';
 import { Command } from '@/lib/commands/Command';
 import { executeAction } from '@/lib/command-executor';
 import { DomainModel } from '@/lib/DomainModel';
-import { DesignGraphAggregate } from '@/lib/DesignGraphModel';
 import { HandlerResult } from '@/lib/handler-registry';
 
 interface HistoryEntry {
     command: Command;
     prevState: ClassInfo[];
-    prevGraph: DesignGraphAggregate;
     timestamp: number;
     result: HandlerResult;
 }
 
 interface UseCommandHistoryResult {
     classes: ClassInfo[];
-    designGraph: DesignGraphAggregate;
     history: HistoryEntry[];
     redoStack: HistoryEntry[];
     executeCommand: (command: Command) => HandlerResult | undefined;
@@ -32,16 +29,11 @@ interface UseCommandHistoryResult {
 const MAX_HISTORY_SIZE = 50;
 
 export function useCommandHistory(
-    initialClasses: ClassInfo[] = [],
-    initialGraph: DesignGraphAggregate = new DesignGraphAggregate({ nodes: {}, edges: {} })
+    initialClasses: ClassInfo[] = []
 ): UseCommandHistoryResult {
     // DomainModel として状態を保持
     const modelRef = useRef<DomainModel>(DomainModel.from(initialClasses));
     const [model, setModel] = useState<DomainModel>(modelRef.current);
-
-    // DesignGraphAggregate として状態を保持
-    const graphRef = useRef<DesignGraphAggregate>(initialGraph);
-    const [graph, setGraph] = useState<DesignGraphAggregate>(graphRef.current);
 
     const [history, setHistory] = useState<HistoryEntry[]>([]);
     const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
@@ -51,16 +43,14 @@ export function useCommandHistory(
      */
     const executeCommand = useCallback((command: Command) => {
         const prevModel = modelRef.current;
-        const prevGraph = graphRef.current;
 
         // コマンド実行（同期的に結果を取得）
-        const result = executeAction(command, prevModel, prevGraph) as HandlerResult;
+        const result = executeAction(command, prevModel) as HandlerResult;
 
         // 履歴エントリを作成（スナップショットとして保存）
         const historyEntry: HistoryEntry = {
             command,
             prevState: prevModel.getClasses(), // 実行前の状態をスナップショット
-            prevGraph: prevGraph,
             timestamp: Date.now(),
             result
         };
@@ -81,13 +71,7 @@ export function useCommandHistory(
         setModel(result.model);
         modelRef.current = result.model;
 
-        // グラフを更新（あれば）
-        if (result.designGraph) {
-            setGraph(result.designGraph);
-            graphRef.current = result.designGraph;
-        }
-
-        return result as HandlerResult;
+        return result;
     }, []);
 
     /**
@@ -105,7 +89,6 @@ export function useCommandHistory(
         setRedoStack(prev => [...prev, {
             command: lastEntry.command,
             prevState: model.getClasses(), // 現在の状態（undo前）
-            prevGraph: graph,
             timestamp: Date.now(),
             result: lastEntry.result
         }]);
@@ -118,17 +101,11 @@ export function useCommandHistory(
         setModel(restoredModel);
         modelRef.current = restoredModel;
 
-        const restoredGraph = lastEntry.prevGraph;
-        setGraph(restoredGraph);
-        graphRef.current = restoredGraph;
-
         return {
             model: restoredModel,
-            events: lastEntry.result?.events ?? [],
-            designGraph: restoredGraph,
-            graphEvents: []
-        } as HandlerResult;
-    }, [history, model, graph]);
+            events: lastEntry.result?.events ?? []
+        };
+    }, [history, model]);
 
     /**
      * Redo: Undoした操作をやり直す
@@ -141,26 +118,19 @@ export function useCommandHistory(
 
         const redoEntry = redoStack[redoStack.length - 1];
         const prevModel = modelRef.current;
-        const prevGraph = graphRef.current;
 
-        const result = executeAction(redoEntry.command, prevModel, prevGraph) as HandlerResult;
+        const result = executeAction(redoEntry.command, prevModel);
 
         // 履歴に追加
         setHistory(prev => [...prev, {
             command: redoEntry.command,
             prevState: prevModel.getClasses(),
-            prevGraph: prevGraph,
             timestamp: Date.now(),
-            result: redoEntry.result
+            result
         }]);
 
         setModel(result.model);
         modelRef.current = result.model;
-
-        if (result.designGraph) {
-            setGraph(result.designGraph);
-            graphRef.current = result.designGraph;
-        }
 
         // redoスタックから削除
         setRedoStack(prev => prev.slice(0, -1));
@@ -192,7 +162,6 @@ export function useCommandHistory(
 
     return {
         classes: model.getClasses(),
-        designGraph: graph,
         history,
         redoStack,
         executeCommand,

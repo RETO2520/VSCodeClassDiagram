@@ -1,6 +1,5 @@
 import { Command } from './Command';
 import { DomainModel } from '../DomainModel';
-import { DesignGraphAggregate } from '../DesignGraphModel';
 import { HandlerResult } from '../handler-registry';
 import { ClassDiagramService } from '../application/ClassDiagramService';
 import { RenameInput } from '../application/dtos';
@@ -20,7 +19,7 @@ export class RenameCommand extends Command {
         this.newName = newName;
     }
 
-    execute(model: DomainModel, graph?: DesignGraphAggregate): HandlerResult {
+    execute(model: DomainModel): HandlerResult {
         const targetMap = { 'c': 'type' as const, 'a': 'member' as const, 'm': 'operation' as const };
         const input: RenameInput = {
             target: targetMap[this.target],
