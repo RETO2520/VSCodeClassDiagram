@@ -94,7 +94,6 @@
     "tree-sitter-cpp": "^0.23.4",
     "tree-sitter-java": "^0.23.5",
     "tree-sitter-rust": "^0.24.0",
-    "vite-plugin-monaco-editor": "^1.1.0",
     "web-tree-sitter": "^0.26.3"
   }
 }
