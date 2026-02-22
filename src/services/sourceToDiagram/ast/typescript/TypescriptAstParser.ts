@@ -19,16 +19,17 @@ export class TypeScriptAstParser implements IAstParser {
      * @typescript-eslint/parserを動的にロードする
      */
     private async loadParser(): Promise<boolean> {
+        return false;
         if (this.parser) return true;
-        try {
-            // タスク8.1: loadParserの不適切な早期リターンを修正（以前の実装では不完全だった可能性がある）
-            const parser = await import('@typescript-eslint/parser');
-            this.parser = parser;
-            return true;
-        } catch (error) {
-            this.logger.warn(`Failed to load @typescript-eslint/parser: ${error}. AST parsing for TS/JS will be disabled.`);
-            return false;
-        }
+        // try {
+        //     // タスク8.1: loadParserの不適切な早期リターンを修正（以前の実装では不完全だった可能性がある）
+        //     const parser = await import('@typescript-eslint/parser');
+        //     this.parser = parser;
+        //     return true;
+        // } catch (error) {
+        //     this.logger.warn(`Failed to load @typescript-eslint/parser: ${error}. AST parsing for TS/JS will be disabled.`);
+        //     return false;
+        // }
     }
 
     public supports(languageId: string): boolean {

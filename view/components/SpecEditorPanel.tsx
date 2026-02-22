@@ -1,0 +1,586 @@
+/**
+ * SpecEditorPanel.tsx
+ *
+ * 仕様書DSLエディタ — パターンC実装（下部ペイン）
+ *
+ * Monaco Editor は @monaco-editor/react で統合。
+ * CDN動的ロードなし — npm install @monaco-editor/react で動作する。
+ *
+ * 機能:
+ *   - Monaco Editor でDSLを編集（シンタックスハイライト + スニペット補完）
+ *   - debounce(600ms) でリアルタイムにクラス図へ反映
+ *   - ワークフローデータ（workflow/workflowAst）を全リセット時に名前ベースで引き継ぐ
+ *   - 左端: アウトライン（パースしたクラス一覧）
+ *   - 中央: Monaco エディタ本体
+ *   - 下端: ステータスバー（カーソル位置 / エラー数 / 最終適用時刻）
+ */
+
+import React, { useRef, useState, useCallback } from 'react'
+import type * as Monaco from 'monaco-editor'
+import * as monaco from 'monaco-editor';
+import { loader } from '@monaco-editor/react';
+loader.config({ monaco });
+import Editor, { useMonaco, OnMount, OnChange } from '@monaco-editor/react'
+
+
+import type { ClassDiagramService } from '@/lib/application/ClassDiagramService'
+import { SpecDslParser } from '@/lib/SpecDslParser'
+import { DomainModel } from '@/lib/DomainModel'
+import type { ClassInfo, ClassOperation } from '@/lib/class-diagram-types'
+
+// ============================================================
+// DSL 言語定義
+// ============================================================
+
+const DSL_LANGUAGE_ID = 'class-spec-dsl'
+
+/**
+ * Monaco インスタンスが用意されたタイミングで一度だけ呼ぶ。
+ * @monaco-editor/react の beforeMount / useMonaco で使用する。
+ */
+function registerDslLanguage(monaco: typeof Monaco) {
+    // 二重登録を防ぐ
+    if (monaco.languages.getLanguages().some(l => l.id === DSL_LANGUAGE_ID)) return
+
+    monaco.languages.register({ id: DSL_LANGUAGE_ID })
+
+    monaco.languages.setMonarchTokensProvider(DSL_LANGUAGE_ID, {
+        keywords: ['class', 'interface', 'struct', 'abstract', 'extends', 'implements'],
+        tokenizer: {
+            root: [
+                [/\/\/.*$/, 'comment'],
+                [/#.*$/, 'comment'],
+                [/\b(abstract|class|interface|struct|extends|implements)\b/, 'keyword'],
+                [/^[\s]*[+\-#~]/, 'type.identifier'],
+                [/\b[sa]\b/, 'keyword.modifier'],
+                [/(-\/>|>\||>\/|\+>|->|o>|\*>)/, 'operator'],
+                [/[A-Z][a-zA-Z0-9_]*/, 'type'],
+                [/[a-z_][a-zA-Z0-9_]*/, 'identifier'],
+                [/[()[\]]/, 'delimiter.bracket'],
+                [/[,:]/, 'delimiter'],
+                [/\d+(\.\d+)?/, 'number'],
+                [/".*?"/, 'string'],
+            ],
+        },
+    } as any)
+
+    monaco.editor.defineTheme('spec-dark', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+            { token: 'keyword', foreground: '7dd3fc', fontStyle: 'bold' },
+            { token: 'keyword.modifier', foreground: 'f97316' },
+            { token: 'type', foreground: '4ade80' },
+            { token: 'type.identifier', foreground: 'fb923c', fontStyle: 'bold' },
+            { token: 'operator', foreground: 'c084fc', fontStyle: 'bold' },
+            { token: 'comment', foreground: '475569', fontStyle: 'italic' },
+            { token: 'identifier', foreground: 'e2e8f0' },
+            { token: 'string', foreground: 'fbbf24' },
+            { token: 'number', foreground: '60a5fa' },
+            { token: 'delimiter', foreground: '94a3b8' },
+        ],
+        colors: {
+            'editor.background': '#080f1a',
+            'editor.foreground': '#e2e8f0',
+            'editorLineNumber.foreground': '#334155',
+            'editorCursor.foreground': '#3b82f6',
+            'editor.lineHighlightBackground': '#1e293b80',
+            'editorGutter.background': '#0f172a',
+            'editor.selectionBackground': '#3b82f640',
+            'editorIndentGuide.background1': '#1e293b',
+        },
+    })
+
+    monaco.languages.registerCompletionItemProvider(DSL_LANGUAGE_ID, {
+        provideCompletionItems(model, position) {
+            const word = model.getWordUntilPosition(position)
+            const range = {
+                startLineNumber: position.lineNumber,
+                endLineNumber: position.lineNumber,
+                startColumn: word.startColumn,
+                endColumn: word.endColumn,
+            }
+            const snippets: Array<{ label: string; insert: string; doc: string }> = [
+                { label: 'class', insert: 'class ${1:ClassName}\n  + ${2:field}: ${3:string}\n  + ${4:method}(): ${5:void}', doc: 'クラス定義' },
+                { label: 'interface', insert: 'interface ${1:IName}\n  + ${2:method}(): ${3:void}', doc: 'インターフェース定義' },
+                { label: 'struct', insert: 'struct ${1:Name}\n  + ${2:field}: ${3:int}', doc: '構造体定義' },
+                { label: 'abstract class', insert: 'abstract class ${1:Name}\n  + a ${2:method}(): ${3:void}', doc: '抽象クラス' },
+                { label: 'extends', insert: 'extends ${1:ParentClass}', doc: '継承' },
+                { label: 'implements', insert: 'implements ${1:IName}', doc: 'インターフェース実装' },
+                { label: '->', insert: '${1:Source} -> ${2:Target}', doc: '関連' },
+                { label: 'o>', insert: '${1:Source} o> ${2:Target}', doc: '集約' },
+                { label: '*>', insert: '${1:Source} *> ${2:Target}', doc: 'コンポジション' },
+                { label: '>|', insert: '${1:Child} >| ${2:Parent}', doc: '汎化（継承）' },
+                { label: '>/', insert: '${1:Class} >/ ${2:Interface}', doc: '実現' },
+            ]
+            return {
+                suggestions: snippets.map(s => ({
+                    label: s.label,
+                    kind: monaco.languages.CompletionItemKind.Snippet,
+                    insertText: s.insert,
+                    insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                    documentation: s.doc,
+                    range,
+                })),
+            }
+        },
+    })
+}
+
+// ============================================================
+// Types
+// ============================================================
+
+interface ParseStatus {
+    state: 'idle' | 'parsing' | 'ok' | 'error'
+    errors: string[]
+    classCount: number
+    lastApplied: Date | null
+}
+
+interface OutlineItem {
+    name: string
+    kind: 'class' | 'interface' | 'struct'
+    isAbstract: boolean
+    memberCount: number
+    operationCount: number
+    line: number
+}
+
+interface CursorPos { line: number; col: number }
+
+// ============================================================
+// Props
+// ============================================================
+
+export interface SpecEditorPanelProps {
+    service: ClassDiagramService
+    /** ワークフローデータ引き継ぎ用・読み取り専用 */
+    classes: ClassInfo[]
+    visible: boolean
+}
+
+// ============================================================
+// Outline
+// ============================================================
+
+function Outline({ items, onSelect }: {
+    items: OutlineItem[]
+    onSelect: (line: number) => void
+}) {
+    const kindBadge = (k: OutlineItem['kind'], isAbstract: boolean) => {
+        if (k === 'interface') return { label: 'I', color: '#38bdf8' }
+        if (k === 'struct') return { label: 'S', color: '#fb923c' }
+        if (isAbstract) return { label: 'A', color: '#a78bfa' }
+        return { label: 'C', color: '#4ade80' }
+    }
+
+    return (
+        <div style={{
+            width: 176, minWidth: 176, flexShrink: 0,
+            borderRight: '1px solid #1e293b',
+            background: '#0a1628',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        }}>
+            <div style={{
+                padding: '5px 10px', fontSize: 10, fontWeight: 700,
+                color: '#334155', letterSpacing: '0.1em', textTransform: 'uppercase',
+                borderBottom: '1px solid #1e293b', flexShrink: 0,
+                fontFamily: '"Cascadia Code","SF Mono",monospace',
+            }}>
+                OUTLINE
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+                {items.length === 0
+                    ? <p style={{ padding: '10px', fontSize: 11, color: '#334155', fontStyle: 'italic', margin: 0 }}>
+                        No classes found
+                    </p>
+                    : items.map((item, i) => {
+                        const { label, color } = kindBadge(item.kind, item.isAbstract)
+                        return (
+                            <button key={i} onClick={() => onSelect(item.line)}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: 6,
+                                    width: '100%', textAlign: 'left',
+                                    padding: '4px 10px', background: 'transparent', border: 'none',
+                                    cursor: 'pointer',
+                                    fontFamily: '"Cascadia Code","SF Mono",monospace',
+                                }}
+                                onMouseEnter={e => (e.currentTarget.style.background = '#1e293b')}
+                                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                            >
+                                {/* バッジ */}
+                                <span style={{
+                                    fontSize: 9, fontWeight: 700, color: '#0f172a',
+                                    background: color, borderRadius: 2,
+                                    padding: '0 3px', lineHeight: '14px', flexShrink: 0,
+                                }}>{label}</span>
+                                {/* クラス名 */}
+                                <span style={{ fontSize: 11, color: '#cbd5e1', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {item.name}
+                                </span>
+                                {/* メンバ数 */}
+                                <span style={{ fontSize: 9, color: '#334155', flexShrink: 0 }}>
+                                    {item.memberCount + item.operationCount}
+                                </span>
+                            </button>
+                        )
+                    })
+                }
+            </div>
+        </div>
+    )
+}
+
+// ============================================================
+// StatusBar
+// ============================================================
+
+function StatusBar({ status, cursor, charCount }: {
+    status: ParseStatus
+    cursor: CursorPos
+    charCount: number
+}) {
+    const stateColor = { idle: '#475569', parsing: '#fbbf24', ok: '#4ade80', error: '#f87171' }[status.state]
+    const stateLabel = {
+        idle: '待機中',
+        parsing: '解析中…',
+        ok: `✓ 適用済み (${status.classCount} クラス)`,
+        error: `✗ ${status.errors.length} エラー`,
+    }[status.state]
+
+    const lastStr = status.lastApplied
+        ? status.lastApplied.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        : '—'
+
+    const SEP = <span style={{ color: '#1e293b', margin: '0 2px' }}>│</span>
+
+    return (
+        <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '2px 12px', background: '#080f1a',
+            borderTop: '1px solid #1e293b', flexShrink: 0, height: 22,
+            fontFamily: '"Cascadia Code","SF Mono",monospace', fontSize: 10,
+        }}>
+            <span style={{ color: stateColor, fontWeight: 600 }}>{stateLabel}</span>
+
+            {status.errors.length > 0 && <>
+                {SEP}
+                <span style={{ color: '#ef4444', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={status.errors.join('\n')}>
+                    {status.errors[0]}
+                </span>
+            </>}
+
+            <div style={{ flex: 1 }} />
+
+            <span style={{ color: '#334155' }}>Last applied: {lastStr}</span>
+            {SEP}
+            <span style={{ color: '#334155' }}>{charCount} chars</span>
+            {SEP}
+            <span style={{ color: '#475569' }}>Ln {cursor.line}, Col {cursor.col}</span>
+        </div>
+    )
+}
+
+// ============================================================
+// ToolbarBtn
+// ============================================================
+
+function ToolbarBtn({ onClick, title, accent = '#94a3b8', children }: {
+    onClick: () => void
+    title: string
+    accent?: string
+    children: React.ReactNode
+}) {
+    return (
+        <button onClick={onClick} title={title}
+            style={{
+                height: 22, padding: '0 8px', borderRadius: 3,
+                border: `1px solid ${accent}30`, color: accent,
+                background: `${accent}12`, fontSize: 10,
+                cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = `${accent}28`)}
+            onMouseLeave={e => (e.currentTarget.style.background = `${accent}12`)}
+        >
+            {children}
+        </button>
+    )
+}
+
+// ============================================================
+// Main SpecEditorPanel
+// ============================================================
+
+const DEBOUNCE_MS = 600
+
+const INITIAL_DSL = `// クラス仕様書 DSL
+// 書き込むとリアルタイムでクラス図に反映されます
+
+class Order
+  extends Entity
+  implements IAggregate
+  - id: string
+  - items: OrderItem[]
+  - status: OrderStatus
+  + getTotal(): number
+  + confirm(): void
+  + cancel(): void
+
+class OrderItem
+  - productId: string
+  - quantity: int
+  - unitPrice: number
+  + getSubtotal(): number
+
+interface IAggregate
+  + getId(): string
+
+abstract class Entity
+  # id: string
+  + a getId(): string
+
+// リレーション
+Order *> OrderItem :items 1 *
+`
+
+export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelProps) {
+    // @monaco-editor/react が用意する monaco インスタンス
+    const monaco = useMonaco()
+
+    // エディタインスタンスへの ref（カーソル操作・getValue・マーカーに使用）
+    const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const parserRef = useRef(new SpecDslParser())
+
+    const [status, setStatus] = useState<ParseStatus>({ state: 'idle', errors: [], classCount: 0, lastApplied: null })
+    const [outline, setOutline] = useState<OutlineItem[]>([])
+    const [cursor, setCursor] = useState<CursorPos>({ line: 1, col: 1 })
+    const [charCount, setCharCount] = useState(INITIAL_DSL.length)
+
+    // ── DSL → クラス図 適用 ──────────────────────────────────
+    const applyDsl = useCallback((dsl: string) => {
+        try {
+            // 1. ワークフローデータを className → opName でキャッシュ
+            const wfCache = new Map<string, Map<string, {
+                workflow?: ClassOperation['workflow']
+                workflowAst?: ClassOperation['workflowAst']
+            }>>()
+            for (const cls of classes) {
+                const opMap = new Map<string, { workflow?: ClassOperation['workflow']; workflowAst?: ClassOperation['workflowAst'] }>()
+                for (const op of cls.operations) {
+                    if (op.workflow || op.workflowAst) {
+                        opMap.set(op.name, { workflow: op.workflow, workflowAst: op.workflowAst })
+                    }
+                }
+                if (opMap.size > 0) wfCache.set(cls.name, opMap)
+            }
+
+            // 2. モデルをリセットして再構築
+            service.setModel(DomainModel.createEmpty())
+            const parsed = parserRef.current.parse(dsl, service)
+
+            // 3. ワークフローデータを名前ベースで復元
+            for (const cls of service.getModel().getClasses()) {
+                const opMap = wfCache.get(cls.name)
+                if (!opMap) continue
+                for (const op of cls.operations) {
+                    const cached = opMap.get(op.name)
+                    if (!cached?.workflow) continue
+                    try {
+                        service.applyUpdateOperationWorkflow({
+                            classId: cls.id,
+                            operationId: op.id,
+                            workflow: cached.workflow,
+                            workflowAst: cached.workflowAst,
+                        })
+                    } catch { /* メソッドシグネチャ変更時は無視 */ }
+                }
+            }
+
+            // 4. アウトライン更新
+            const lines = dsl.split('\n')
+            setOutline(parsed.classes.map(cls => ({
+                name: cls.name,
+                kind: cls.kind as OutlineItem['kind'],
+                isAbstract: cls.isAbstract,
+                memberCount: cls.members.length,
+                operationCount: cls.operations.length,
+                line: (lines.findIndex(l =>
+                    new RegExp(`(abstract\\s+)?(class|interface|struct)\\s+${cls.name}\\b`).test(l)
+                ) + 1) || 1,
+            })))
+
+            // 5. エラーマーカーをクリア
+            if (monaco && editorRef.current) {
+                monaco.editor.setModelMarkers(editorRef.current.getModel()!, 'dsl-parser', [])
+            }
+
+            setStatus({ state: 'ok', errors: [], classCount: parsed.classes.length, lastApplied: new Date() })
+        } catch (err: any) {
+            const msg = err?.message ?? String(err)
+
+            // エラーマーカーを表示
+            if (monaco && editorRef.current) {
+                monaco.editor.setModelMarkers(editorRef.current.getModel()!, 'dsl-parser', [{
+                    severity: monaco.MarkerSeverity.Error,
+                    message: msg,
+                    startLineNumber: 1, startColumn: 1,
+                    endLineNumber: 1, endColumn: 1,
+                }])
+            }
+
+            setStatus({ state: 'error', errors: [msg], classCount: 0, lastApplied: null })
+        }
+    }, [classes, service, monaco])
+
+    // ── Monaco マウント時 ─────────────────────────────────────
+    const handleMount: OnMount = useCallback((editor, monacoInstance) => {
+        editorRef.current = editor
+
+        // 言語・テーマ登録（useMonaco より確実なタイミング）
+        registerDslLanguage(monacoInstance)
+
+        // カーソル位置
+        editor.onDidChangeCursorPosition(e => {
+            setCursor({ line: e.position.lineNumber, col: e.position.column })
+        })
+
+        // 初回パース
+        applyDsl(editor.getValue())
+    }, [applyDsl])
+
+    // ── Monaco beforeMount（テーマを事前登録）────────────────
+    const handleBeforeMount = useCallback((monacoInstance: typeof Monaco) => {
+        registerDslLanguage(monacoInstance)
+    }, [])
+
+    // ── 内容変化 → debounce ──────────────────────────────────
+    const handleChange: OnChange = useCallback((value) => {
+        const dsl = value ?? ''
+        setCharCount(dsl.length)
+        setStatus(s => ({ ...s, state: 'parsing' }))
+
+        if (debounceRef.current) clearTimeout(debounceRef.current)
+        debounceRef.current = setTimeout(() => applyDsl(dsl), DEBOUNCE_MS)
+    }, [applyDsl])
+
+    // ── アウトライン → エディタジャンプ ─────────────────────
+    const handleOutlineSelect = useCallback((line: number) => {
+        const editor = editorRef.current
+        if (!editor) return
+        editor.revealLineInCenter(line)
+        editor.setPosition({ lineNumber: line, column: 1 })
+        editor.focus()
+    }, [])
+
+    // ── ツールバーアクション ─────────────────────────────────
+    const handleApplyNow = useCallback(() => {
+        if (debounceRef.current) clearTimeout(debounceRef.current)
+        applyDsl(editorRef.current?.getValue() ?? '')
+    }, [applyDsl])
+
+    const handleCopy = useCallback(() => {
+        navigator.clipboard.writeText(editorRef.current?.getValue() ?? '').catch(() => { })
+    }, [])
+
+    const handleClear = useCallback(() => {
+        editorRef.current?.setValue('')
+    }, [])
+
+    // ── レンダー ─────────────────────────────────────────────
+    return (
+        <div style={{
+            display: 'flex', flexDirection: 'column', height: '100%',
+            background: '#080f1a', overflow: 'hidden',
+            fontFamily: '"Cascadia Code","SF Mono","Fira Code",monospace',
+        }}>
+            {/* ── Toolbar ── */}
+            <div style={{
+                display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+                padding: '3px 10px', background: '#0f172a',
+                borderBottom: '1px solid #1e293b',
+            }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#334155', letterSpacing: '0.08em', marginRight: 4 }}>
+                    SPEC DSL
+                </span>
+
+                <div style={{ width: 1, height: 14, background: '#1e293b' }} />
+
+                <ToolbarBtn onClick={handleApplyNow} title="Ctrl+Enter で即時適用" accent="#3b82f6">
+                    ▶ Apply Now
+                </ToolbarBtn>
+
+                <div style={{ width: 1, height: 14, background: '#1e293b' }} />
+
+                <ToolbarBtn onClick={handleCopy} title="DSLをクリップボードにコピー">
+                    ⎘ Copy DSL
+                </ToolbarBtn>
+                <ToolbarBtn onClick={handleClear} title="エディタをクリア" accent="#f87171">
+                    ✕ Clear
+                </ToolbarBtn>
+
+                <div style={{ flex: 1 }} />
+
+                {/* リアルタイム同期インジケーター */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <div style={{
+                        width: 6, height: 6, borderRadius: '50%', transition: 'background 0.25s',
+                        background: {
+                            ok: '#4ade80',
+                            error: '#f87171',
+                            parsing: '#fbbf24',
+                            idle: '#334155',
+                        }[status.state],
+                    }} />
+                    <span style={{ fontSize: 10, color: '#475569' }}>
+                        {status.state === 'parsing' ? '解析中…' : 'リアルタイム同期'}
+                    </span>
+                </div>
+            </div>
+
+            {/* ── メイン: Outline + Editor ── */}
+            <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+
+                <Outline items={outline} onSelect={handleOutlineSelect} />
+
+                {/* @monaco-editor/react の Editor コンポーネント */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <Editor
+                        defaultValue={INITIAL_DSL}
+                        language={DSL_LANGUAGE_ID}
+                        theme="spec-dark"
+                        onMount={handleMount}
+                        beforeMount={handleBeforeMount}
+                        onChange={handleChange}
+                        options={{
+                            fontSize: 13,
+                            lineHeight: 20,
+                            fontFamily: '"Cascadia Code","SF Mono","Fira Code",monospace',
+                            fontLigatures: true,
+                            minimap: { enabled: false },
+                            scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
+                            overviewRulerLanes: 0,
+                            padding: { top: 10, bottom: 10 },
+                            renderLineHighlight: 'gutter',
+                            scrollBeyondLastLine: false,
+                            wordWrap: 'off',
+                            automaticLayout: true,   // visible 変化・リサイズに自動追従
+                            suggest: { showSnippets: true },
+                            quickSuggestions: true,
+                            tabSize: 2,
+                            insertSpaces: true,
+                            folding: true,
+                            lineNumbers: 'on',
+                        }}
+                    />
+                </div>
+            </div>
+
+            {/* ── StatusBar ── */}
+            <StatusBar status={status} cursor={cursor} charCount={charCount} />
+        </div>
+    )
+}

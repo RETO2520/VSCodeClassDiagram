@@ -100,7 +100,7 @@ export class ClassDiagramHandler {
         const baseUri = webview.asWebviewUri(distUri).toString();
 
         // Setup Content Security Policy
-        const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource}; font-src ${webview.cspSource}; connect-src ${webview.cspSource}; worker-src 'self' blob:;">`;
+        const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource}; font-src ${webview.cspSource}; connect-src ${webview.cspSource}; worker-src ${webview.cspSource}; blob:;">`;
 
         // Inject base href and CSP into <head>
         html = html.replace(/<head>/i, `<head><base href="${baseUri}/">${csp}`);

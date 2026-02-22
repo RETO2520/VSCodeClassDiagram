@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from './App'
 import './globals.css'
+
 // ここで Service を生成
 import { ClassDiagramService } from "../../view/lib/application/ClassDiagramService";
 import { DomainModel } from "../../view/lib/DomainModel";

@@ -2,7 +2,7 @@
   "name": "class-diagram-editor",
   "displayName": "%package.displayName%",
   "description": "%package.description%",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "engines": {
     "vscode": "^1.104.0"
   },
@@ -87,11 +87,14 @@
   "publisher": "reto",
   "pricing": "Free",
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "@typescript-eslint/parser": "^8.55.0",
+    "monaco-editor": "^0.55.1",
     "tree-sitter-c-sharp": "^0.23.1",
     "tree-sitter-cpp": "^0.23.4",
     "tree-sitter-java": "^0.23.5",
     "tree-sitter-rust": "^0.24.0",
+    "vite-plugin-monaco-editor": "^1.1.0",
     "web-tree-sitter": "^0.26.3"
   }
 }
