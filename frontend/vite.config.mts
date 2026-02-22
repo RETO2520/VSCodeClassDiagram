@@ -10,6 +10,11 @@ export default defineConfig({
     plugins: [
         react()
     ],
+    // Worker のビルド設定を「インライン」に強制
+    worker: {
+        format: 'es',
+        plugins: () => [react()], // 必要に応じて
+    },
     resolve: {
         alias: {
             '@': path.resolve(__dirname, '../view'),
@@ -23,6 +28,7 @@ export default defineConfig({
         rollupOptions: {
             output: {
                 manualChunks: undefined,
+                inlineDynamicImports: true,
                 entryFileNames: 'assets/main.js',
                 chunkFileNames: 'assets/[name].js',
                 assetFileNames: 'assets/[name][extname]',
