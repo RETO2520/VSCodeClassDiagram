@@ -50,6 +50,26 @@ export interface ClassMember {
   targetMultiplicity: Multiplicity
 }
 
+/** ワークフロー図データ */
+export interface OperationWorkflow {
+  id: string
+  name: string
+  description: string
+  nodes: Array<{
+    id: string
+    type: string
+    label: string
+    x: number
+    y: number
+  }>
+  edges: Array<{
+    from: string
+    to: string
+    condition?: string | null
+    mid?: { x: number; y: number }
+  }>
+}
+
 /** 操作（メソッド） */
 export interface ClassOperation {
   id: string
@@ -59,6 +79,34 @@ export interface ClassOperation {
   parameters: OperationParameter[]
   isStatic: boolean
   isAbstract: boolean
+  /**
+   * このオペレーションに紐づくワークフロー図データ。
+   * WorkflowEditorPanel が保存したノード/エッジグラフ。
+   */
+
+  workflow?: {
+    nodes: Array<{
+      id: string
+      type: string
+      label: string
+      x: number
+      y: number
+    }>
+    edges: Array<{
+      from: string
+      to: string
+      condition?: string | null
+      mid?: { x: number; y: number }
+    }>
+  }
+  /**
+   * workflow から生成された抽象構文木。
+   * コード生成に使用する。
+   */
+  workflowAst?: {
+    variables: Array<{ name: string; type: string; initialValue?: string }>
+    body: unknown[]
+  }
 }
 
 /** クラス情報 */

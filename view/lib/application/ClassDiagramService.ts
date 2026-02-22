@@ -174,6 +174,55 @@ export class ClassDiagramService {
         return { model: this.model, events: [event] }
     }
 
+    /**
+     * オペレーションのワークフローデータを更新する。
+     *
+     * WorkflowEditorPanel の「Save Workflow」ボタンから呼ばれる唯一の保存経路。
+     * DomainModel.updateOperationWorkflow → model 更新 → notifyModelChanged()
+     * という正規フローを通ることで JSON 保存にも確実に反映される。
+     *
+     * @param input.classId     対象クラスのID
+     * @param input.operationId 対象オペレーションのID
+     * @param input.workflow    ワークフロー図のノード/エッジ構造
+     * @param input.workflowAst workflow から生成された抽象構文木（省略可）
+     */
+    applyUpdateOperationWorkflow(input: {
+        classId: string
+        operationId: string
+        workflow: ClassOperation['workflow']
+        workflowAst?: ClassOperation['workflowAst']
+    }): HandlerResult {
+        const cls = this.model.findClassById(input.classId)
+        if (!cls) throw new DomainRuleViolation(`Class id "${input.classId}" not found`)
+
+        const op = cls.operations.find(o => o.id === input.operationId)
+        if (!op) throw new DomainRuleViolation(
+            `Operation id "${input.operationId}" not found in class "${cls.name}"`
+        )
+
+        const updated = this.model.updateOperationWorkflow(
+            input.classId,
+            input.operationId,
+            input.workflow,
+            input.workflowAst,
+        )
+
+        const event: DomainEvent = {
+            type: 'OPERATION_WORKFLOW_UPDATED',
+            payload: {
+                classId: input.classId,
+                className: cls.name,
+                operationId: input.operationId,
+                operationName: op.name,
+            },
+        }
+
+        this.model = updated
+        this.notifyModelChanged()
+        this.dispatcher?.dispatchAll([event])
+        return { model: this.model, events: [event] }
+    }
+
     applyAddParameter(input: AddParameterInput): HandlerResult {
         const classNameToUse = input.className ?? (input.classId ? (() => { const c = this.model.findClassById(input.classId!); if (!c) throw new DomainRuleViolation(`Class id ${input.classId} not found`); return c.name })() : undefined)
         if (!classNameToUse) throw new DomainRuleViolation('className or classId required')
@@ -1043,4 +1092,3 @@ export class ClassDiagramService {
         return name.charAt(0).toLowerCase() + name.slice(1);
     }
 }
-

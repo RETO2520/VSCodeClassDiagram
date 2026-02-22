@@ -732,6 +732,48 @@ export class DomainModel {
     }
 
     /**
+     * オペレーションのワークフローデータを更新する。
+     *
+     * WorkflowEditorPanel が「Save Workflow」したときに ClassDiagramService 経由で呼ばれる。
+     * classId と operationId で対象を一意に特定し、workflow / workflowAst を書き込む。
+     *
+     * @param classId     対象クラスのID
+     * @param operationId 対象オペレーションのID
+     * @param workflow    ワークフロー図のノード/エッジ構造
+     * @param workflowAst workflow から生成された抽象構文木（省略可）
+     */
+    updateOperationWorkflow(
+        classId: string,
+        operationId: string,
+        workflow: ClassOperation['workflow'],
+        workflowAst?: ClassOperation['workflowAst'],
+    ): DomainModel {
+        const cls = this.classMap.get(classId)
+        if (!cls) {
+            throw new DomainRuleViolation(`Class with id "${classId}" not found`)
+        }
+        const op = cls.operations.find(o => o.id === operationId)
+        if (!op) {
+            throw new DomainRuleViolation(
+                `Operation with id "${operationId}" not found in class "${cls.name}"`
+            )
+        }
+
+        return this.updateClass(classId, c => ({
+            ...c,
+            operations: c.operations.map(o =>
+                o.id === operationId
+                    ? {
+                        ...o,
+                        workflow: workflow ? JSON.parse(JSON.stringify(workflow)) : undefined,
+                        workflowAst: workflowAst ? JSON.parse(JSON.stringify(workflowAst)) : undefined,
+                    }
+                    : o
+            ),
+        }))
+    }
+
+    /**
      * パラメータを追加
      */
     addParameter(
@@ -1007,7 +1049,14 @@ export class DomainModel {
             members: cls.members.map(m => ({ ...m })),
             operations: cls.operations.map(op => ({
                 ...op,
-                parameters: op.parameters.map(p => ({ ...p }))
+                parameters: op.parameters.map(p => ({ ...p })),
+                // workflow / workflowAst はネストした構造体なので JSON ラウンドトリップで深くコピー
+                ...(op.workflow !== undefined && {
+                    workflow: JSON.parse(JSON.stringify(op.workflow))
+                }),
+                ...(op.workflowAst !== undefined && {
+                    workflowAst: JSON.parse(JSON.stringify(op.workflowAst))
+                }),
             })),
             interfaces: [...cls.interfaces],
         }

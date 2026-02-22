@@ -38,6 +38,33 @@ export interface MediaOperation {
     visibility: 'public' | 'private' | 'protected' | 'package'
     modifier: string // 'None' | 'Static' | 'Abstract' etc.
     parameters: MediaParameter[]
+    /**
+     * このオペレーションに紐づくワークフロー図データ。
+     * ノード/エッジ構造を保持する。
+     */
+    workflow?: {
+        nodes: Array<{
+            id: string
+            type: string
+            label: string
+            x: number
+            y: number
+        }>
+        edges: Array<{
+            from: string
+            to: string
+            condition?: string | null
+            mid?: { x: number; y: number }
+        }>
+    }
+    /**
+     * workflow から生成された抽象構文木。
+     * コード生成で使用する。
+     */
+    workflowAst?: {
+        variables: Array<{ name: string; type: string; initialValue?: string }>
+        body: unknown[]
+    }
 }
 
 export interface MediaClassModel {
@@ -131,6 +158,9 @@ function mediaOperationToView(op: MediaOperation, idx: number): ClassOperation {
             name: p.name,
             type: p.type,
         })),
+        // ワークフローデータを復元（存在する場合のみ）
+        ...(op.workflow !== undefined && { workflow: op.workflow }),
+        ...(op.workflowAst !== undefined && { workflowAst: op.workflowAst }),
     }
 }
 
@@ -224,6 +254,7 @@ function viewOperationToMedia(op: ClassOperation, classMeta?: MediaClassMeta): M
         modifier = classMeta.operationModifiers[op.id]
     } else {
         if (op.isStatic) modifier = 'Static'
+        else if (op.isAbstract) modifier = 'Abstract'
     }
 
     return {
@@ -235,6 +266,9 @@ function viewOperationToMedia(op: ClassOperation, classMeta?: MediaClassMeta): M
             name: p.name,
             type: p.type,
         })),
+        // ワークフローデータを保持（存在する場合のみ）
+        ...(op.workflow !== undefined && { workflow: op.workflow }),
+        ...(op.workflowAst !== undefined && { workflowAst: op.workflowAst }),
     }
 }
 

@@ -265,27 +265,38 @@ function drawClassBox(
     })
   }
 
-  // Operations
+  // Operations — クリック可能を示すリンク風スタイル
   if (classInfo.operations.length > 0) {
     classInfo.operations.forEach((op, i) => {
       const oy = operationsSectionY + SECTION_PADDING + (i + 1) * LINE_HEIGHT - 3
       const text = formatOperation(op)
 
+      const linkColor = "#60a5fa" // blue-400
+
+      ctx.font = `${op.isAbstract ? "italic " : ""}${SMALL_FONT_SIZE}px ${MONO_FONT}`
+      ctx.fillStyle = linkColor
+      ctx.fillText(text, x + HORIZONTAL_PAD, oy)
+
+      // 点線アンダーライン（クリック可能ヒント）
+      const tw = ctx.measureText(text).width
+      ctx.beginPath()
+      ctx.moveTo(x + HORIZONTAL_PAD, oy + 2)
+      ctx.lineTo(x + HORIZONTAL_PAD + tw, oy + 2)
+      ctx.strokeStyle = `${linkColor}99`
+      ctx.lineWidth = 0.8
+      ctx.setLineDash([3, 2])
+      ctx.stroke()
+      ctx.setLineDash([])
+
+      // static は実線上書き
       if (op.isStatic) {
-        ctx.font = `${op.isAbstract ? "italic " : ""}${SMALL_FONT_SIZE}px ${MONO_FONT}`
-        ctx.fillStyle = colors.bodyText
-        ctx.fillText(text, x + HORIZONTAL_PAD, oy)
-        const tw = ctx.measureText(text).width
         ctx.beginPath()
         ctx.moveTo(x + HORIZONTAL_PAD, oy + 2)
         ctx.lineTo(x + HORIZONTAL_PAD + tw, oy + 2)
-        ctx.strokeStyle = colors.bodyText
+        ctx.strokeStyle = linkColor
         ctx.lineWidth = 1
+        ctx.setLineDash([])
         ctx.stroke()
-      } else {
-        ctx.font = `${op.isAbstract ? "italic " : ""}${SMALL_FONT_SIZE}px ${MONO_FONT}`
-        ctx.fillStyle = colors.bodyText
-        ctx.fillText(text, x + HORIZONTAL_PAD, oy)
       }
     })
   }
@@ -588,6 +599,15 @@ interface DiagramCanvasProps {
   selectedId: string | null
   onSelectClass: (id: string | null) => void
   onMoveClass: (id: string, x: number, y: number) => void
+  /**
+   * クラスボックスの operation 行をクリックしたときのコールバック。
+   * ワークフロー図エディタへの切り替えに使用する。
+   */
+  onOperationClick?: (params: {
+    classIndex: number
+    opIndex: number
+    label: string
+  }) => void
 }
 
 export function DiagramCanvas({
@@ -596,6 +616,7 @@ export function DiagramCanvas({
   selectedId,
   onSelectClass,
   onMoveClass,
+  onOperationClick,
 }: DiagramCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -624,6 +645,53 @@ export function DiagramCanvas({
     startOffsetX: 0,
     startOffsetY: 0,
   })
+
+  /**
+   * mousedown した世界座標を記録しておき、
+   * mouseup 時に移動量が小さければ「クリック」と判断する。
+   */
+  const mouseDownWorld = useRef<{ x: number; y: number } | null>(null)
+
+  /**
+   * 世界座標 (worldX, worldY) がクリックされた operation を特定する。
+   * クラス配列のインデックスと operation インデックスを返す。
+   */
+  function hitTestOperation(
+    worldX: number,
+    worldY: number,
+  ): { classIndex: number; opIndex: number; label: string } | null {
+    const canvas = canvasRef.current
+    if (!canvas) return null
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return null
+
+    for (let ci = classes.length - 1; ci >= 0; ci--) {
+      const cls = classes[ci]
+      const dims = calculateClassDimensions(ctx, cls)
+
+      // ボックス範囲外なら skip
+      if (
+        worldX < cls.x || worldX > cls.x + dims.width ||
+        worldY < cls.y || worldY > cls.y + dims.height
+      ) continue
+
+      // operations セクションの開始 Y
+      const membersSectionY = cls.y + dims.headerHeight
+      const operationsSectionY = membersSectionY + dims.membersHeight
+
+      for (let oi = 0; oi < cls.operations.length; oi++) {
+        const rowTop = operationsSectionY + SECTION_PADDING + oi * LINE_HEIGHT
+        const rowBottom = rowTop + LINE_HEIGHT
+        if (worldY >= rowTop && worldY <= rowBottom) {
+          const op = cls.operations[oi]
+          const params = op.parameters.map((p: { name: string; type: string }) => `${p.name}: ${p.type}`).join(", ")
+          const label = `${cls.name}.${op.name}(${params})`
+          return { classIndex: ci, opIndex: oi, label }
+        }
+      }
+    }
+    return null
+  }
 
   /** Convert screen coordinates to world coordinates */
   const screenToWorld = useCallback(
@@ -714,6 +782,9 @@ export function DiagramCanvas({
     const screenY = e.clientY - rect.top
     const world = screenToWorld(screenX, screenY)
 
+    // クリック判定用にマウスダウン位置を記録
+    mouseDownWorld.current = { x: world.x, y: world.y }
+
     const hitId = hitTest(world.x, world.y)
 
     if (hitId) {
@@ -775,8 +846,29 @@ export function DiagramCanvas({
     }
   }
 
-  function handleMouseUp() {
+  function handleMouseUp(e: React.MouseEvent) {
+    const prevMode = interactionRef.current.mode
     interactionRef.current.mode = "none"
+
+    // ドラッグ量が 4px 未満 → クリックとみなして operation ヒットテスト
+    if (
+      onOperationClick &&
+      prevMode === "dragging-class" &&
+      mouseDownWorld.current
+    ) {
+      const canvas = canvasRef.current
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect()
+        const world = screenToWorld(e.clientX - rect.left, e.clientY - rect.top)
+        const dx = Math.abs(world.x - mouseDownWorld.current.x)
+        const dy = Math.abs(world.y - mouseDownWorld.current.y)
+        if (dx < 4 && dy < 4) {
+          const hit = hitTestOperation(world.x, world.y)
+          if (hit) onOperationClick(hit)
+        }
+      }
+    }
+    mouseDownWorld.current = null
   }
 
   // Use refs for wheel handler to get stable references
@@ -998,16 +1090,37 @@ export function DiagramCanvas({
     }, 50)
   }
 
+  const [canvasCursor, setCanvasCursor] = useState<string>("grab")
+
   return (
     <div ref={containerRef} className="relative h-full w-full bg-background">
       <canvas
         ref={canvasRef}
         className="h-full w-full"
-        style={{ cursor: interactionRef.current.mode === "panning" ? "grabbing" : "grab" }}
+        style={{
+          cursor: interactionRef.current.mode === "panning"
+            ? "grabbing"
+            : canvasCursor,
+        }}
         onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
+        onMouseMove={(e) => {
+          handleMouseMove(e)
+          // operation 上ではポインターカーソルに変更
+          if (onOperationClick && interactionRef.current.mode === "none") {
+            const canvas = canvasRef.current
+            if (canvas) {
+              const rect = canvas.getBoundingClientRect()
+              const world = screenToWorld(e.clientX - rect.left, e.clientY - rect.top)
+              const hit = hitTestOperation(world.x, world.y)
+              setCanvasCursor(hit ? "pointer" : "grab")
+            }
+          }
+        }}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onMouseLeave={(e) => {
+          handleMouseUp(e)
+          setCanvasCursor("grab")
+        }}
       />
 
       {/* Zoom controls */}

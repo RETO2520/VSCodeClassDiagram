@@ -1,26 +1,45 @@
 /**
- * Main App component for the VSCode Class Diagram webview.
+ * App.tsx — クラス図 + ワークフロー図 統合エディタ
  *
- * Integrates view/ components (ClassEditorPanel, DiagramCanvas)
- * with the VSCode webview bridge and model adapter.
+ * 構成:
+ *   [ActivitySidebar] | [ClassEditorContainer] [DiagramCanvas]
+ *                     または
+ *   [ActivitySidebar] | [WorkflowEditorPanel]
+ *
+ * フロー:
+ *   1. クラス図キャンバス上の operation 行をクリック
+ *      → App が onOperationClick を受け取る
+ *      → editorMode を 'workflow' に切り替え
+ *      → WorkflowEditorPanel に opRef を渡す
+ *   2. サイドバーのアイコンで手動切り替えも可能
+ *   3. WorkflowEditorPanel 内の「Save Workflow」
+ *      → onDiagramChange で diagram を受け取り service に同期
  */
 
-import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
+import React, {
+    useEffect,
+    useState,
+    useMemo,
+    useCallback,
+    useRef,
+} from 'react'
 import { ClassEditorContainer } from '@/components/ClassEditorContainer'
 import { ClassDiagramService } from '@/lib/application/ClassDiagramService'
-import { ClassEditorPanel } from '@/components/class-editor'
 import { DiagramCanvas } from '@/components/diagram-canvas'
 import { detectRelationships } from '@/lib/detect-relationships'
 import type { ClassInfo } from '@/lib/class-diagram-types'
 import { createEmptyClass } from '@/lib/class-diagram-types'
-import { GripVertical, Undo2, Redo2 } from 'lucide-react'
+import { Undo2, Redo2 } from 'lucide-react'
 import { useVSCodeState } from './bridge/use-vscode'
-import { getVSCodeApi, isVSCodeWebview } from './bridge/vscode-bridge'
 import { CommandLine } from '@/components/command-line'
-import { parseCommand, executeAction } from '@/lib/command-executor'
-import { useCommandHistory } from '@/hooks/use-command-history' // 
+import { parseCommand } from '@/lib/command-executor'
+import { useCommandHistory } from '@/hooks/use-command-history'
+
+import { ActivitySidebar, EditorMode } from '@/components/ActivitySidebar'
+import { WorkflowEditorPanel, WFOpRef } from '@/components/WorkflowEditorPanel'
+
 // ==============================
-// Toolbar for VSCode webview integration
+// Toolbar
 // ==============================
 
 function Toolbar({
@@ -49,8 +68,7 @@ function Toolbar({
     historyCount: number
 }) {
     return (
-        <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
-            {/* Undo/Redo buttons */}
+        <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30 shrink-0">
             <div className="flex items-center gap-1 border-r pr-2">
                 <button
                     onClick={onUndo}
@@ -68,10 +86,9 @@ function Toolbar({
                 >
                     <Redo2 className="h-4 w-4" />
                 </button>
-                <span className="text-xs text-muted-foreground ml-1">
-                    {historyCount}
-                </span>
+                <span className="text-xs text-muted-foreground ml-1">{historyCount}</span>
             </div>
+
             <select
                 value={language}
                 onChange={(e) => onLanguageChange(e.target.value)}
@@ -83,30 +100,11 @@ function Toolbar({
                 <option value="cpp">C++</option>
                 <option value="rust">Rust</option>
             </select>
-            <button
-                onClick={onSaveJson}
-                className="h-8 rounded-md bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90"
-            >
-                Save JSON
-            </button>
-            <button
-                onClick={onLoadJson}
-                className="h-8 rounded-md bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90"
-            >
-                Load JSON
-            </button>
-            <button
-                onClick={onLoadDsl}
-                className="h-8 rounded-md bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90"
-            >
-                Load DSL
-            </button>
-            <button
-                onClick={onGenerate}
-                className="h-8 rounded-md bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90"
-            >
-                Generate
-            </button>
+
+            <button onClick={onSaveJson} className="h-8 rounded-md bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90">Save JSON</button>
+            <button onClick={onLoadJson} className="h-8 rounded-md bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90">Load JSON</button>
+            <button onClick={onLoadDsl} className="h-8 rounded-md bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90">Load DSL</button>
+            <button onClick={onGenerate} className="h-8 rounded-md bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90">Generate</button>
         </div>
     )
 }
@@ -115,43 +113,69 @@ function Toolbar({
 // Main App
 // ==============================
 
-const MIN_PANEL_WIDTH = 360
-const MAX_PANEL_WIDTH = 800
-const DEFAULT_PANEL_WIDTH = 500
-
 export function App({ service }: { service: ClassDiagramService }) {
     const vsCodeState = useVSCodeState(service)
     const [language, setLanguage] = useState('csharp')
-    const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH)
-    const isDragging = useRef(false)
-    const lastX = useRef(0)
-    // 履歴管理カスタムフック
     const commandHistory = useCommandHistory(vsCodeState.classes)
 
-    // Undo/Redo を実行した後、共有 service を同期するためのラッパー
-    const handleUndo = useCallback(() => {
-        const res = commandHistory.undo();
-        if (res && res.model) {
-            service.replaceClassesFromArray(res.model.getClasses());
+    // ── エディタモード切り替え ──
+    const [editorMode, setEditorMode] = useState<EditorMode>('class-diagram')
+
+    // ── ワークフロー: 現在選択中の operation 参照 ──
+    const [activeOpRef, setActiveOpRef] = useState<WFOpRef | null>(null)
+
+    // ── ワークフロー: diagram データ (WorkflowEditorPanel が期待する形式) ──
+    // ClassInfo の operations.workflow / workflowAst を正式フィールドとして参照する。
+    const workflowDiagram = useMemo<{ classes: any[] }>(() => {
+        return {
+            classes: commandHistory.classes.map((cls) => ({
+                id: cls.id,
+                name: cls.name,
+                isInterface: cls.kind === 'interface',
+                isAbstract: cls.isAbstract,
+                x: cls.x,
+                y: cls.y,
+                baseClassId: cls.baseClassId,
+                interfaces: cls.interfaces,
+                attributes: cls.members.map((m) => ({
+                    name: m.name,
+                    type: m.type,
+                    visibility: m.visibility,
+                    isStatic: m.isStatic,
+                    isAbstract: m.isAbstract,
+                })),
+                operations: cls.operations.map((op) => ({
+                    name: op.name,
+                    returnType: op.returnType,
+                    visibility: op.visibility,
+                    modifier: op.isAbstract ? 'abstract' : op.isStatic ? 'static' : 'None',
+                    parameters: op.parameters,
+                    // ClassOperation の正式フィールドとして参照（as any 不要）
+                    workflow: op.workflow,
+                    workflowAst: op.workflowAst,
+                })),
+            })),
         }
-    }, [commandHistory, service]);
+    }, [commandHistory.classes])
+
+
+
+    // ── Undo / Redo ──
+    const handleUndo = useCallback(() => {
+        const res = commandHistory.undo()
+        if (res?.model) service.replaceClassesFromArray(res.model.getClasses())
+    }, [commandHistory, service])
 
     const handleRedo = useCallback(() => {
-        const res = commandHistory.redo();
-        if (res && res.model) {
-            service.replaceClassesFromArray(res.model.getClasses());
-        }
-    }, [commandHistory, service]);
+        const res = commandHistory.redo()
+        if (res?.model) service.replaceClassesFromArray(res.model.getClasses())
+    }, [commandHistory, service])
 
-    // vsCodeState.classes の変更を commandHistory に同期
     useEffect(() => {
-        commandHistory.setClasses(vsCodeState.classes);
-    }, [vsCodeState.classes]);
-
+        commandHistory.setClasses(vsCodeState.classes)
+    }, [vsCodeState.classes])
 
     const {
-        //classes,
-        //setClasses,
         selectedId,
         setSelectedId,
         saveJson,
@@ -160,55 +184,45 @@ export function App({ service }: { service: ClassDiagramService }) {
         generateCode,
         changePrimitiveTypes,
     } = vsCodeState
-    // commandHistory.classes を使用
-    const classes = commandHistory.classes;
-    const setClasses = commandHistory.setClasses;
+
+    const classes = commandHistory.classes
+    const setClasses = commandHistory.setClasses
     const relationships = useMemo(() => detectRelationships(classes), [classes])
-
-    const handleUpdateClass = useCallback(
-        (id: string, updated: ClassInfo) => {
-            setClasses((prev) => prev.map((c) => (c.id === id ? updated : c)))
-        },
-        [setClasses],
-    )
-
-    const handleDeleteClass = useCallback(
-        (id: string) => {
-            setClasses((prev) =>
-                prev
-                    .filter((c) => c.id !== id)
-                    .map((c) => ({
-                        ...c,
-                        interfaces: c.interfaces.filter((ifId) => ifId !== id),
-                        baseClassId: c.baseClassId === id ? null : c.baseClassId,
-                    })),
-            )
-            setSelectedId(null)
-        },
-        [setClasses, setSelectedId],
-    )
-
-    const handleAddClass = useCallback(() => {
-        const newClass = createEmptyClass()
-        setClasses((prev) => [...prev, newClass])
-        setSelectedId(newClass.id)
-    }, [setClasses, setSelectedId])
 
     const handleMoveClass = useCallback(
         (id: string, x: number, y: number) => {
             setClasses((prev) => {
                 const next = prev.map((c) => (c.id === id ? { ...c, x, y } : c))
-                try {
-                    service.replaceClassesFromArray(next)
-                } catch (e) {
-                    console.warn('Failed to sync to service', e)
-                }
+                try { service.replaceClassesFromArray(next) } catch (e) { console.warn(e) }
                 return next
             })
         },
         [setClasses, service],
     )
 
+    // WorkflowEditorPanel が「Save Workflow」したとき →
+    // service.applyUpdateOperationWorkflow() 経由で DomainModel が更新される。
+    // App 側で diagram の書き戻しは不要（service の notifyModelChanged が React state を更新する）。
+
+    // ── DiagramCanvas の operation クリックハンドラ ──
+    // classId / operationId を ClassInfo から取得して WFOpRef に含める
+    const handleOperationClick = useCallback(
+        (params: { classIndex: number; opIndex: number; label: string }) => {
+            const cls = classes[params.classIndex]
+            const op = cls?.operations[params.opIndex]
+            if (!cls || !op) return
+
+            setActiveOpRef({
+                classIndex: params.classIndex,
+                opIndex: params.opIndex,
+                classId: cls.id,
+                operationId: op.id,
+                label: params.label,
+            })
+            setEditorMode('workflow')
+        },
+        [classes],
+    )
     const handleLanguageChange = useCallback(
         (lang: string) => {
             setLanguage(lang)
@@ -217,89 +231,44 @@ export function App({ service }: { service: ClassDiagramService }) {
         [changePrimitiveTypes],
     )
 
-    const handleGenerate = useCallback(() => {
-        generateCode(language)
-    }, [generateCode, language])
+    const handleGenerate = useCallback(
+        () => generateCode(language),
+        [generateCode, language],
+    )
 
     const handleExecuteCommand = useCallback((cmd: string) => {
-        const action = parseCommand(cmd);
-
-        if (!action) {
-            return;
-        }
-        // UNDO/REDO はフック側で処理してリターン
-        if (action.type === 'UNDO') {
-            handleUndo();
-            return;
-        }
-        if (action.type === 'REDO') {
-            handleRedo();
-            return;
-        }
-        // 履歴管理側でモデルを更新し、その結果を使って shared service を一度だけ更新
+        const action = parseCommand(cmd)
+        if (!action) return
+        if (action.type === 'UNDO') { handleUndo(); return }
+        if (action.type === 'REDO') { handleRedo(); return }
         try {
-            const result = commandHistory.executeCommand(action);
-            if (result && result.model) {
-                service.replaceClassesFromArray(result.model.getClasses());
-            }
+            const result = commandHistory.executeCommand(action)
+            if (result?.model) service.replaceClassesFromArray(result.model.getClasses())
         } catch (err) {
-            console.error('Error applying command to shared service:', err);
+            console.error('Error applying command:', err)
         }
-    }, [commandHistory, service])
+    }, [commandHistory, service, handleUndo, handleRedo])
+
     // キーボードショートカット
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Ctrl+Z または Cmd+Z
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-                e.preventDefault();
-                handleUndo();
+                e.preventDefault(); handleUndo()
             }
-
-            // Ctrl+Y, Ctrl+Shift+Z または Cmd+Shift+Z
             if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
-                e.preventDefault();
-                handleRedo();
+                e.preventDefault(); handleRedo()
             }
-        };
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [handleUndo, handleRedo])
 
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [handleUndo, handleRedo]);
-
-    const handlePanelResizeStart = useCallback(
-        (e: React.MouseEvent) => {
-            e.preventDefault()
-            isDragging.current = true
-            lastX.current = e.clientX
-            document.body.style.cursor = 'col-resize'
-            document.body.style.userSelect = 'none'
-
-            const onMouseMove = (ev: MouseEvent) => {
-                if (!isDragging.current) return
-                const delta = ev.clientX - lastX.current
-                lastX.current = ev.clientX
-                setPanelWidth((prev) =>
-                    Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, prev + delta)),
-                )
-            }
-
-            const onMouseUp = () => {
-                isDragging.current = false
-                document.body.style.cursor = ''
-                document.body.style.userSelect = ''
-                document.removeEventListener('mousemove', onMouseMove)
-                document.removeEventListener('mouseup', onMouseUp)
-            }
-
-            document.addEventListener('mousemove', onMouseMove)
-            document.addEventListener('mouseup', onMouseUp)
-        },
-        [],
-    )
+    // サイドバーバッジ用
+    const activeWorkflowLabel = activeOpRef?.label ?? null
 
     return (
         <div className="flex flex-col h-screen w-screen overflow-hidden">
-            {/* Toolbar - matches media/ toolbar functionality */}
+            {/* ── トップツールバー ── */}
             <Toolbar
                 language={language}
                 onLanguageChange={handleLanguageChange}
@@ -314,30 +283,54 @@ export function App({ service }: { service: ClassDiagramService }) {
                 historyCount={commandHistory.history.length}
             />
 
-            {/* Main content area */}
-
+            {/* ── メイン: サイドバー + エディタ ── */}
             <div className="flex flex-1 min-h-0 overflow-hidden">
-                {/* Left Panel - Editor */}
-                <ClassEditorContainer
-                    service={service}
-                    setGlobalClasses={setClasses}
-                    selectedId={selectedId}
-                    onSelectClass={setSelectedId}
+
+                {/* 左端アクティビティサイドバー */}
+                <ActivitySidebar
+                    mode={editorMode}
+                    onModeChange={setEditorMode}
+                    activeWorkflowLabel={activeWorkflowLabel}
                 />
 
-                {/* Right Panel - Canvas */}
-                <div className="flex-1 min-w-0">
-                    <DiagramCanvas
-                        classes={classes}
-                        relationships={relationships}
-                        selectedId={selectedId}
-                        onSelectClass={setSelectedId}
-                        onMoveClass={handleMoveClass}
-                    />
+                {/* エディタ本体 */}
+                <div className="flex flex-1 min-h-0 min-w-0">
+
+                    {editorMode === 'class-diagram' ? (
+                        /* ── クラス図エディタ ── */
+                        <>
+                            <ClassEditorContainer
+                                service={service}
+                                setGlobalClasses={setClasses}
+                                selectedId={selectedId}
+                                onSelectClass={setSelectedId}
+                            />
+                            <div className="flex-1 min-w-0">
+                                <DiagramCanvas
+                                    classes={classes}
+                                    relationships={relationships}
+                                    selectedId={selectedId}
+                                    onSelectClass={setSelectedId}
+                                    onMoveClass={handleMoveClass}
+                                    onOperationClick={handleOperationClick}
+                                />
+                            </div>
+                        </>
+                    ) : (
+                        /* ── ワークフロー図エディタ ── */
+                        <div className="flex-1 min-w-0 min-h-0">
+                            <WorkflowEditorPanel
+                                opRef={activeOpRef}
+                                diagram={workflowDiagram}
+                                service={service}
+                            />
+                        </div>
+                    )}
+
                 </div>
             </div>
 
-            {/* CLI Command Bar */}
+            {/* ── CLI コマンドバー ── */}
             <CommandLine onExecute={handleExecuteCommand} classes={classes} />
         </div>
     )
