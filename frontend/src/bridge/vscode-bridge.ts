@@ -14,6 +14,7 @@ export type WebviewToHostMessage =
     | { command: 'requestWorkspaceDiagram' }
     | { command: 'changedPrimitiveTypes'; language: string }
     | { command: 'saveJson'; payload: object }
+    | { command: 'saveDsl'; payload: object }
     | { command: 'loadJson' }
     | { command: 'loadDsl' }
     | { command: 'generateCode'; payload: { model: object; language: string } }

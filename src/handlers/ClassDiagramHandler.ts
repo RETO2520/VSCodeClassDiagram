@@ -33,6 +33,7 @@ export class ClassDiagramHandler {
             .register('changedPrimitiveTypes', this.handleChangedPrimitiveTypes.bind(this))
             .register('showAlert', this.handleShowAlert.bind(this))
             .register('saveJson', this.handleSaveJson.bind(this))
+            .register('saveDsl', this.handleSaveDsl.bind(this))
             .register('loadJson', this.handleLoadJson.bind(this))
             .register('loadDsl', this.handleLoadDsl.bind(this))
             .register('generateCode', this.handleGenerateCode.bind(this))
@@ -160,6 +161,15 @@ export class ClassDiagramHandler {
 
     private async handleShowAlert(msg: any, ctx: MessageContext): Promise<void> {
         vscode.window.showInformationMessage(msg.text);
+    }
+
+    private async handleSaveDsl(msg: any, ctx: MessageContext): Promise<void> {
+        if (!msg.payload) return;
+
+        const result = await this.fileService.saveDsl(msg.payload);
+        if (result) {
+            vscode.window.showInformationMessage('Saved diagram DSL');
+        }
     }
 
     private async handleSaveJson(msg: any, ctx: MessageContext): Promise<void> {

@@ -19,12 +19,24 @@ import * as monaco from 'monaco-editor';
 import { loader } from '@monaco-editor/react';
 loader.config({ monaco });
 
-import React, { useRef, useState, useCallback } from 'react'
+import React, { useRef, useState, useCallback, useEffect } from 'react'
 import Editor, { useMonaco, OnMount, OnChange } from '@monaco-editor/react'
 import type { ClassDiagramService } from '@/lib/application/ClassDiagramService'
 import { SpecDslParser } from '@/lib/SpecDslParser'
 import { DomainModel } from '@/lib/DomainModel'
 import type { ClassInfo, ClassOperation } from '@/lib/class-diagram-types'
+
+// VSCode WebView 環境では acquireVsCodeApi 経由で postMessage を使う。
+// ブラウザ環境ではフォールバックとして <a download> でファイル保存する。
+function sendToHost(msg: object) {
+    try {
+        // @ts-ignore
+        if (typeof acquireVsCodeApi !== 'undefined') {
+            // @ts-ignore
+            acquireVsCodeApi().postMessage(msg)
+        }
+    } catch { /* ブラウザ環境ではスルー */ }
+}
 
 // ============================================================
 // DSL 言語定義
@@ -48,6 +60,12 @@ function registerDslLanguage(monaco: typeof Monaco) {
             root: [
                 [/\/\/.*$/, 'comment'],
                 [/#.*$/, 'comment'],
+                // Gherkin — 行の先頭（インデント可）で認識
+                [/^(\s*)(Scenario|シナリオ)(:.*)?$/, 'gherkin.scenario'],
+                [/^(\s*)(Given|前提)(\s)/, 'gherkin.given'],
+                [/^(\s*)(When|もし)(\s)/, 'gherkin.when'],
+                [/^(\s*)(Then|ならば)(\s)/, 'gherkin.then'],
+                [/^(\s*)(And|But|かつ|しかし)(\s)/, 'gherkin.and'],
                 [/\b(abstract|class|interface|struct|extends|implements)\b/, 'keyword'],
                 [/^[\s]*[+\-#~]/, 'type.identifier'],
                 [/\b[sa]\b/, 'keyword.modifier'],
@@ -76,6 +94,12 @@ function registerDslLanguage(monaco: typeof Monaco) {
             { token: 'string', foreground: 'fbbf24' },
             { token: 'number', foreground: '60a5fa' },
             { token: 'delimiter', foreground: '94a3b8' },
+            // Gherkin
+            { token: 'gherkin.scenario', foreground: 'f0abfc', fontStyle: 'bold' },
+            { token: 'gherkin.given', foreground: '6ee7b7' },
+            { token: 'gherkin.when', foreground: 'fcd34d' },
+            { token: 'gherkin.then', foreground: '93c5fd' },
+            { token: 'gherkin.and', foreground: '94a3b8', fontStyle: 'italic' },
         ],
         colors: {
             'editor.background': '#080f1a',
@@ -110,6 +134,13 @@ function registerDslLanguage(monaco: typeof Monaco) {
                 { label: '*>', insert: '${1:Source} *> ${2:Target}', doc: 'コンポジション' },
                 { label: '>|', insert: '${1:Child} >| ${2:Parent}', doc: '汎化（継承）' },
                 { label: '>/', insert: '${1:Class} >/ ${2:Interface}', doc: '実現' },
+                // ── Gherkin ──
+                { label: 'Scenario', insert: 'Scenario: ${1:シナリオ名}\n  Given ${2:前提条件}\n  When ${3:操作}\n  Then ${4:期待結果}', doc: 'Gherkin シナリオ' },
+                { label: 'Given', insert: 'Given ${1:前提条件}', doc: 'Gherkin: Given' },
+                { label: 'When', insert: 'When ${1:操作}', doc: 'Gherkin: When' },
+                { label: 'Then', insert: 'Then ${1:期待結果}', doc: 'Gherkin: Then' },
+                { label: 'And', insert: 'And ${1:追加条件}', doc: 'Gherkin: And' },
+                { label: 'シナリオ', insert: 'シナリオ: ${1:シナリオ名}\n  前提 ${2:前提条件}\n  もし ${3:操作}\n  ならば ${4:期待結果}', doc: 'Gherkin シナリオ（日本語）' },
             ]
             return {
                 suggestions: snippets.map(s => ({
@@ -493,6 +524,89 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
         editorRef.current?.setValue('')
     }, [])
 
+    // ── DSL保存 ─────────────────────────────────────────────────
+    // VSCode WebView: postMessage で拡張ホストにファイル保存を依頼
+    // ブラウザ:      <a download> でそのままダウンロード
+    const handleSave = useCallback(() => {
+        const dsl = editorRef.current?.getValue() ?? ''
+        const fileName = 'spec.dsl'
+
+        // VSCode WebView 環境
+        try {
+            // @ts-ignore
+            if (typeof acquireVsCodeApi !== 'undefined') {
+                sendToHost({ command: 'saveDsl', payload: { dsl, fileName } })
+                return
+            }
+        } catch { /* ignore */ }
+
+        // ブラウザ環境: ファイルダウンロード
+        const blob = new Blob([dsl], { type: 'text/plain;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = fileName
+        a.click()
+        URL.revokeObjectURL(url)
+    }, [])
+
+    // ── ペースト（クリップボード → エディタ）────────────────────
+    const handlePaste = useCallback(async () => {
+        try {
+            const text = await navigator.clipboard.readText()
+            const editor = editorRef.current
+            if (!editor || !text) return
+            // 現在の選択範囲に挿入（選択なければカーソル位置に挿入）
+            editor.focus()
+            editor.executeEdits('clipboard-paste', [{
+                range: editor.getSelection()!,
+                text,
+                forceMoveMarkers: true,
+            }])
+        } catch {
+            // clipboard API が使えない環境（権限拒否など）
+            // Monaco の標準 Ctrl+V を案内
+            editorRef.current?.focus()
+        }
+    }, [])
+
+    // ── ファイルから読み込み ──────────────────────────────────────
+    const fileInputRef = useRef<HTMLInputElement>(null)
+
+    const handleLoadFile = useCallback(() => {
+        fileInputRef.current?.click()
+    }, [])
+
+    const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        const input = e.target          // ref を保持（非同期後も参照できるよう）
+        const reader = new FileReader()
+        reader.onload = ev => {
+            const result = ev.target?.result
+            const text = typeof result === 'string' ? result : ''
+            editorRef.current?.setValue(text)
+            // 読み込み完了後にリセット（readAsText より前に実行すると一部環境でキャンセルされる）
+            input.value = ''
+        }
+        reader.onerror = () => {
+            input.value = ''
+        }
+        reader.readAsText(file, 'utf-8')
+    }, [])
+
+    // ── Ctrl+S でファイル保存 ─────────────────────────────────────
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault()
+                handleSave()
+            }
+        }
+        window.addEventListener('keydown', handler)
+        return () => window.removeEventListener('keydown', handler)
+    }, [handleSave])
+
     // ── レンダー ─────────────────────────────────────────────
     return (
         <div style={{
@@ -518,12 +632,33 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
 
                 <div style={{ width: 1, height: 14, background: '#1e293b' }} />
 
+                <ToolbarBtn onClick={handleSave} title="DSLをファイルに保存 (Ctrl+S)" accent="#4ade80">
+                    💾 Save
+                </ToolbarBtn>
+
+                <div style={{ width: 1, height: 14, background: '#1e293b' }} />
+
                 <ToolbarBtn onClick={handleCopy} title="DSLをクリップボードにコピー">
-                    ⎘ Copy DSL
+                    ⎘ Copy
+                </ToolbarBtn>
+                <ToolbarBtn onClick={handlePaste} title="クリップボードからエディタに貼り付け">
+                    ⎗ Paste
+                </ToolbarBtn>
+                <ToolbarBtn onClick={handleLoadFile} title="ファイルから読み込む">
+                    📂 Load
                 </ToolbarBtn>
                 <ToolbarBtn onClick={handleClear} title="エディタをクリア" accent="#f87171">
                     ✕ Clear
                 </ToolbarBtn>
+
+                {/* 隠しファイルインプット（Load ボタンのトリガー） */}
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".dsl,.txt,.spec"
+                    style={{ display: 'none' }}
+                    onChange={handleFileChange}
+                />
 
                 <div style={{ flex: 1 }} />
 
