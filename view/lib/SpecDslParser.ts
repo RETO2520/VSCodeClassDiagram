@@ -221,18 +221,15 @@ export class SpecDslParser {
                                 break;
                             }
                             const result = this.parseGherkinToWorkflow(lines, j);
-                            postMessage({ command: 'log', level: 'debug', text: `[Parser] applyUpdateOperationWorkflow: ${cls.name}.${operation.name} nodes=${result.workflow?.nodes?.length}` });
                             service.applyUpdateOperationWorkflow({
                                 classId: c.id,
                                 operationId: op.id,
                                 workflow: result.workflow,
                             });
-                            postMessage({ command: 'log', level: 'debug', text: `[Parser] done. op.workflow after update: ${cls.name}.${operation.name} nodes=${service.getOperationByName(cls.name, operation.name)?.workflow?.nodes?.length}` });
                             break;
                         }
                     }
                 }
-                //postMessage({ command: 'log', level: 'info', text: "operation:" + JSON.stringify(op) });
 
 
 
@@ -465,9 +462,18 @@ export class SpecDslParser {
         let currentX = 200; // シナリオごとに横にずらすための変数
         const SCENARIO_WIDTH = 250; // シナリオ間の横間隔
         let lastNodeId: string | null = null;
+
+        // startIndex 行は最初の "Scenario: ..." 行。
+        // i = startIndex + 1 でその行自体をスキップするが、
+        // スキップ前にシナリオ名を取り出しておく。
+        // これをしないと currentScenarioName が "" のまま最初のシナリオのステップが
+        // 処理され、start → 最初の Given エッジの condition が空文字になってしまう。
+        const firstScenarioLine = lines[startIndex]?.trim() ?? "";
+        if (firstScenarioLine.match(/^(?:Scenario|シナリオ):/i)) {
+            currentScenarioName = firstScenarioLine.replace(/^(?:Scenario|シナリオ):\s*/i, "");
+        }
+
         let i = startIndex + 1; // "Scenario: ..." 行自体は読み飛ばす
-        console.log(`[Gherkin] start: startIndex=${startIndex} line=${JSON.stringify(lines[startIndex])} firstLine=${JSON.stringify(lines[i])}`);
-        postMessage({ command: 'log', level: 'info', text: `[Gherkin] start: startIndex=${startIndex} line=${JSON.stringify(lines[startIndex])} firstLine=${JSON.stringify(lines[i])}` });
 
         // Start ノードを自動生成
         const startId = createId();
@@ -481,14 +487,22 @@ export class SpecDslParser {
         while (i < lines.length) {
             const trimmed = lines[i].trim();
 
-            // 💡 新しいシナリオの開始を検知
-            if (trimmed.startsWith('Scenario:')) {
+            // 空行はスキップ
+            if (trimmed === '') { i++; continue; }
 
-                // 💡 修正：新しいシナリオが始まる前に、前のシナリオの末尾を End に繋ぐ
+            // ブロック終了条件: 次のクラス宣言 or 次のメンバ/操作定義
+            if (
+                trimmed.match(/^(abstract\s+)?(class|interface|struct)\b/) ||
+                trimmed.match(/^[+\-#~]/)
+            ) break;
+
+            // 新しいシナリオの開始を検知（英語・日本語両対応）
+            if (trimmed.match(/^(?:Scenario|シナリオ):/i)) {
+                // 新シナリオが始まる前に、前のシナリオの末尾を End に繋ぐ
                 if (lastNodeId && lastNodeId !== startId) {
                     edges.push({ from: lastNodeId, to: endId });
                 }
-                currentScenarioName = trimmed.replace(/^Scenario:\s*/, "");
+                currentScenarioName = trimmed.replace(/^(?:Scenario|シナリオ):\s*/i, "");
                 // 次のシナリオは「開始」から枝分かれさせる
                 lastNodeId = startId;
                 currentY = 140; // Y座標をリセット
@@ -517,7 +531,6 @@ export class SpecDslParser {
                 // 直前のノードから接続
                 const edgeCondition = (lastNodeId === startId) ? currentScenarioName : null;
                 edges.push({ from: lastNodeId, to: newId, condition: edgeCondition });
-                //if (lastNodeId) edges.push({ from: lastNodeId, to: newId });
                 lastNodeId = newId; // 次のステップはこのノードから
                 currentY += STEP_Y; // 下に伸ばす
                 if (currentY > maxY) maxY = currentY;
