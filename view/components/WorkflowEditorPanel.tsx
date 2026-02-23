@@ -11,7 +11,7 @@
  *   workflow.interactions.js → React Pointer イベントハンドラ
  *   workflow.api.js          → onDiagramChange コールバック
  */
-import { postMessage } from "../../frontend/src/bridge/vscode-bridge";
+
 import React, {
     useReducer,
     useRef,
@@ -507,18 +507,15 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
             if (m) {
                 cls = model.findClassByName(m[1]) ?? undefined
                 op = cls?.operations.find(o => o.name === m[2])
-                postMessage({ command: 'log', level: 'debug', text: `[WF] fallback: cls=${cls?.name ?? 'null'} op=${op?.name ?? 'null'} wfNodes=${op?.workflow?.nodes?.length ?? 'none'}` });
             }
         }
 
         if (!op || !cls) {
-            postMessage({ command: 'log', level: 'debug', text: `[WF] op not found. label=${currentOpRef.label} classes=${model.getClasses().map(c => c.name).join(',')}` });
             return
         }
 
         const incoming = op.workflow?.nodes?.length ? op.workflow : null
         const incomingJson = JSON.stringify(incoming)
-        postMessage({ command: 'log', level: 'debug', text: `[WF] load: op=${op.name} nodes=${op.workflow?.nodes?.length ?? 0} sameAsLast=${incomingJson === lastLoadedJson.current}` });
 
         if (incomingJson === lastLoadedJson.current) return
         lastLoadedJson.current = incomingJson
@@ -560,6 +557,53 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
 
     const nodeMap = new Map(wf.nodes.map(n => [n.id, n]))
 
+    // ── pan / zoom state ──
+    const [zoom, setZoom] = useState(1)
+    const [pan, setPan] = useState({ x: 0, y: 0 })
+    const canvasDrag = useRef<{ ptId: number; sx: number; sy: number; px: number; py: number } | null>(null)
+
+    const clampZoom = (z: number) => Math.min(3, Math.max(0.2, z))
+
+    // ホイールでズーム（カーソル位置を中心に）
+    const onWheel = useCallback((e: React.WheelEvent) => {
+        e.preventDefault()
+        const svg = svgRef.current
+        if (!svg) return
+        const rect = svg.getBoundingClientRect()
+        const cx = e.clientX - rect.left
+        const cy = e.clientY - rect.top
+        const delta = e.deltaY < 0 ? 1.12 : 1 / 1.12
+        setZoom(z => {
+            const nz = clampZoom(z * delta)
+            // ズーム前後でカーソル位置が動かないよう pan を補正
+            setPan(p => ({
+                x: cx - (cx - p.x) * (nz / z),
+                y: cy - (cy - p.y) * (nz / z),
+            }))
+            return nz
+        })
+    }, [])
+
+    // ズームボタン用
+    const zoomBy = useCallback((factor: number) => {
+        setZoom(z => {
+            const nz = clampZoom(z * factor)
+            // 中心基準でズーム
+            const svg = svgRef.current
+            if (svg) {
+                const { width, height } = svg.getBoundingClientRect()
+                const cx = width / 2, cy = height / 2
+                setPan(p => ({
+                    x: cx - (cx - p.x) * (nz / z),
+                    y: cy - (cy - p.y) * (nz / z),
+                }))
+            }
+            return nz
+        })
+    }, [])
+
+    const resetView = useCallback(() => { setZoom(1); setPan({ x: 0, y: 0 }) }, [])
+
     // ── drag state refs ──
     const nodeDrag = useRef<{ id: string; ox: number; oy: number; ptId: number } | null>(null)
     const edgeDrag = useRef<{ from: WFNode; ptId: number; x: number; y: number } | null>(null)
@@ -570,7 +614,15 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
     const [selEdge, setSelEdge] = useState<string | null>(null)
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; items: { label: string; col?: string; fn: () => void }[] } | null>(null)
 
-    const svgPt = useCallback((cx: number, cy: number) => getSvgPoint(svgRef.current!, cx, cy), [])
+    const svgPt = useCallback((cx: number, cy: number) => {
+        const svg = svgRef.current!
+        const rect = svg.getBoundingClientRect()
+        // SVG内の生座標（px単位）→ pan/zoom の <g> 内座標に変換
+        return {
+            x: (cx - rect.left - pan.x) / zoom,
+            y: (cy - rect.top - pan.y) / zoom,
+        }
+    }, [pan, zoom])
 
     // Node pointer down
     const onNodePD = useCallback((e: React.PointerEvent, id: string) => {
@@ -619,6 +671,13 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
         if (midDrag.current && e.pointerId === midDrag.current.ptId) {
             const { key, ox, oy } = midDrag.current
             dispatch({ type: 'SET_EDGE_MID', edgeKey: key, mid: { x: p.x - ox, y: p.y - oy } })
+            return
+        }
+        // キャンバスドラッグ → pan
+        if (canvasDrag.current && e.pointerId === canvasDrag.current.ptId) {
+            const dx = e.clientX - canvasDrag.current.sx
+            const dy = e.clientY - canvasDrag.current.sy
+            setPan({ x: canvasDrag.current.px + dx, y: canvasDrag.current.py + dy })
         }
     }, [svgPt])
 
@@ -647,6 +706,7 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
         }
         if (nodeDrag.current && e.pointerId === nodeDrag.current.ptId) { nodeDrag.current = null }
         if (midDrag.current && e.pointerId === midDrag.current.ptId) { midDrag.current = null }
+        if (canvasDrag.current && e.pointerId === canvasDrag.current.ptId) { canvasDrag.current = null }
     }, [svgPt, wf.nodes, wf.edges])
 
     // Add node
@@ -702,6 +762,17 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
             items: NODE_TYPES.map(t => ({ label: `Add ${capitalize(t)}`, col: NODE_COL[t], fn: () => addNode(t, e.clientX, e.clientY) })),
         })
     }, [addNode])
+
+    // SVG背景ポインターダウン → pan 開始（ノード/エッジ上ではない場合のみ）
+    const onSvgPD = useCallback((e: React.PointerEvent) => {
+        if (e.button !== 0) return
+        if (nodeDrag.current || edgeDrag.current) return
+        // ターゲットが SVG 自体か背景 rect/pattern の場合のみ pan 開始
+        const tag = (e.target as SVGElement).tagName.toLowerCase()
+        if (!['svg', 'rect', 'circle', 'pattern'].includes(tag)) return
+        canvasDrag.current = { ptId: e.pointerId, sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y }
+            ; (e.currentTarget as Element).setPointerCapture(e.pointerId)
+    }, [pan])
 
     // Close ctx menu on outside click
     useEffect(() => {
@@ -786,6 +857,18 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                     </button>
                 ))}
                 <div style={{ flex: 1 }} />
+                {/* ズームコントロール */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <button onClick={() => zoomBy(1 / 1.25)} title="ズームアウト (Scroll↓)"
+                        style={{ width: 26, height: 26, borderRadius: 4, border: '1px solid #334155', color: '#94a3b8', background: 'transparent', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}>−</button>
+                    <button onClick={resetView} title="ビューをリセット"
+                        style={{ height: 26, padding: '0 8px', borderRadius: 4, border: '1px solid #334155', color: '#64748b', background: 'transparent', fontSize: 10, cursor: 'pointer', minWidth: 44, fontFamily: 'inherit' }}>
+                        {Math.round(zoom * 100)}%
+                    </button>
+                    <button onClick={() => zoomBy(1.25)} title="ズームイン (Scroll↑)"
+                        style={{ width: 26, height: 26, borderRadius: 4, border: '1px solid #334155', color: '#94a3b8', background: 'transparent', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}>＋</button>
+                </div>
+                <div style={{ width: 1, height: 20, background: '#334155', margin: '0 4px' }} />
                 <button onClick={reset} disabled={!opRef} style={{
                     height: 26, padding: '0 10px', borderRadius: 4,
                     border: '1px solid #475569', color: '#94a3b8', background: 'transparent',
@@ -816,18 +899,22 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                     </div>
                 )}
 
-                <svg ref={svgRef} style={{ width: '100%', height: '100%', display: 'block' }}
+                <svg ref={svgRef} style={{ width: '100%', height: '100%', display: 'block', cursor: canvasDrag.current ? 'grabbing' : 'grab' }}
                     onPointerMove={onSvgPM}
                     onPointerUp={onSvgPU}
                     onPointerCancel={onSvgPU}
+                    onPointerDown={onSvgPD}
                     onContextMenu={onSvgCtx}
+                    onWheel={onWheel}
                     onClick={() => { setSelEdge(null); setCtxMenu(null) }}
                 >
                     <defs>
                         <marker id="wf-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
                             <path d="M0,0 L8,4 L0,8 z" fill="#64748b" />
                         </marker>
-                        <pattern id="wf-grid" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse">
+                        {/* グリッドは pan/zoom に追従させるため patternTransform を使う */}
+                        <pattern id="wf-grid" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse"
+                            patternTransform={`translate(${pan.x % 28} ${pan.y % 28}) scale(${zoom})`}>
                             <circle cx="0" cy="0" r="0.8" fill="#1e293b" />
                             <circle cx="28" cy="0" r="0.8" fill="#1e293b" />
                             <circle cx="0" cy="28" r="0.8" fill="#1e293b" />
@@ -837,32 +924,37 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
 
                     <rect width="100%" height="100%" fill="url(#wf-grid)" />
 
-                    {/* Edges */}
-                    {wf.edges.map((edge, i) => (
-                        <EdgeShape key={`${edgeKey(edge)}-${i}`}
-                            edge={edge} nodeMap={nodeMap}
-                            isSelected={selEdge === edgeKey(edge)}
-                            onMidPointerDown={onMidPD}
-                            onContextMenu={onEdgeCtx}
-                        />
-                    ))}
+                    {/* pan/zoom transform をノード・エッジ全体にかける */}
+                    <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
+                        {/* Edges */}
+                        {wf.edges.map((edge, i) => (
+                            <EdgeShape key={`${edgeKey(edge)}-${i}`}
+                                edge={edge} nodeMap={nodeMap}
+                                isSelected={selEdge === edgeKey(edge)}
+                                onMidPointerDown={onMidPD}
+                                onContextMenu={onEdgeCtx}
+                            />
+                        ))}
 
-                    {/* Nodes */}
-                    {wf.nodes.map(node => (
-                        <NodeShape key={node.id} node={node} isSelected={false}
-                            onPointerDown={onNodePD}
-                            onHandlePointerDown={onHandlePD}
-                            onDoubleClick={(e, n) => { e.stopPropagation(); setEditing(n) }}
-                            onContextMenu={onNodeCtx}
-                        />
-                    ))}
+                        {/* Nodes */}
+                        {wf.nodes.map(node => (
+                            <NodeShape key={node.id} node={node} isSelected={false}
+                                onPointerDown={onNodePD}
+                                onHandlePointerDown={onHandlePD}
+                                onDoubleClick={(e, n) => { e.stopPropagation(); setEditing(n) }}
+                                onContextMenu={onNodeCtx}
+                            />
+                        ))}
+                    </g>
 
-                    {/* Temp edge */}
-                    {tempLine && (
-                        <line x1={tempLine.x1} y1={tempLine.y1} x2={tempLine.x2} y2={tempLine.y2}
-                            stroke={ACCENT} strokeWidth={2} strokeDasharray="6 4"
-                            markerEnd="url(#wf-arrow)" pointerEvents="none" />
-                    )}
+                    {/* Temp edge（transform group 内に配置） */}
+                    <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
+                        {tempLine && (
+                            <line x1={tempLine.x1} y1={tempLine.y1} x2={tempLine.x2} y2={tempLine.y2}
+                                stroke={ACCENT} strokeWidth={2} strokeDasharray="6 4"
+                                markerEnd="url(#wf-arrow)" pointerEvents="none" />
+                        )}
+                    </g>
                 </svg>
             </div>
 
@@ -901,10 +993,11 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                 background: '#080f1a', fontSize: 10, color: '#334155',
                 display: 'flex', gap: 16, flexShrink: 0,
             }}>
+                <span>背景ドラッグ: 移動</span>
+                <span>スクロール: ズーム</span>
                 <span>右クリック: ノード追加/削除</span>
                 <span>●ドラッグ: エッジ接続</span>
                 <span>ダブルクリック: ラベル編集</span>
-                <span>エッジ中点ドラッグ: 折れ点</span>
             </div>
         </div>
     )
