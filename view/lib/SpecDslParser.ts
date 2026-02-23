@@ -457,11 +457,13 @@ export class SpecDslParser {
     } {
         const nodes: NonNullable<ClassOperation['workflow']>['nodes'] = [];
         const edges: NonNullable<ClassOperation['workflow']>['edges'] = [];
-
+        let currentScenarioName = "";
         // ノード間の縦間隔。WorkflowEditorPanel の nodeSize() に合わせて
         // process=40px高 + マージン20px = 60px が最低限必要
         const STEP_Y = 80;
         let currentY = 60;
+        let currentX = 200; // シナリオごとに横にずらすための変数
+        const SCENARIO_WIDTH = 250; // シナリオ間の横間隔
         let lastNodeId: string | null = null;
         let i = startIndex + 1; // "Scenario: ..." 行自体は読み飛ばす
         console.log(`[Gherkin] start: startIndex=${startIndex} line=${JSON.stringify(lines[startIndex])} firstLine=${JSON.stringify(lines[i])}`);
@@ -469,57 +471,70 @@ export class SpecDslParser {
 
         // Start ノードを自動生成
         const startId = createId();
+        const endId = createId(); // End IDを固定
         nodes.push({ id: startId, type: 'start', label: '開始', x: 200, y: currentY });
+        const endNode = { id: endId, type: 'end', label: '終了', x: 200, y: 0 };
+
         lastNodeId = startId;
         currentY += STEP_Y;
-
+        let maxY = 0; // Endノードの配置位置を決めるため
         while (i < lines.length) {
             const trimmed = lines[i].trim();
-            // console.log(`[Gherkin] i=${i} raw=${JSON.stringify(lines[i])} trimmed=${JSON.stringify(trimmed)}`);
-            // postMessage({ command: 'log', level: 'info', text: `[Gherkin] i=${i} raw=${JSON.stringify(lines[i])} trimmed=${JSON.stringify(trimmed)}` });
 
-            // 空行はスキップ（Gherkin ブロックは継続）
-            if (trimmed === '') { i++; continue; }
+            // 💡 新しいシナリオの開始を検知
+            if (trimmed.startsWith('Scenario:')) {
 
-            // ブロック終了条件:
-            //   - 次のクラス宣言
-            //   - 次のメンバ / 操作定義（+/-/#/~）
-            if (
-                trimmed.match(/^(abstract\s+)?(class|interface|struct)\b/) ||
-                trimmed.match(/^[+\-#~]/)
-            ) {
-                // console.log(`[Gherkin] BREAK at i=${i}`);
-                // postMessage({ command: 'log', level: 'info', text: `[Gherkin] BREAK at i=${i}` });
-                break;
+                // 💡 修正：新しいシナリオが始まる前に、前のシナリオの末尾を End に繋ぐ
+                if (lastNodeId && lastNodeId !== startId) {
+                    edges.push({ from: lastNodeId, to: endId });
+                }
+                currentScenarioName = trimmed.replace(/^Scenario:\s*/, "");
+                // 次のシナリオは「開始」から枝分かれさせる
+                lastNodeId = startId;
+                currentY = 140; // Y座標をリセット
+                currentX += SCENARIO_WIDTH; // 横にずらして重なりを防ぐ
+                i++;
+                continue;
             }
 
-
-            // Gherkin ステップ（英語・日本語）
-            const stepMatch = trimmed.match(
-                /^(Given|When|Then|And|But|前提|もし|ならば|かつ|しかし)\s+(.+)$/i
-            );
+            // Gherkin ステップのパース
+            const stepMatch = trimmed.match(/^(Given|When|Then|And|But|前提|もし|ならば|かつ|しかし)\s+(.+)$/i);
             if (stepMatch) {
                 const keyword = stepMatch[1];
                 const text = stepMatch[2].trim();
-
-                // When/もし → decision、その他 → process
                 const nodeType = /^(When|もし)$/i.test(keyword) ? 'decision' : 'process';
 
                 const newId = createId();
-                nodes.push({ id: newId, type: nodeType, label: `${keyword}: ${text}`, x: 200, y: currentY });
-                if (lastNodeId) edges.push({ from: lastNodeId, to: newId });
-                lastNodeId = newId;
-                currentY += STEP_Y;
-            }
+                // 座標を currentX, currentY で指定
+                nodes.push({
+                    id: newId,
+                    type: nodeType,
+                    label: `${keyword}: ${text}`,
+                    x: currentX,
+                    y: currentY
+                });
 
+                // 直前のノードから接続
+                const edgeCondition = (lastNodeId === startId) ? currentScenarioName : null;
+                edges.push({ from: lastNodeId, to: newId, condition: edgeCondition });
+                //if (lastNodeId) edges.push({ from: lastNodeId, to: newId });
+                lastNodeId = newId; // 次のステップはこのノードから
+                currentY += STEP_Y; // 下に伸ばす
+                if (currentY > maxY) maxY = currentY;
+            }
             i++;
         }
 
         // End ノードを自動生成（旧実装では生成していなかった）
-        const endId = createId();
-        nodes.push({ id: endId, type: 'end', label: '終了', x: 200, y: currentY });
-        if (lastNodeId) edges.push({ from: lastNodeId, to: endId });
-
+        //const endId = createId();
+        // 💡 最後のシナリオの末尾を End に繋ぐ
+        if (lastNodeId && lastNodeId !== startId) {
+            edges.push({ from: lastNodeId, to: endId });
+        }
+        // Endノードの座標を調整
+        endNode.x = 200 + (currentX - 200) / 2; // シナリオ群の中央に配置
+        endNode.y = maxY + 20;
+        nodes.push(endNode);
         return {
             workflow: { nodes, edges },
             endIndex: i - 1,

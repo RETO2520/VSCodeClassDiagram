@@ -921,6 +921,99 @@ export class DomainModel {
                     warnings.push(`Class "${cls.name}" operation "${operation.name}" returns unknown type "${returnType}"`)
                 }
 
+                // ワークフローの警告
+                if (operation.workflow) {
+                    const ow = operation.workflow;
+                    const context = `Class "${cls.name}" operation "${operation.name}" workflow`;
+
+                    // 1. ノードIDの重複チェック
+                    const nodeIds = new Set<string>();
+                    for (const node of ow.nodes) {
+                        if (nodeIds.has(node.id)) {
+                            errors.push(`${context}: Duplicate node id found: "${node.id}"`);
+                        }
+                        nodeIds.add(node.id);
+                    }
+
+                    // 2. エッジの参照整合性チェック
+                    for (const edge of ow.edges) {
+                        if (!nodeIds.has(edge.from)) {
+                            errors.push(`${context}: Edge references non-existent source node id: "${edge.from}"`);
+                        }
+                        if (!nodeIds.has(edge.to)) {
+                            errors.push(`${context}: Edge references non-existent target node id: "${edge.to}"`);
+                        }
+                    }
+
+                    // 3. 開始ノード・終了ノードの存在チェック
+                    // 「どこからも入ってこないノード」を開始候補とする
+                    const startNodes = ow.nodes.filter((n) => ow.edges.every((e) => e.to !== n.id));
+                    if (ow.nodes.length > 0 && startNodes.length === 0) {
+                        errors.push(`${context}: Has no start node (entry point)`);
+                    } else if (startNodes.length > 1) {
+                        // 任意：開始地点が複数ある場合に警告を出す場合
+                        warnings.push(`${context}: Has multiple start nodes`);
+                    }
+
+                    // 「どこにも出ていかないノード」を終了候補とする
+                    const endNodes = ow.nodes.filter((n) => ow.edges.every((e) => e.from !== n.id));
+                    if (ow.nodes.length > 0 && endNodes.length === 0) {
+                        errors.push(`${context}: Has no end node (terminal point)`);
+                    }
+
+                    // 4. 孤立ノードの警告
+                    for (const node of ow.nodes) {
+                        const isConnected = ow.edges.some(e => e.from === node.id || e.to === node.id);
+                        if (!isConnected && ow.nodes.length > 1) {
+                            warnings.push(`${context}: Isolated node found: "${node.label}" (id: ${node.id})`);
+                        }
+                    }
+
+                    // --- 5. 循環参照（ループ）チェック ---
+                    const hasCycle = (): string[] | null => {
+                        const visited = new Set<string>(); // 完全に探索が終わったノード
+                        const recStack = new Set<string>(); // 現在の探索パス上のノード
+
+                        const dfs = (nodeId: string, path: string[]): string[] | null => {
+                            visited.add(nodeId);
+                            recStack.add(nodeId);
+                            path.push(nodeId);
+
+                            // このノードから出ているエッジを特定
+                            const outEdges = ow.edges.filter(e => e.from === nodeId);
+                            for (const edge of outEdges) {
+                                if (!visited.has(edge.to)) {
+                                    const cycle = dfs(edge.to, [...path]);
+                                    if (cycle) return cycle;
+                                } else if (recStack.has(edge.to)) {
+                                    // 探索中のパスに戻ってきた ＝ 循環発見
+                                    return [...path, edge.to];
+                                }
+                            }
+
+                            recStack.delete(nodeId);
+                            return null;
+                        };
+
+                        // すべてのノードを起点にチェック（孤立したループも検知するため）
+                        for (const node of ow.nodes) {
+                            if (!visited.has(node.id)) {
+                                const cyclePath = dfs(node.id, []);
+                                if (cyclePath) return cyclePath;
+                            }
+                        }
+                        return null;
+                    };
+
+                    const cycle = hasCycle();
+                    if (cycle) {
+                        // 循環経路をラベルで表示して分かりやすくする
+                        const pathLabels = cycle.map(id => ow.nodes.find(n => n.id === id)?.label || id).join(' -> ');
+                        errors.push(`${context}: Circular path detected: ${pathLabels}`);
+                    }
+                }
+
+                // パラメータの型参照警告
                 for (const param of operation.parameters) {
                     const paramType = this.extractBaseTypeName(param.type)
                     if (paramType && !this.isPrimitiveType(paramType) && !this.findClassByName(paramType)) {
