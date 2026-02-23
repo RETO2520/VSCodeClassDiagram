@@ -62,7 +62,10 @@ export interface IWorkflowNode {
 export interface IWorkflowEdge {
     from: string;
     to: string;
-    condition: boolean;
+    /** シナリオ名 (startノードからのエッジに付く) */
+    condition?: string | null;
+    /** src: アノテーションによるトレーサビリティ参照 */
+    srcs?: { label: string; url: string }[];
 }
 
 /**
@@ -192,6 +195,111 @@ export function buildClassMaps(model: IObjectModel) {
 export function opSignatureKey(op: IOperationModel) {
     const params = (op.parameters || []).map((p: any) => (p.type || 'any')).join(',');
     return `${op.name || 'unnamed'}(${params})`;
+}
+
+// ============================================================
+// workflowToAst
+//
+// IWorkflowModel (nodes + edges) を WorkflowAst に変換する。
+//
+// 変換ルール:
+//   - start ノードから出るエッジが 1本  → ステップ列をそのままフラットに展開
+//   - start ノードから出るエッジが 2本以上 → if / else if / else に変換
+//   - 各シナリオのステップ(Given/When/Then/And)は IActionNode のコメント文として出力
+//   - src: アノテーションがあれば「// → label (url)」をコメントに付加
+//   - Then/end ノードが return っぽい文言でも、ここでは throw new NotImplementedException() を末尾に生成
+// ============================================================
+
+/**
+ * ワークフローの1シナリオ分のステップ列を IActionNode[] に変換する。
+ * startId から endId までのパスを辿り、各ノードのラベルをコメント文にする。
+ */
+function scenarioStepsToActions(
+    startId: string,
+    workflow: IWorkflowModel,
+): WfAstNode[] {
+    const nodeMap = new Map(workflow.nodes.map(n => [n.id, n]));
+    const outEdges = new Map<string, IWorkflowEdge[]>();
+    for (const e of workflow.edges) {
+        if (!outEdges.has(e.from)) outEdges.set(e.from, []);
+        outEdges.get(e.from)!.push(e);
+    }
+
+    const nodes: WfAstNode[] = [];
+    const visited = new Set<string>();
+    let cur: string | null = startId;
+
+    while (cur) {
+        if (visited.has(cur)) break;
+        visited.add(cur);
+        const node = nodeMap.get(cur);
+        if (!node) break;
+
+        // start/end ノードはコメントなし
+        if (node.type !== 'start' && node.type !== 'end') {
+            nodes.push({ type: 'action', statement: `// ${node.label}` });
+        }
+
+        // 次ノードへ（分岐がある場合は最初のエッジだけ辿る — シナリオ内では1本のパスのみ）
+        const nexts: IWorkflowEdge[] = outEdges.get(cur) ?? [];
+        cur = nexts.length > 0 ? nexts[0].to : null;
+    }
+
+    // スタブ: 実装が必要であることを示す
+    nodes.push({ type: 'action', statement: 'throw new NotImplementedException();' });
+    return nodes;
+}
+
+/**
+ * IWorkflowModel → WorkflowAst 変換。
+ *
+ * 早期returnパターンでネストが最小になるよう生成する:
+ *   - シナリオ 1本: if なしでフラット展開
+ *   - シナリオ N本: 先頭 N-1 本を独立した if { ... } として並べ、
+ *                   最後の1本だけ if なしでフラット展開（else 不要）
+ *
+ * 例（3シナリオ）:
+ *   if (/* ログイン成功 *\/) { ... throw; }
+ *
+ *   if (/* パスワード間違い *\/) { ... throw; }
+ *
+ *   // Scenario: 未入力エラー   ← else なしでそのまま
+ *   ... throw;
+ */
+export function workflowToAst(workflow: IWorkflowModel): WorkflowAst {
+    const startNode = workflow.nodes.find(n => n.type === 'start');
+    if (!startNode) return { variables: [], body: [] };
+
+    // start から出るエッジ = シナリオ分岐
+    const scenarioEdges = workflow.edges.filter(e => e.from === startNode.id);
+    if (scenarioEdges.length === 0) return { variables: [], body: [] };
+
+    const body: WfAstNode[] = [];
+
+    scenarioEdges.forEach((edge, idx) => {
+        const scenarioName = edge.condition ?? `シナリオ${idx + 1}`;
+        const srcSuffix = (edge.srcs && edge.srcs.length > 0)
+            ? ' → ' + edge.srcs.map(s => `${s.label} (${s.url})`).join(', ')
+            : '';
+        const steps = scenarioStepsToActions(edge.to, workflow);
+        const isLast = idx === scenarioEdges.length - 1;
+
+        if (isLast) {
+            // 最後のシナリオ: if なしでフラット展開（早期returnで到達するのでここが残り）
+            body.push({ type: 'action', statement: `// Scenario: ${scenarioName}${srcSuffix}` });
+            body.push(...steps);
+        } else {
+            // 先頭 N-1 本: 独立した if として並べる。空行で区切るためダミーの空コメントを後置
+            body.push({
+                type: 'if',
+                condition: `/* ${scenarioName}${srcSuffix} */`,
+                then: steps,
+            } as IIfNode);
+            body.push({ type: 'action', statement: '' }); // 空行
+        }
+    });
+
+    return { variables: [], body };
 }
 
 // collectInheritedMembers: 再帰的に base クラス → 親の属性・操作を集める

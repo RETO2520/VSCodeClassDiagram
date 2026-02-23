@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { CodeBuilder, IObjectModel, IAttributeModel, IOperationModel, safeIdentifier, typeName, pascalCase, collectInheritedMembers, buildClassMaps, opSignatureKey, IParameterModel, IClassModel, camelCase, WorkflowAst, IActionNode, IIfNode, IWhileNode, IReturnNode } from './CodeGenerator';
+import { CodeBuilder, IObjectModel, IAttributeModel, IOperationModel, safeIdentifier, typeName, pascalCase, collectInheritedMembers, buildClassMaps, opSignatureKey, IParameterModel, IClassModel, camelCase, WorkflowAst, IActionNode, IIfNode, IWhileNode, IReturnNode, workflowToAst } from './CodeGenerator';
 import console = require('node:console');
 
 
@@ -171,8 +171,14 @@ export class CSharpBuilder extends CodeBuilder {
                     } else {
                         operations.push(`    ${vis} ${mod}${ret} ${method}(${params})`);
                         operations.push('    {');
-                        if (op.workflowAst) {
-                            const wfLines = this.generateWorkflow(op.workflowAst);
+                        // workflowAst が直接ある場合はそのまま使用。
+                        // ない場合でも workflow (nodes/edges) があれば自動変換して使う。
+                        const ast: WorkflowAst | undefined =
+                            op.workflowAst ??
+                            (op.workflow ? workflowToAst(op.workflow) : undefined);
+
+                        if (ast && ast.body.length > 0) {
+                            const wfLines = this.generateWorkflow(ast);
                             for (const l of wfLines) {
                                 operations.push(l);
                             }
