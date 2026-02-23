@@ -52,6 +52,28 @@ export abstract class BaseDomainEvent implements DomainEvent {
 }
 
 
+// ============================================================
+// Layout helper
+// ============================================================
+const CELL_W = 220
+const CELL_H = 160
+const GRID_COLS = 5
+const GRID_OX = 80
+const GRID_OY = 80
+
+export function findFreePosition(existing: { x: number; y: number }[]): { x: number; y: number } {
+    for (let row = 0; row < 1000; row++) {
+        for (let col = 0; col < GRID_COLS; col++) {
+            const cx = GRID_OX + col * CELL_W
+            const cy = GRID_OY + row * CELL_H
+            const hit = existing.some(c =>
+                Math.abs(c.x - cx) < CELL_W && Math.abs(c.y - cy) < CELL_H
+            )
+            if (!hit) return { x: cx, y: cy }
+        }
+    }
+    return { x: GRID_OX, y: GRID_OY + existing.length * CELL_H }
+}
 
 /* ============================
    Domain Errors
@@ -316,6 +338,8 @@ export class DomainModel {
 
         const classId = id || createId()
 
+        const pos = findFreePosition(Array.from(this.classMap.values()))
+
         const newClass: ClassInfo = {
             id: classId,
             name,
@@ -325,8 +349,8 @@ export class DomainModel {
             operations: [],
             interfaces: [],
             baseClassId: null,
-            x: 100 + Math.random() * 200,
-            y: 100 + Math.random() * 200,
+            x: pos.x,
+            y: pos.y,
         }
 
         const newMap = new Map(this.classMap)

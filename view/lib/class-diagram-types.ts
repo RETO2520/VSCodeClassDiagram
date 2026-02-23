@@ -187,7 +187,8 @@ export function createId(): string {
   return Math.random().toString(36).substring(2, 10)
 }
 
-export function createEmptyClass(): ClassInfo {
+export function createEmptyClass(existingClasses?: { x: number; y: number }[]): ClassInfo {
+  const pos = pickFreePosition(existingClasses ?? [])
   return {
     id: createId(),
     name: "NewClass",
@@ -197,9 +198,23 @@ export function createEmptyClass(): ClassInfo {
     operations: [],
     interfaces: [],
     baseClassId: null,
-    x: 100 + Math.random() * 200,
-    y: 100 + Math.random() * 200,
+    x: pos.x,
+    y: pos.y,
   }
+}
+
+/** createEmptyClass 用の簡易グリッド配置（DomainModel.findFreePosition と同ロジック） */
+function pickFreePosition(existing: { x: number; y: number }[]): { x: number; y: number } {
+  const GW = 220, GH = 160, OX = 80, OY = 80, COLS = 5
+  for (let row = 0; row < 1000; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const cx = OX + col * GW
+      const cy = OY + row * GH
+      if (!existing.some(c => Math.abs(c.x - cx) < GW && Math.abs(c.y - cy) < GH))
+        return { x: cx, y: cy }
+    }
+  }
+  return { x: OX, y: OY + existing.length * GH }
 }
 
 export function createEmptyMember(): ClassMember {
