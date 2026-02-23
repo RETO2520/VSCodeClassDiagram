@@ -96,6 +96,7 @@ export interface ClassOperation {
       from: string
       to: string
       condition?: string | null
+      srcs?: { label: string; url: string }[]
       mid?: { x: number; y: number }
     }>
   }

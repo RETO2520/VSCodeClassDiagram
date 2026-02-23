@@ -221,15 +221,18 @@ export class SpecDslParser {
                                 break;
                             }
                             const result = this.parseGherkinToWorkflow(lines, j);
+                            postMessage({ command: 'log', level: 'debug', text: `[Parser] applyUpdateOperationWorkflow: ${cls.name}.${operation.name} nodes=${result.workflow?.nodes?.length}` });
                             service.applyUpdateOperationWorkflow({
                                 classId: c.id,
                                 operationId: op.id,
                                 workflow: result.workflow,
                             });
+                            postMessage({ command: 'log', level: 'debug', text: `[Parser] done. op.workflow after update: ${cls.name}.${operation.name} nodes=${service.getOperationByName(cls.name, operation.name)?.workflow?.nodes?.length}` });
                             break;
                         }
                     }
                 }
+                //postMessage({ command: 'log', level: 'info', text: "operation:" + JSON.stringify(op) });
 
 
 
@@ -448,42 +451,68 @@ export class SpecDslParser {
         }
     }
 
+    /**
+     * Scenario 行から src: アノテーションをパースして除去したシナリオ名を返す。
+     *
+     * 書式: Scenario: <name> src: <label> <url> [src: <label> <url> ...]
+     * 例:   Scenario: ログイン成功 src: REQ-001 https://example.com/req#1
+     *       Scenario: ログイン成功 src: REQ-001 ./docs/requirements.md#login
+     */
+    private parseScenarioLine(raw: string): {
+        name: string
+        srcs: { label: string; url: string }[]
+    } {
+        // src: 以降を切り出す
+        const srcIdx = raw.search(/\bsrc:\s/)
+        if (srcIdx === -1) return { name: raw.trim(), srcs: [] }
+
+        const name = raw.slice(0, srcIdx).trim()
+        const srcs: { label: string; url: string }[] = []
+
+        // src: label url を繰り返しマッチ
+        const srcRe = /\bsrc:\s+(\S+)\s+(\S+)/g
+        let m: RegExpExecArray | null
+        while ((m = srcRe.exec(raw)) !== null) {
+            srcs.push({ label: m[1], url: m[2] })
+        }
+        return { name, srcs }
+    }
+
     private parseGherkinToWorkflow(lines: string[], startIndex: number): {
         workflow: ClassOperation['workflow'],
         endIndex: number
     } {
         const nodes: NonNullable<ClassOperation['workflow']>['nodes'] = [];
         const edges: NonNullable<ClassOperation['workflow']>['edges'] = [];
-        let currentScenarioName = "";
-        // ノード間の縦間隔。WorkflowEditorPanel の nodeSize() に合わせて
-        // process=40px高 + マージン20px = 60px が最低限必要
+
         const STEP_Y = 80;
         let currentY = 60;
-        let currentX = 200; // シナリオごとに横にずらすための変数
-        const SCENARIO_WIDTH = 250; // シナリオ間の横間隔
+        let currentX = 200;
+        const SCENARIO_WIDTH = 250;
         let lastNodeId: string | null = null;
 
         // startIndex 行は最初の "Scenario: ..." 行。
         // i = startIndex + 1 でその行自体をスキップするが、
-        // スキップ前にシナリオ名を取り出しておく。
-        // これをしないと currentScenarioName が "" のまま最初のシナリオのステップが
-        // 処理され、start → 最初の Given エッジの condition が空文字になってしまう。
+        // スキップ前にシナリオ名と src: を取り出しておく。
         const firstScenarioLine = lines[startIndex]?.trim() ?? "";
-        if (firstScenarioLine.match(/^(?:Scenario|シナリオ):/i)) {
-            currentScenarioName = firstScenarioLine.replace(/^(?:Scenario|シナリオ):\s*/i, "");
-        }
+        const firstParsed = this.parseScenarioLine(
+            firstScenarioLine.replace(/^(?:Scenario|シナリオ):\s*/i, "")
+        );
+        let currentScenarioName = firstParsed.name;
+        let currentSrcs = firstParsed.srcs;
 
-        let i = startIndex + 1; // "Scenario: ..." 行自体は読み飛ばす
+        let i = startIndex + 1;
 
-        // Start ノードを自動生成
+        // Start / End ノードを生成
         const startId = createId();
-        const endId = createId(); // End IDを固定
+        const endId = createId();
         nodes.push({ id: startId, type: 'start', label: '開始', x: 200, y: currentY });
         const endNode = { id: endId, type: 'end', label: '終了', x: 200, y: 0 };
 
         lastNodeId = startId;
         currentY += STEP_Y;
-        let maxY = 0; // Endノードの配置位置を決めるため
+        let maxY = 0;
+
         while (i < lines.length) {
             const trimmed = lines[i].trim();
 
@@ -496,17 +525,20 @@ export class SpecDslParser {
                 trimmed.match(/^[+\-#~]/)
             ) break;
 
-            // 新しいシナリオの開始を検知（英語・日本語両対応）
+            // 新しいシナリオの開始（英語・日本語両対応）
             if (trimmed.match(/^(?:Scenario|シナリオ):/i)) {
-                // 新シナリオが始まる前に、前のシナリオの末尾を End に繋ぐ
+                // 前のシナリオの末尾を End に繋ぐ
                 if (lastNodeId && lastNodeId !== startId) {
                     edges.push({ from: lastNodeId, to: endId });
                 }
-                currentScenarioName = trimmed.replace(/^(?:Scenario|シナリオ):\s*/i, "");
-                // 次のシナリオは「開始」から枝分かれさせる
+                const parsed = this.parseScenarioLine(
+                    trimmed.replace(/^(?:Scenario|シナリオ):\s*/i, "")
+                );
+                currentScenarioName = parsed.name;
+                currentSrcs = parsed.srcs;
                 lastNodeId = startId;
-                currentY = 140; // Y座標をリセット
-                currentX += SCENARIO_WIDTH; // 横にずらして重なりを防ぐ
+                currentY = 140;
+                currentX += SCENARIO_WIDTH;
                 i++;
                 continue;
             }
@@ -519,35 +551,29 @@ export class SpecDslParser {
                 const nodeType = /^(When|もし)$/i.test(keyword) ? 'decision' : 'process';
 
                 const newId = createId();
-                // 座標を currentX, currentY で指定
-                nodes.push({
-                    id: newId,
-                    type: nodeType,
-                    label: `${keyword}: ${text}`,
-                    x: currentX,
-                    y: currentY
-                });
+                nodes.push({ id: newId, type: nodeType, label: `${keyword}: ${text}`, x: currentX, y: currentY });
 
-                // 直前のノードから接続
-                const edgeCondition = (lastNodeId === startId) ? currentScenarioName : null;
-                edges.push({ from: lastNodeId, to: newId, condition: edgeCondition });
-                lastNodeId = newId; // 次のステップはこのノードから
-                currentY += STEP_Y; // 下に伸ばす
+                // start → 最初のステップ間のエッジに condition + srcs を付与
+                const isFirstStep = lastNodeId === startId;
+                const edgeCondition = isFirstStep ? currentScenarioName : null;
+                const edgeSrcs = isFirstStep && currentSrcs.length > 0 ? currentSrcs : undefined;
+                edges.push({ from: lastNodeId!, to: newId, condition: edgeCondition, srcs: edgeSrcs });
+
+                lastNodeId = newId;
+                currentY += STEP_Y;
                 if (currentY > maxY) maxY = currentY;
             }
             i++;
         }
 
-        // End ノードを自動生成（旧実装では生成していなかった）
-        //const endId = createId();
-        // 💡 最後のシナリオの末尾を End に繋ぐ
+        // 最後のシナリオの末尾を End に繋ぐ
         if (lastNodeId && lastNodeId !== startId) {
             edges.push({ from: lastNodeId, to: endId });
         }
-        // Endノードの座標を調整
-        endNode.x = 200 + (currentX - 200) / 2; // シナリオ群の中央に配置
+        endNode.x = 200 + (currentX - 200) / 2;
         endNode.y = maxY + 20;
         nodes.push(endNode);
+
         return {
             workflow: { nodes, edges },
             endIndex: i - 1,

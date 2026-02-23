@@ -322,10 +322,8 @@ function restoreWorkflow(workflow: {
             from: string;
             to: string;
             condition?: string | null | undefined;
-            mid?: {
-                x: number;
-                y: number;
-            } | undefined;
+            mid?: { x: number; y: number } | undefined;
+            srcs?: { label: string; url: string }[] | undefined;
         }[]
     }): string[] {
         const lines: string[] = [];
@@ -349,7 +347,15 @@ function restoreWorkflow(workflow: {
             } else {
                 outgoing.forEach((edge: any, index: number) => {
                     const targetNo = nodeNum.get(edge.to) || "??";
-                    const condition = edge.condition ? `${edge.condition}` : "-";
+
+                    // src: アノテーションがあればシナリオ名にMarkdownリンクを付与
+                    let condition = edge.condition ? `${edge.condition}` : "-";
+                    if (edge.condition && edge.srcs && edge.srcs.length > 0) {
+                        const links = (edge.srcs as { label: string; url: string }[])
+                            .map(s => `[${s.label}](${s.url})`)
+                            .join(" ");
+                        condition = `${edge.condition} ${links}`;
+                    }
 
                     // 1つのノードから複数の分岐がある場合、2行目以降はNoとラベルを省略して見やすく
                     const displayNo = index === 0 ? currentNo : "";

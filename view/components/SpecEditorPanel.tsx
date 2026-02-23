@@ -60,6 +60,8 @@ function registerDslLanguage(monaco: typeof Monaco) {
             root: [
                 [/\/\/.*$/, 'comment'],
                 [/#.*$/, 'comment'],
+                // src: アノテーション（行のどこにでも書ける）
+                [/\bsrc:/, { token: 'annotation.key', next: 'src_label' }],
                 // Gherkin — 行の先頭（インデント可）で認識
                 [/^(\s*)(Scenario|シナリオ)(:.*)?$/, 'gherkin.scenario'],
                 [/^(\s*)(Given|前提)(\s)/, 'gherkin.given'],
@@ -76,6 +78,16 @@ function registerDslLanguage(monaco: typeof Monaco) {
                 [/[,:]/, 'delimiter'],
                 [/\d+(\.\d+)?/, 'number'],
                 [/".*?"/, 'string'],
+            ],
+            // src: ステート: ラベル部分（REQ-001 など）を読む
+            src_label: [
+                [/\s+/, 'white'],
+                [/\S+/, { token: 'annotation.label', next: 'src_url' }],
+            ],
+            // src: ステート: URL/パス部分を読む（ファイルパス・URLどちらも可）
+            src_url: [
+                [/\s+/, 'white'],
+                [/\S+/, { token: 'annotation.url', next: '@pop' }],
             ],
         },
     } as any)
@@ -100,6 +112,10 @@ function registerDslLanguage(monaco: typeof Monaco) {
             { token: 'gherkin.when', foreground: 'fcd34d' },
             { token: 'gherkin.then', foreground: '93c5fd' },
             { token: 'gherkin.and', foreground: '94a3b8', fontStyle: 'italic' },
+            // src: アノテーション
+            { token: 'annotation.key', foreground: 'fb923c', fontStyle: 'bold' },
+            { token: 'annotation.label', foreground: 'fbbf24' },
+            { token: 'annotation.url', foreground: '60a5fa', fontStyle: 'italic' },
         ],
         colors: {
             'editor.background': '#080f1a',
@@ -141,6 +157,8 @@ function registerDslLanguage(monaco: typeof Monaco) {
                 { label: 'Then', insert: 'Then ${1:期待結果}', doc: 'Gherkin: Then' },
                 { label: 'And', insert: 'And ${1:追加条件}', doc: 'Gherkin: And' },
                 { label: 'シナリオ', insert: 'シナリオ: ${1:シナリオ名}\n  前提 ${2:前提条件}\n  もし ${3:操作}\n  ならば ${4:期待結果}', doc: 'Gherkin シナリオ（日本語）' },
+                // ── トレーサビリティ ──
+                { label: 'src:', insert: 'src: ${1:REQ-001} ${2:https://example.com/req#1}', doc: '要求仕様へのトレーサビリティリンク（src: label url）' },
             ]
             return {
                 suggestions: snippets.map(s => ({
