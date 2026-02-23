@@ -11,7 +11,7 @@
  *   workflow.interactions.js → React Pointer イベントハンドラ
  *   workflow.api.js          → onDiagramChange コールバック
  */
-
+import { postMessage } from "../../frontend/src/bridge/vscode-bridge";
 import React, {
     useReducer,
     useRef,
@@ -463,20 +463,68 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
     const svgRef = useRef<SVGSVGElement>(null)
     const [wf, dispatch] = useReducer(wfReducer, { nodes: [], edges: [] })
 
-    // opRef 変化 → workflow ロード
-    const loadedRef = useRef('')
-    useEffect(() => {
-        if (!opRef) return
-        const key = `${opRef.classIndex}:${opRef.opIndex}`
-        if (loadedRef.current === key) return
-        loadedRef.current = key
+    // ── workflow ロード ──────────────────────────────────────────
+    //
+    // 旧実装の問題:
+    //   loadedRef に "classIndex:opIndex" をキャッシュし、同じkeyなら即returnしていた。
+    //   → DSLを編集してworkflowが外部更新されても同じメソッドを表示中なら
+    //     永遠にスキップされ、リアルタイム更新が反映されなかった。
+    //
+    // 新実装:
+    //   1. opRefが切り替わったとき → 強制ロード
+    //   2. service.onModelChanged → 外部更新（SpecEditorPanel等）を検知して再ロード
+    //   3. ロード内容が現在の表示と同じならスキップ（編集中の状態を保護）
 
-        const cls = diagram.classes[opRef.classIndex]
-        const op = cls?.operations?.[opRef.opIndex]
-        if (!op) return
+    // 最後にロードした workflow の JSON（差分検知用）
+    const lastLoadedJson = useRef<string>('')
+    // 現在表示中の opRef キー（切り替え検知用）
+    const currentOpKey = useRef<string>('')
 
-        if (op.workflow?.nodes?.length > 0) {
-            dispatch({ type: 'SET_WF', wf: JSON.parse(JSON.stringify(op.workflow)) })
+    // opRef と service を ref で保持する。
+    // これにより loadFromService を deps なしの安定した関数にでき、
+    // onModelChanged に登録した関数が常に最新の opRef/service を参照できる。
+    // （useCallback([opRef, service]) にすると opRef 変化のたびに新インスタンスが生成され、
+    //   古い関数が subscription に残って stale closure になる）
+    const opRefRef = useRef(opRef)
+    const serviceRef = useRef(service)
+    useEffect(() => { opRefRef.current = opRef }, [opRef])
+    useEffect(() => { serviceRef.current = service }, [service])
+
+    const loadFromService = useCallback(() => {
+        const currentOpRef = opRefRef.current
+        if (!currentOpRef) return
+
+        const model = serviceRef.current.getModel()
+
+        // まず classId / operationId で直接検索（通常ケース）
+        let cls = model.findClassById(currentOpRef.classId)
+        let op = cls?.operations.find(o => o.id === currentOpRef.operationId)
+
+        // IDで見つからない場合（モデルリセット後）は名前ベースでフォールバック検索する。
+        // SpecEditorPanel が setModel(empty) → parse() を行うと新しい ID が振られるため。
+        if (!op) {
+            const m = currentOpRef.label.match(/^(.+?)\.(.+?)\(/)
+            if (m) {
+                cls = model.findClassByName(m[1]) ?? undefined
+                op = cls?.operations.find(o => o.name === m[2])
+                postMessage({ command: 'log', level: 'debug', text: `[WF] fallback: cls=${cls?.name ?? 'null'} op=${op?.name ?? 'null'} wfNodes=${op?.workflow?.nodes?.length ?? 'none'}` });
+            }
+        }
+
+        if (!op || !cls) {
+            postMessage({ command: 'log', level: 'debug', text: `[WF] op not found. label=${currentOpRef.label} classes=${model.getClasses().map(c => c.name).join(',')}` });
+            return
+        }
+
+        const incoming = op.workflow?.nodes?.length ? op.workflow : null
+        const incomingJson = JSON.stringify(incoming)
+        postMessage({ command: 'log', level: 'debug', text: `[WF] load: op=${op.name} nodes=${op.workflow?.nodes?.length ?? 0} sameAsLast=${incomingJson === lastLoadedJson.current}` });
+
+        if (incomingJson === lastLoadedJson.current) return
+        lastLoadedJson.current = incomingJson
+
+        if (incoming) {
+            dispatch({ type: 'SET_WF', wf: JSON.parse(incomingJson) })
         } else {
             const s = generateId('start'), e = generateId('end')
             dispatch({
@@ -489,7 +537,26 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                 }
             })
         }
-    }, [opRef, diagram])
+        // 依存配列は空 — opRef/service は ref 経由で参照するため関数インスタンスが安定する
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    // opRef が変わったとき → キャッシュをクリアして強制ロード
+    useEffect(() => {
+        if (!opRef) return
+        const key = `${opRef.classId}:${opRef.operationId}`
+        if (currentOpKey.current !== key) {
+            currentOpKey.current = key
+            lastLoadedJson.current = ''  // 強制再ロード
+        }
+        loadFromService()
+    }, [opRef, loadFromService])
+
+    // service のモデル変化を購読（loadFromService が安定しているので張り直し不要）
+    useEffect(() => {
+        service.onModelChanged(loadFromService)
+        return () => service.offModelChanged(loadFromService)
+    }, [service, loadFromService])
 
     const nodeMap = new Map(wf.nodes.map(n => [n.id, n]))
 
@@ -648,7 +715,6 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
     const save = useCallback(() => {
         if (!opRef) return
 
-        // classId / operationId が取れていない場合はエラー（型上はあり得ないが防御）
         if (!opRef.classId || !opRef.operationId) {
             console.error('[WorkflowEditorPanel] save: classId or operationId is missing in opRef', opRef)
             return
@@ -661,13 +727,19 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
             console.error('[WorkflowEditorPanel] AST conversion failed', e)
         }
 
+        const workflowCopy = JSON.parse(JSON.stringify(wf))
+
         try {
             service.applyUpdateOperationWorkflow({
                 classId: opRef.classId,
                 operationId: opRef.operationId,
-                workflow: JSON.parse(JSON.stringify(wf)),
+                workflow: workflowCopy,
                 workflowAst,
             })
+            // 保存後にキャッシュを更新する。
+            // notifyModelChanged → loadFromService が呼ばれても
+            // 「内容が変わっていない」と判定され、編集中状態が上書きされない。
+            lastLoadedJson.current = JSON.stringify(workflowCopy)
         } catch (e) {
             console.error('[WorkflowEditorPanel] applyUpdateOperationWorkflow failed', e)
         }

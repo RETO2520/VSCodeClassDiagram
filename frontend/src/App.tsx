@@ -9,14 +9,6 @@
  *   [SpecEditorPanel (下部ペイン, 高さ可変)]
  *   [CommandLine]
  */
-import * as monaco from 'monaco-editor';
-// @ts-ignore
-import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker.js?worker&inline';
-
-self.MonacoEnvironment = {
-    getWorker: () => new EditorWorker()
-};
-// 1. Vite に Worker としてビルドさせる (拡張子 .js が必須)
 
 import React, {
     useEffect,
@@ -220,24 +212,50 @@ export function App({ service }: { service: ClassDiagramService }) {
         })),
     }), [commandHistory.classes])
 
+
+
     // ── DiagramCanvas: operation クリック ──
     const classes = commandHistory.classes
     const setClasses = commandHistory.setClasses
+    // ── service モデル変化 → classes state を同期 ──────────────────
+    // SpecEditorPanel は service.setModel() + parse() でサービスのモデルを直接書き換える。
+    // この変化を classes state（commandHistory）に反映しないと、
+    // handleOperationClick で取る cls.id / op.id が古いIDのままになり、
+    // WorkflowEditorPanel の findClassById が失敗する。
+    useEffect(() => {
+        const syncFromService = () => {
+            const latest = service.getModel().getClasses()
+            setClasses(latest)
+        }
+        service.onModelChanged(syncFromService)
+        return () => service.offModelChanged(syncFromService)
+    }, [service, setClasses])
 
     const handleOperationClick = useCallback(
         (params: { classIndex: number; opIndex: number; label: string }) => {
-            const cls = classes[params.classIndex]
-            const op = cls?.operations[params.opIndex]
-            if (!cls || !op) return
+            // classes state ではなく service の最新モデルから classId/operationId を取る。
+            // SpecEditorPanel がモデルをリセット後に classes state の同期が遅れる場合に備えて
+            // 名前ベースでも検索する。
+            const labelMatch = params.label.match(/^(.+?)\.(.+?)\(/)
+            const className = labelMatch?.[1]
+            const opName = labelMatch?.[2]
+            const clsFromService = className ? service.getModel().findClassByName(className) : undefined
+            const opFromService = clsFromService?.operations.find(o => o.name === opName)
+
+            // service から取れた場合はそちらの ID を優先する
+            const classId = clsFromService?.id ?? classes[params.classIndex]?.id ?? ''
+            const operationId = opFromService?.id ?? classes[params.classIndex]?.operations[params.opIndex]?.id ?? ''
+
+            if (!classId || !operationId) return
             setActiveOpRef({
                 classIndex: params.classIndex, opIndex: params.opIndex,
-                classId: cls.id,
-                operationId: op.id,
+                classId,
+                operationId,
                 label: params.label,
             })
             setEditorMode('workflow')
         },
-        [classes],
+        [classes, service],
     )
 
     // ── Undo / Redo ──

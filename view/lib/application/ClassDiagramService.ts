@@ -53,6 +53,23 @@ export class ClassDiagramService {
         this.model = model
     }
 
+    /**
+     * 名前でクラスを検索する便利メソッド。
+     * SpecDslParser 等から利用する。
+     */
+    getClassByName(name: string): ClassInfo | undefined {
+        return this.model.findClassByName(name)
+    }
+
+    /**
+     * クラス名・操作名でオペレーションを検索する便利メソッド。
+     * SpecDslParser 等から利用する。
+     */
+    getOperationByName(className: string, operationName: string): ClassOperation | undefined {
+        const cls = this.model.findClassByName(className)
+        return cls?.operations.find(op => op.name === operationName)
+    }
+
     /* =====================
        Helper: getOrCreateClass (returns updated model and the target ClassInfo)
        - preferredKind may be used when creating parent classes inferred from CLI
@@ -78,10 +95,14 @@ export class ClassDiagramService {
 
     // internal helper - call this whenever this.model が更新
     private notifyModelChanged(): void {
-        console.log('Model changed, notifying listeners...'); // log for debugging
+        //postMessage({ command: 'log', level: 'debug', text: 'Model changed, notifying listeners...' });
         for (const l of this.modelChangedListeners) {
-            console.log('Notifying listener...', l); // log for debugging
-            try { l() } catch (e) { console.error('modelChanged listener error', e) }
+            //postMessage({ command: 'log', level: 'debug', text: 'Notifying listener...' });
+            try {
+                l()
+            } catch (e) {
+                postMessage({ command: 'log', level: 'error', text: 'modelChanged listener error : ' + e })
+            }
         }
     }
     /* =====================
@@ -94,11 +115,11 @@ export class ClassDiagramService {
 
     applyAddType(input: AddTypeInput): HandlerResult {
         // add/register class (if already present, DomainModel.registerClass will throw; we treat as update?)
-        console.log(`applyAddType: ${input.name} (${input.kind})`); // log input for debugging
+        //console.log(`applyAddType: ${input.name} (${input.kind})`); // log input for debugging
         const existing = this.model.findClassByName(input.name)
 
         if (existing) {
-            console.log(`Class ${input.name} already exists, treating as update`); // log for debugging
+            //console.log(`Class ${input.name} already exists, treating as update`); // log for debugging
             // If class already exists, treat as update (set kind/isAbstract)
             const updated = this.model.updateClassByName(input.name, cls => ({ ...cls, kind: input.kind, isAbstract: !!input.isAbstract }))
             const ev: DomainEvent = {
@@ -107,6 +128,7 @@ export class ClassDiagramService {
             }
             this.model = updated
             this.notifyModelChanged();
+            //postMessage({ command: 'log', level: 'debug', text: 'Class updated: ' + input.name });
             this.dispatcher?.dispatchAll([ev])
             return { model: this.model, events: [ev] }
         }
@@ -114,7 +136,7 @@ export class ClassDiagramService {
         // create new class
         let currentModel = this.model
         currentModel = currentModel.registerClass(input.name, input.kind)
-        console.log(`Registered new class: ${input.name} (${input.kind})`); // log for debugging
+        //postMessage({ command: 'log', level: 'debug', text: 'Registered new class: ' + input.name });
         // update isAbstract if needed
         if (input.isAbstract) {
             currentModel = currentModel.updateClassByName(input.name, cls => ({ ...cls, isAbstract: true }))
@@ -129,6 +151,7 @@ export class ClassDiagramService {
 
         this.model = currentModel
         this.notifyModelChanged();
+        //postMessage({ command: 'log', level: 'debug', text: 'Class added: ' + input.name });
         this.dispatcher?.dispatchAll([event])
         return { model: this.model, events: [event] }
     }

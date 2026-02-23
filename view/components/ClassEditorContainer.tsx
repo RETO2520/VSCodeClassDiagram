@@ -6,6 +6,7 @@ import type { ClassInfo } from "@/lib/class-diagram-types";
 import { ClassEditorPanel } from "./class-editor"; // 既存のコンポーネント（class-editor.tsx）
 import { toUpdateClassInput, toAddMemberInputGui, toAddOperationInputGui } from "../lib/adapters/gui-adapter";
 import { ClassDiagramService } from "../lib/application/ClassDiagramService";
+import { postMessage } from "../../frontend/src/bridge/vscode-bridge";
 
 /**
  * Props:
@@ -120,7 +121,7 @@ export function ClassEditorContainer({
             service.applyAddType({ name, kind: "class" });
             refreshFromService();
             const created = service.getModel().findClassByName(name);
-            console.log(`Created class: ${created?.name} (${created?.id})`); // log created class for debugging
+            postMessage({ command: 'log', level: 'info', text: `Created class: ${created?.name} (${created?.id})` });
             if (created) { setSelectedId(created.id); }
             // ensure global canvas state updated as well
             if (setGlobalClasses) setGlobalClasses(service.getModel().getClasses());

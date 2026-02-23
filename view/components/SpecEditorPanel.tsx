@@ -14,15 +14,13 @@
  *   - 中央: Monaco エディタ本体
  *   - 下端: ステータスバー（カーソル位置 / エラー数 / 最終適用時刻）
  */
-
-import React, { useRef, useState, useCallback } from 'react'
 import type * as Monaco from 'monaco-editor'
 import * as monaco from 'monaco-editor';
 import { loader } from '@monaco-editor/react';
 loader.config({ monaco });
+
+import React, { useRef, useState, useCallback } from 'react'
 import Editor, { useMonaco, OnMount, OnChange } from '@monaco-editor/react'
-
-
 import type { ClassDiagramService } from '@/lib/application/ClassDiagramService'
 import { SpecDslParser } from '@/lib/SpecDslParser'
 import { DomainModel } from '@/lib/DomainModel'
@@ -383,12 +381,17 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
             const parsed = parserRef.current.parse(dsl, service)
 
             // 3. ワークフローデータを名前ベースで復元
+            //    ただしパーサが DSL 内の Scenario から既に workflow を設定した操作は除外する。
+            //    （parse() 内で applyUpdateOperationWorkflow が済んでいる操作を
+            //      wfCache の古いデータで上書きしてしまうのを防ぐ）
             for (const cls of service.getModel().getClasses()) {
                 const opMap = wfCache.get(cls.name)
                 if (!opMap) continue
                 for (const op of cls.operations) {
                     const cached = opMap.get(op.name)
                     if (!cached?.workflow) continue
+                    // パーサが既に workflow を設定済みの場合はスキップ
+                    if (op.workflow?.nodes?.length) continue
                     try {
                         service.applyUpdateOperationWorkflow({
                             classId: cls.id,

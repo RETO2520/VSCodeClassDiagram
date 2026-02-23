@@ -138,7 +138,9 @@ export class DomainModel {
     ---------------------------- */
 
     private constructor(
-        private readonly classMap: Map<string, ClassInfo>
+        private readonly classMap: Map<string, ClassInfo>,
+        private readonly workflowMap: Map<string, any> = new Map(),
+        private readonly workflowAstMap: Map<string, any> = new Map()
     ) { }
 
     /* ----------------------------
@@ -771,6 +773,22 @@ export class DomainModel {
                     : o
             ),
         }))
+    }
+
+    // ワークフローの更新
+    updateWorkflow(opId: string, workflow: any, ast: any): DomainModel {
+        const newWorkflowMap = new Map(this.workflowMap);
+        const newAstMap = new Map(this.workflowAstMap);
+
+        newWorkflowMap.set(opId, workflow);
+        newAstMap.set(opId, ast);
+
+        return new DomainModel(this.classMap, newWorkflowMap, newAstMap);
+    }
+
+    // 取得用メソッド
+    getWorkflow(opId: string): any {
+        return this.workflowMap.get(opId);
     }
 
     /**

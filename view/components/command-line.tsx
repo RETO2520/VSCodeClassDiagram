@@ -30,16 +30,16 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
     const inputRef = React.useRef<HTMLInputElement>(null)
 
     // Focus trigger (Vim style ':')
-    React.useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === ':' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
-                e.preventDefault()
-                inputRef.current?.focus()
-            }
-        }
-        window.addEventListener('keydown', handleKeyDown)
-        return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [])
+    // React.useEffect(() => {
+    //     const handleKeyDown = (e: KeyboardEvent) => {
+    //         if (e.key === ':' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+    //             e.preventDefault()
+    //             inputRef.current?.focus()
+    //         }
+    //     }
+    //     window.addEventListener('keydown', handleKeyDown)
+    //     return () => window.removeEventListener('keydown', handleKeyDown)
+    // }, [])
 
     // Get current suggestions based on input (Standard real-time parsing)
     const getSuggestionsData = (currentInput: string): Suggestion[] => {
