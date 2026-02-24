@@ -6,6 +6,7 @@ import { Search } from 'lucide-react'
 import { Command as CommandPrimitive } from 'cmdk'
 interface CommandLineProps {
     onExecute: (command: string) => void;
+    onClose?: () => void; // 追加: 閉じるためのコールバック
     classes: ClassInfo[];
     className?: string;
 }
@@ -17,7 +18,10 @@ interface Suggestion {
     valueToInsert: string;
 }
 
-export function CommandLine({ onExecute, classes, className }: CommandLineProps) {
+export function CommandLine({
+    onExecute,
+    onClose,
+    classes, className }: CommandLineProps) {
     const [input, setInput] = React.useState('')
     const [history, setHistory] = React.useState<string[]>([])
     const [historyIndex, setHistoryIndex] = React.useState(-1)
@@ -29,6 +33,14 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
 
     const inputRef = React.useRef<HTMLInputElement>(null)
 
+    // マウント時に自動フォーカス
+    React.useEffect(() => {
+        // 少しだけ遅延させると、ブラウザのレンダリングタイミングによる失敗を防げます
+        const timer = setTimeout(() => {
+            inputRef.current?.focus();
+        }, 10);
+        return () => clearTimeout(timer);
+    }, []);
     // Focus trigger (Vim style ':')
     // React.useEffect(() => {
     //     const handleKeyDown = (e: KeyboardEvent) => {
@@ -43,6 +55,7 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
 
     // Get current suggestions based on input (Standard real-time parsing)
     const getSuggestionsData = (currentInput: string): Suggestion[] => {
+        if (!classes || !Array.isArray(classes)) return []; // 安全策
         const trimmed = currentInput.trimStart()
         const parts = currentInput.split(/\s+/)
         const isTrailingSpace = currentInput.endsWith(' ')
@@ -233,8 +246,12 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
                 setHistoryIndex(-1)
                 resetCycling()
                 setInput('')
+                if (onClose) onClose(); // 実行後も閉じる
             }
         } else if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation(); // 親への伝播を止めて確実に処理
+            if (onClose) onClose(); // 追加: Escで親に通知
             inputRef.current?.blur()
         } else if (e.key === 'Tab') {
             e.preventDefault()
@@ -327,51 +344,62 @@ export function CommandLine({ onExecute, classes, className }: CommandLineProps)
     }
 
     return (
-        <div className={cn("bg-background border-t p-2 shadow-sm", className)}>
-            <Command shouldFilter={false} className="rounded-lg border shadow-md">
-                <CommandList className={cn("max-h-[300px] overflow-y-auto", input === '' && "hidden")}>
-                    <CommandEmpty>No suggestions found.</CommandEmpty>
-                    {['Types', 'Members', 'Operations', 'Relationships', 'Target Type', 'Classes', 'Visibility', 'Modifiers', 'Attributes', 'Methods', 'Utilities', 'Languages'].map(g => {
-                        const groupItems = currentSuggestions.filter(s => s.group === g)
-                        if (groupItems.length === 0) return null
-                        return (
-                            <CommandGroup key={g} heading={g}>
-                                {groupItems.map((s) => {
-                                    const absoluteIdx = currentSuggestions.indexOf(s)
-                                    return (
-                                        <CommandItem
-                                            key={s.id + s.group}
-                                            onSelect={() => handleSelect(s)}
-                                            data-selected={absoluteIdx === selectedIdx}
-                                            className={cn(absoluteIdx === selectedIdx && "bg-accent text-accent-foreground")}
-                                        >
-                                            {s.label}
-                                        </CommandItem>
-                                    )
-                                })}
-                            </CommandGroup>
-                        )
-                    })}
-                </CommandList>
-                <div className="flex items-center px-3 border-t flex-grow">
-                    <span className="text-muted-foreground font-mono mr-2">:</span>
-                    <div className="flex flex-grow items-center border-t px-3" cmdk-input-wrapper="">
-                        <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-                        <CommandPrimitive.Input
-                            ref={inputRef}
-                            placeholder="c:class, i:interface, m:method, a:attr..."
-                            value={input}
-                            onValueChange={onInputChange}
-                            onKeyDown={handleKeyDown}
-                            className={cn(
-                                'flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50',
-                                className,
-                            )}
+        <div className={cn("bg-background border-t p-2 shadow-sm", className)} style={{ height: '30px' }}>
+            <Command shouldFilter={false} className="overflow-visible bg-transparent h-full" > {/* エディタ1行より少し高い絶妙なサイズ */}
 
-                        />
-                    </div>
-
+                {/* ── サジェストエリア (absolute で上に浮かせる) ── */}
+                <div className="absolute bottom-[30px] left-0 w-full z-[100]">
+                    <CommandList className={cn(
+                        "w-full max-h-[300px] bg-popover border rounded-md shadow-2xl overflow-y-auto",
+                        "animate-in fade-in slide-in-from-top-2 duration-100 ease-out",
+                        input === '' && "hidden")}>
+                        {/* suggestions が undefined でも落ちないように ?.length を使用 */}
+                        {(currentSuggestions?.length ?? 0) === 0 && input.length > 0 && (
+                            <CommandEmpty className="p-2 text-[12px]">No results found.</CommandEmpty>
+                        )}
+                        {/* <CommandEmpty>No suggestions found.</CommandEmpty> */}
+                        {['Types', 'Members', 'Operations', 'Relationships', 'Target Type', 'Classes', 'Visibility', 'Modifiers', 'Attributes', 'Methods', 'Utilities', 'Languages'].map(g => {
+                            const groupItems = currentSuggestions.filter(s => s.group === g)
+                            if (groupItems.length === 0) return null
+                            return (
+                                <CommandGroup key={g} heading={g} className="text-[11px] uppercase tracking-wider opacity-70">
+                                    {groupItems.map((s) => {
+                                        const absoluteIdx = currentSuggestions.indexOf(s)
+                                        return (
+                                            <CommandItem
+                                                key={s.id + s.group}
+                                                onSelect={() => handleSelect(s)}
+                                                data-selected={absoluteIdx === selectedIdx}
+                                                className={cn(absoluteIdx === selectedIdx && "bg-accent text-accent-foreground", "text-[13px] py-1 px-2 cursor-pointer")}
+                                            >
+                                                {s.label}
+                                            </CommandItem>
+                                        )
+                                    })}
+                                </CommandGroup>
+                            )
+                        })}
+                    </CommandList>
                 </div>
+
+                <div className="flex items-center px-2 h-full gap-1">
+                    <span className="text-primary font-bold text-sm leading-none flex items-center justify-center h-full">:</span>
+                    <CommandPrimitive.Input
+                        ref={inputRef}
+                        placeholder="c:class, i:interface, m:method, a:attr..."
+                        value={input}
+                        onValueChange={onInputChange}
+                        onKeyDown={handleKeyDown}
+                        className={cn(
+                            'flex-1 bg-transparent outline-none border-none text-[13px] h-full text-foreground placeholder:opacity-50',
+                            "leading-none pt-[1px]",
+                            className,
+                        )}
+
+                    />
+                </div>
+
+
             </Command>
         </div>
     )

@@ -21,7 +21,7 @@ export class ApplyAdapterPatternCommand extends Command {
             targetName: this.targetName,
             adapteeNames: this.adapteeNames
         });
-        return { model: newModel, events: modelEvents };
+        return { success: true, model: newModel, events: modelEvents };
     }
     readonly type: CliCommandType = 'APPLY_ADAPTER';
 }

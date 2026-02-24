@@ -22,7 +22,7 @@ export class ApplyObserverPatternCommand extends Command {
             observerConcreteClassNames: this.observerConcreteClassNames
 
         });
-        return { model: newModel, events: modelEvents };
+        return { success: true, model: newModel, events: modelEvents };
     }
     readonly type: CliCommandType = 'APPLY_OBSERVER';
 }

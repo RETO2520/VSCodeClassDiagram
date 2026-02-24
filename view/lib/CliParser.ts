@@ -33,6 +33,7 @@ import { ApplyFacadePatternCommand } from './commands/ApplyFacadePatternCommand'
 import { ExportSpecCommand } from './commands/ExportSpecCommand';
 import { ImportSpecDslCommand } from './commands/ImportSpecDslCommand';
 import { ExportSpecDslCommand } from './commands/ExportSpecDslCommand';
+import { SpecSyncCommand } from './commands/SpecSyncCommand';
 
 export type CliCommandType =
     | 'ADD_TYPE'
@@ -64,7 +65,8 @@ export type CliCommandType =
     | 'APPLY_FACADE'
     | 'EXPORT_SPEC'
     | 'EXPORT_SPEC_DSL'
-    | 'IMPORT_SPEC_DSL';
+    | 'IMPORT_SPEC_DSL'
+    | 'SPEC_SYNC';
 
 
 export type TypePrefix = 'c' | 'ac' | 'i' | 's' | 'e';
@@ -183,6 +185,8 @@ export class CliParser {
                 return this.parseImportSpecDsl(line, parts);
             case 'export-spec-dsl':
                 return this.parseExportSpecDsl(line, parts);
+            case 'spec-sync':
+                return this.parseSpecSync(line, parts);
             default:
                 return this.parseRelation(line);
         }
@@ -627,5 +631,10 @@ export class CliParser {
         const outputPath = parts[1];
 
         return new ExportSpecDslCommand(raw, outputPath);
+    }
+
+    private parseSpecSync(raw: string, parts: string[]) {
+        // spec-sync
+        return new SpecSyncCommand(raw);
     }
 }

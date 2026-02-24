@@ -71,6 +71,12 @@ export class ClassDiagramService {
         return cls?.operations.find(op => op.name === operationName)
     }
 
+    /**
+     * 現在モデルを Spec DSL テキストとして取得する
+     */
+    toSpecDslText(): string {
+        return this.model.toDSL();
+    }
     /* =====================
        Helper: getOrCreateClass (returns updated model and the target ClassInfo)
        - preferredKind may be used when creating parent classes inferred from CLI
@@ -131,7 +137,7 @@ export class ClassDiagramService {
             this.notifyModelChanged();
             //postMessage({ command: 'log', level: 'debug', text: 'Class updated: ' + input.name });
             this.dispatcher?.dispatchAll([ev])
-            return { model: this.model, events: [ev] }
+            return { success: true, model: this.model, events: [ev] }
         }
 
         // create new class
@@ -154,7 +160,7 @@ export class ClassDiagramService {
         this.notifyModelChanged();
         //postMessage({ command: 'log', level: 'debug', text: 'Class added: ' + input.name });
         this.dispatcher?.dispatchAll([event])
-        return { model: this.model, events: [event] }
+        return { success: true, model: this.model, events: [event] }
     }
 
     applyAddMember(input: AddMemberInput): HandlerResult {
@@ -175,7 +181,7 @@ export class ClassDiagramService {
         this.model = result
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll([event])
-        return { model: this.model, events: [event] }
+        return { success: true, model: this.model, events: [event] }
     }
 
     applyAddOperation(input: AddOperationInput): HandlerResult {
@@ -195,7 +201,7 @@ export class ClassDiagramService {
         this.model = result
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll([event])
-        return { model: this.model, events: [event] }
+        return { success: true, model: this.model, events: [event] }
     }
 
     /**
@@ -244,7 +250,7 @@ export class ClassDiagramService {
         this.model = updated
         this.notifyModelChanged()
         this.dispatcher?.dispatchAll([event])
-        return { model: this.model, events: [event] }
+        return { success: true, model: this.model, events: [event] }
     }
 
     applyAddParameter(input: AddParameterInput): HandlerResult {
@@ -259,7 +265,7 @@ export class ClassDiagramService {
         this.model = result
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll([event])
-        return { model: this.model, events: [event] }
+        return { success: true, model: this.model, events: [event] }
     }
 
 
@@ -277,7 +283,7 @@ export class ClassDiagramService {
         this.model = result
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll([event])
-        return { model: this.model, events: [event] }
+        return { success: true, model: this.model, events: [event] }
     }
 
     applyAddInterfaceImpl(input: AddInterfaceImplInput): HandlerResult {
@@ -294,7 +300,7 @@ export class ClassDiagramService {
         this.model = result
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll([event])
-        return { model: this.model, events: [event] }
+        return { success: true, model: this.model, events: [event] }
     }
 
     applyRename(input: RenameInput): HandlerResult {
@@ -308,7 +314,7 @@ export class ClassDiagramService {
             this.model = result
             this.notifyModelChanged();
             this.dispatcher?.dispatchAll([event])
-            return { model: this.model, events: [event] }
+            return { success: true, model: this.model, events: [event] }
         }
 
         if (input.target === 'member') {
@@ -328,7 +334,7 @@ export class ClassDiagramService {
             this.model = result
             this.notifyModelChanged();
             this.dispatcher?.dispatchAll([event])
-            return { model: this.model, events: [event] }
+            return { success: true, model: this.model, events: [event] }
         }
 
         if (input.target === 'operation') {
@@ -347,10 +353,10 @@ export class ClassDiagramService {
             this.model = result
             this.notifyModelChanged();
             this.dispatcher?.dispatchAll([event])
-            return { model: this.model, events: [event] }
+            return { success: true, model: this.model, events: [event] }
         }
 
-        return { model: this.model, events: [] }
+        return { success: true, model: this.model, events: [] }
     }
 
     applyDelete(input: DeleteInput): HandlerResult {
@@ -364,7 +370,7 @@ export class ClassDiagramService {
             this.model = result
             this.notifyModelChanged();
             this.dispatcher?.dispatchAll([event])
-            return { model: this.model, events: [event] }
+            return { success: true, model: this.model, events: [event] }
         }
 
         if (input.target === 'member') {
@@ -380,7 +386,7 @@ export class ClassDiagramService {
             this.model = result
             this.notifyModelChanged();
             this.dispatcher?.dispatchAll([event])
-            return { model: this.model, events: [event] }
+            return { success: true, model: this.model, events: [event] }
         }
 
         if (input.target === 'operation') {
@@ -395,10 +401,10 @@ export class ClassDiagramService {
             this.model = result
             this.notifyModelChanged();
             this.dispatcher?.dispatchAll([event])
-            return { model: this.model, events: [event] }
+            return { success: true, model: this.model, events: [event] }
         }
 
-        return { model: this.model, events: [] }
+        return { success: true, model: this.model, events: [] }
     }
 
     applyUpdateClass(input: UpdateClassInput): HandlerResult {
@@ -410,7 +416,7 @@ export class ClassDiagramService {
         this.model = result
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll([event])
-        return { model: this.model, events: [event] }
+        return { success: true, model: this.model, events: [event] }
     }
 
     /**
@@ -475,7 +481,7 @@ export class ClassDiagramService {
         this.model = updatedModel
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll([event])
-        return { model: this.model, events: [event] }
+        return { success: true, model: this.model, events: [event] }
     }
 
     addMemberFromCli(input: AddMemberInput): HandlerResult {
@@ -487,7 +493,7 @@ export class ClassDiagramService {
         this.model = result
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll([ev])
-        return { model: this.model, events: [ev] }
+        return { success: true, model: this.model, events: [ev] }
     }
 
     setBaseFromCli(input: SetBaseInput): HandlerResult {
@@ -508,7 +514,7 @@ export class ClassDiagramService {
         this.model = result
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll([ev])
-        return { model: this.model, events: [ev] }
+        return { success: true, model: this.model, events: [ev] }
     }
 
     addInterfaceImplFromCli(input: AddInterfaceImplInput): HandlerResult {
@@ -528,7 +534,7 @@ export class ClassDiagramService {
         this.model = result
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll([ev])
-        return { model: this.model, events: [ev] }
+        return { success: true, model: this.model, events: [ev] }
     }
 
     applyChangeModifierFromCli(input: ChangeModifierInput): HandlerResult {
@@ -576,7 +582,7 @@ export class ClassDiagramService {
         this.model = currentModel
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll([event])
-        return { model: this.model, events: [event] }
+        return { success: true, model: this.model, events: [event] }
     }
     /* =====================
        Relationship helpers - if DomainModel lacks addRelationship, keep minimal support
@@ -593,7 +599,7 @@ export class ClassDiagramService {
         const ev: DomainEvent = { type: 'RELATIONSHIP_ADDED', payload: { relationship: rel } }
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll([ev])
-        return { model: this.model, events: [ev] }
+        return { success: true, model: this.model, events: [ev] }
     }
 
     applyFactoryPattern(input: {
@@ -698,7 +704,7 @@ export class ClassDiagramService {
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll(events);
 
-        return { model: this.model, events };
+        return { success: true, model: this.model, events };
     }
 
     applySingletonPattern(input: {
@@ -752,7 +758,7 @@ export class ClassDiagramService {
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll(events);
 
-        return { model: this.model, events };
+        return { success: true, model: this.model, events };
     }
 
     applyAdapterPattern(
@@ -814,7 +820,7 @@ export class ClassDiagramService {
         this.model = currentModel;
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll(events);
-        return { model: this.model, events: [] };
+        return { success: true, model: this.model, events: [] };
     }
 
     applyTemplatePattern(
@@ -865,7 +871,7 @@ export class ClassDiagramService {
         this.model = currentModel;
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll(events);
-        return { model: this.model, events: [] };
+        return { success: true, model: this.model, events: [] };
 
     }
 
@@ -927,7 +933,7 @@ export class ClassDiagramService {
         this.model = currentModel;
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll(events);
-        return { model: this.model, events: [] };
+        return { success: true, model: this.model, events: [] };
     }
 
     applyObserverPattern(
@@ -1043,7 +1049,7 @@ export class ClassDiagramService {
         this.model = currentModel;
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll(events);
-        return { model: this.model, events: [] };
+        return { success: true, model: this.model, events: [] };
 
     }
 
@@ -1105,7 +1111,7 @@ export class ClassDiagramService {
         this.model = currentModel;
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll(events);
-        return { model: this.model, events: [] };
+        return { success: true, model: this.model, events: [] };
     }
 
     toPasscalName(name: string): string {

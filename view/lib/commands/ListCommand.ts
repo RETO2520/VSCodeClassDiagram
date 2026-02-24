@@ -16,9 +16,9 @@ export class ListCommand extends Command {
         if (!this.subject || this.subject === 'classes') {
             const names = model.getClasses().map(c => c.name).join(', ') || '(no classes)';
             postMessage({ command: 'showAlert', text: `Classes: ${names}` });
-            return { model, events: [] };
+            return { success: true, model, events: [] };
         }
         postMessage({ command: 'showAlert', text: 'Available commands: help, sel, export, import, save, load, clear, list' });
-        return { model, events: [] };
+        return { success: true, model, events: [] };
     }
 }

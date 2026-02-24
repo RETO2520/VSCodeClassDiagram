@@ -22,7 +22,7 @@ export class ApplyStrategyPatternCommand extends Command {
             strategyConcreteClassNames: this.strategyConcreteClassNames
 
         });
-        return { model: newModel, events: modelEvents };
+        return { success: true, model: newModel, events: modelEvents };
     }
     readonly type: CliCommandType = 'APPLY_STRATEGY';
 }

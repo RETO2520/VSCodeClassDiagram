@@ -27,6 +27,7 @@ export class ApplyFactoryPatternCommand extends Command {
         });
 
         return {
+            success: true,
             model: newModel,
             events: modelEvents,
         };

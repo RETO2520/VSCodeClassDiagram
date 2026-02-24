@@ -55,7 +55,7 @@ export class ExportSpecCommand extends Command {
         }
 
         const ev = { type: 'EXPORT_SPEC' };
-        return { model: currentModel, events: [ev] } as any;
+        return { success: true, model: currentModel, events: [] };
     }
 }
 

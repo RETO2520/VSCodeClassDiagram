@@ -19,7 +19,7 @@ export class ApplyFacadePatternCommand extends Command {
             facadeClassName: this.facadeClassName,
             subsystemClassNames: this.subsystemClassNames
         });
-        return { model: newModel, events: modelEvents };
+        return { success: true, model: newModel, events: modelEvents };
     }
     readonly type: CliCommandType = 'APPLY_FACADE';
 }

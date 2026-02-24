@@ -19,13 +19,13 @@ export class GenerateCodeCommand extends Command {
         const allowed = new Set(['csharp', 'java', 'ts', 'rust', 'cpp']);
         if (!this.language) {
             postMessage({ command: 'log', level: 'warn', text: `generate-code requires a language argument` });
-            return { model, events: [] };
+            return { success: false, model, events: [] };
         }
         if (!allowed.has(this.language)) {
             postMessage({ command: 'log', level: 'warn', text: `Language not supported for generate-code: ${this.language}` });
-            return { model, events: [] };
+            return { success: false, model, events: [] };
         }
         postMessage({ command: 'generateCode', payload: { model: modelForExport(model.getClasses()), language: this.language } as any });
-        return { model, events: [] };
+        return { success: true, model, events: [] };
     }
 }

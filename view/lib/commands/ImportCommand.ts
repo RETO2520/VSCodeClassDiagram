@@ -16,6 +16,6 @@ export class ImportCommand extends Command {
 
     execute(model: DomainModel): HandlerResult {
         postMessage({ command: 'loadJson' });
-        return { model, events: [] };
+        return { success: true, model, events: [] };
     }
 }

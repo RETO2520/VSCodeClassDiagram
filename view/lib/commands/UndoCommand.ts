@@ -13,6 +13,6 @@ export class UndoCommand extends Command {
     execute(model: DomainModel): HandlerResult {
         const service = new ClassDiagramService(model);
         const ev = { type: 'MODEL_UNDO' };
-        return { model: service.getModel(), events: [ev] } as any;
+        return { success: true, model: service.getModel(), events: [] };
     }
 }

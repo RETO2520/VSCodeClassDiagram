@@ -2,8 +2,13 @@ import { Command } from "./commands/Command"
 import { DomainEvent, DomainModel } from "./DomainModel"
 
 export interface HandlerResult {
+    readonly success: boolean
+    readonly message?: string
     readonly model: DomainModel
     readonly events: DomainEvent[]
+    readonly payload?: {
+        dsl?: string
+    }
 }
 // export interface CommandHandler<C extends Command = Command> {
 //     readonly commandType: C["type"]

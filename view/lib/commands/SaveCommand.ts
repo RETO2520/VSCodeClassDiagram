@@ -15,6 +15,6 @@ export class SaveCommand extends Command {
 
     execute(model: DomainModel): HandlerResult {
         postMessage({ command: 'saveJson', payload: modelForExport(model.getClasses()) as any });
-        return { model, events: [] };
+        return { success: true, model, events: [] };
     }
 }

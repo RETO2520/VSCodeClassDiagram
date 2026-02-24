@@ -406,7 +406,7 @@ export function App({ service }: { service: ClassDiagramService }) {
             )}
 
             {/* ── CLI コマンドバー ── */}
-            <CommandLine onExecute={handleExecuteCommand} classes={classes} />
+            {/* <CommandLine onExecute={handleExecuteCommand} classes={classes} /> */}
         </div>
     )
 }

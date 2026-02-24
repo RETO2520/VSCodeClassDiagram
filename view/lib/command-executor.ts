@@ -24,7 +24,7 @@ export function parseCommand(input: string): Command | null {
  */
 export function executeCommand(command: Command | null, model: DomainModel): HandlerResult {
     if (!command) {
-        return { model, events: [] };
+        return { success: false, model, events: [] };
     }
 
     postMessage({ command: 'log', level: 'info', text: `Executing command: ${command.type}` });
@@ -33,7 +33,7 @@ export function executeCommand(command: Command | null, model: DomainModel): Han
         return command.execute(model);
     } catch (err) {
         postMessage({ command: 'log', level: 'error', text: `Error executing command: ${String(err)}` });
-        return { model, events: [] };
+        return { success: false, model, events: [] };
     }
 }
 
@@ -41,7 +41,7 @@ export function executeCommand(command: Command | null, model: DomainModel): Han
  * executeCommands - バッチ実行（互換）
  */
 export function executeCommands(commands: Command[] | null, model: DomainModel): HandlerResult {
-    if (!commands || commands.length === 0) return { model, events: [] };
+    if (!commands || commands.length === 0) return { success: false, model, events: [] };
 
     let currentModel = model;
     let currentEvents: any[] = [];
@@ -55,6 +55,7 @@ export function executeCommands(commands: Command[] | null, model: DomainModel):
     }
 
     return {
+        success: true,
         model: currentModel,
         events: currentEvents
     };
@@ -62,6 +63,6 @@ export function executeCommands(commands: Command[] | null, model: DomainModel):
 
 export function executeAction(command: Command | null, model: DomainModel): HandlerResult {
     // 常に HandlerResult を返す（互換性のため空イベントを返す）
-    if (!command) return { model, events: [] };
+    if (!command) return { success: false, model, events: [] };
     return executeCommand(command, model);
 }

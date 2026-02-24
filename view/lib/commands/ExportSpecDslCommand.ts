@@ -69,7 +69,7 @@ export class ExportSpecDslCommand extends Command {
 
 
         const ev = { type: "EXPORT_SPEC_DSL" };
-        return { model: currentModel, events: [ev] } as any;
+        return { success: true, model: currentModel, events: [] };
     }
 }
 

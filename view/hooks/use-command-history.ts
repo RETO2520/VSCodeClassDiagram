@@ -45,7 +45,7 @@ export function useCommandHistory(
         const prevModel = modelRef.current;
 
         // コマンド実行（同期的に結果を取得）
-        const result = executeAction(command, prevModel) as HandlerResult;
+        const result = executeAction(command, prevModel);
 
         // 履歴エントリを作成（スナップショットとして保存）
         const historyEntry: HistoryEntry = {
@@ -102,6 +102,7 @@ export function useCommandHistory(
         modelRef.current = restoredModel;
 
         return {
+            success: true,
             model: restoredModel,
             events: lastEntry.result?.events ?? []
         };

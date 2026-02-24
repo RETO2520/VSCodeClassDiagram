@@ -17,7 +17,7 @@ export class ApplySignletonPatternCommand extends Command {
         const { model: newModel, events: modelEvents } = classDiagramService.applySingletonPattern({
             className: this.className
         });
-        return { model: newModel, events: modelEvents };
+        return { success: true, model: newModel, events: modelEvents };
     }
     readonly type: CliCommandType = 'APPLY_SINGLETON';
 }

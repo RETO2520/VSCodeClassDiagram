@@ -19,7 +19,7 @@ export class ApplyTemplatePatternCommand extends Command {
             abstractClassName: this.abstractClassName,
             concreteNames: this.concreteNames
         });
-        return { model: newModel, events: modelEvents };
+        return { success: true, model: newModel, events: modelEvents };
     }
     readonly type: CliCommandType = 'APPLY_TEMPLATE';
 }

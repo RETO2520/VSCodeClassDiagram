@@ -31,6 +31,9 @@ import type { DslLintWarning } from '@/lib/DslLinter'
 import { DomainModel } from '@/lib/DomainModel'
 import type { ClassInfo, ClassOperation } from '@/lib/class-diagram-types'
 import { postMessage } from '../../frontend/src/bridge/vscode-bridge';
+import { CommandLine } from './command-line';
+import { cn } from '@/lib/utils'
+import { CliParser } from '@/lib/CliParser';
 
 // VSCode WebView 環境では acquireVsCodeApi 経由で postMessage を使う。
 // ブラウザ環境ではフォールバックとして <a download> でファイル保存する。
@@ -688,6 +691,9 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
     const [showPreview, setShowPreview] = useState(false)
     const [markdownText, setMarkdownText] = useState('')
 
+    // コマンドパレット用
+    const [isCmdOpen, setIsCmdOpen] = useState(false);
+
     // ── DSL → クラス図 適用 ──────────────────────────────────
     const applyDsl = useCallback((dsl: string) => {
         try {
@@ -788,6 +794,59 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
         }
     }, [classes, service, monaco])
 
+    // コマンドラインを閉じるときは、逆にエディタにフォーカスを戻すと親切です
+    const handleClose = useCallback(() => {
+        setIsCmdOpen(false);
+        // エディタにフォーカスを戻す
+        editorRef.current?.focus();
+    }, []);
+    // コマンド実行時のハンドラ
+    const handleCommandExecute = useCallback((cmd: string) => {
+        // ここで command-line の命令を DSL に変換するか、直接 service を叩くロジックを入れます
+        postMessage({ command: 'log', level: 'debug', text: 'Execute command: ' + cmd });
+        const parser = new CliParser();
+        const command = parser.parse(cmd);
+        if (!command) {
+            postMessage({ command: 'log', level: 'error', text: 'Invalid command: ' + cmd });
+            return;
+        }
+        const result = command.execute(service.getModel());
+
+        if (result.success && result.payload?.dsl) {
+            const newDsl = result.payload.dsl;
+
+            // Monaco エディタの内容を置き換え
+            // pushUndoStop + executeEdits を使うと Ctrl+Z で元に戻せる
+            const editor = editorRef.current;
+            if (editor) {
+                const model = editor.getModel();
+                if (model) {
+                    editor.pushUndoStop();
+                    editor.executeEdits('spec-sync', [{
+                        range: model.getFullModelRange(),   // 全体を選択範囲として
+                        text: newDsl,
+                        forceMoveMarkers: true,
+                    }]);
+                    editor.pushUndoStop();
+                }
+            }
+
+            // クラス図・アウトライン・Markdownプレビューを再描画
+            applyDsl(newDsl);
+        }
+        // 4. ステータスバーにメッセージを表示
+        if (result.message) {
+            setStatus(s => ({
+                ...s,
+                state: result.success ? 'ok' : 'error',
+                errors: result.success ? [] : [result.message!],
+            }));
+        }
+
+        //postMessage({ command: 'log', level: 'debug', text: 'DSL: ' + dsl });
+        setIsCmdOpen(false);
+    }, []);
+    const [cmdPosition, setCmdPosition] = useState<{ top: number; left: number } | null>(null);
     // ── Monaco マウント時 ─────────────────────────────────────
     const handleMount: OnMount = useCallback((editor, monacoInstance) => {
         editorRef.current = editor
@@ -816,6 +875,43 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
             }
 
         })
+
+        // 例: ":" キーでコマンドラインを開く
+        editor.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyMod.Shift | monacoInstance.KeyCode.Semicolon, () => {
+            // ここで直接状態を更新
+            // setIsCmdOpen(true) がスコープ内にあることを確認
+            setIsCmdOpen(true);
+        });
+        // "Escape" で閉じるアクションも追加 (コマンドラインが開いている時用)
+        editor.addCommand(monacoInstance.KeyCode.Escape, () => {
+            // コマンドラインが開いている場合のみ閉じる
+            setIsCmdOpen(prev => {
+                if (prev) return false;
+                return prev;
+            });
+        });
+
+        editor.addAction({
+            id: 'open-command-line',
+            label: 'Open Command Line',
+            keybindings: [monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyMod.Shift | monacoInstance.KeyCode.Semicolon],
+            run: (ed) => {
+                const cursor = ed.getPosition();
+                if (cursor) {
+                    // カーソルのピクセル位置を取得
+                    const pixelCoords = ed.getScrolledVisiblePosition(cursor);
+                    if (pixelCoords) {
+                        // エディタのコンテナに対する相対位置を計算
+                        // lineHeight (20px) 分だけ下にずらして、次行に表示されるようにする
+                        setCmdPosition({
+                            top: pixelCoords.top + 22,
+                            left: pixelCoords.left
+                        });
+                        setIsCmdOpen(true);
+                    }
+                }
+            }
+        });
 
         // 初回パース
         applyDsl(editor.getValue())
@@ -1040,7 +1136,7 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
                 <Outline items={outline} onSelect={handleOutlineSelect} />
 
                 {/* @monaco-editor/react の Editor コンポーネント */}
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="relative flex-1 flex flex-col min-w-0" style={{ flex: 1, minWidth: 0 }}>
                     <Editor
                         defaultValue={INITIAL_DSL}
                         language={DSL_LANGUAGE_ID}
@@ -1069,6 +1165,40 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
                             lineNumbers: 'on',
                         }}
                     />
+                    {/* ── Floating CommandLine Overlay ── */}
+                    {isCmdOpen && (
+                        <div className="absolute inset-0 z-50 overflow-visible">
+                            {/* 背景クリックで閉じる */}
+                            <div className="absolute inset-0" onClick={() => setIsCmdOpen(false)} />
+
+                            {/* コマンドライン本体 */}
+                            <div className={cn(
+                                "absolute pointer-events-auto z-60 w-[400px]",
+                                // アニメーションクラス
+                                "animate-in fade-in zoom-in-95 duration-150 ease-out"
+                            )}
+                                style={{
+                                    top: cmdPosition?.top,
+                                    left: cmdPosition?.left,
+                                    width: '400px', // インラインなので少し幅を狭める
+                                }}>
+                                {/* ここにCommandLine を配置 */}
+                                <CommandLine
+                                    classes={classes || []}
+                                    onExecute={(cmd) => {
+                                        handleCommandExecute(cmd);
+                                        setIsCmdOpen(false);
+                                        editorRef.current?.focus();
+                                    }}
+                                    onClose={() => {
+                                        setIsCmdOpen(false);
+                                        editorRef.current?.focus();
+                                    }}
+                                />
+                            </div>
+
+                        </div>
+                    )}
                 </div>
 
                 {/* ── Markdown Preview Pane ── */}
@@ -1077,8 +1207,16 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
                 )}
             </div>
 
+
             {/* ── StatusBar ── */}
             <StatusBar status={status} cursor={cursor} charCount={charCount} />
+            {/* 簡易アニメーション */}
+            <style>{`
+                @keyframes slideDown {
+                    from { opacity: 0; transform: translate(-50%, -10px); }
+                    to { opacity: 1; transform: translate(-50%, 0); }
+                }
+            `}</style>
         </div>
     )
 }

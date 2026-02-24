@@ -22,7 +22,7 @@ export class RelationCommand extends Command {
 
     execute(model: DomainModel): HandlerResult {
         const classDiagramService = new ClassDiagramService(model);
-        let result: HandlerResult = { model, events: [] };
+        let result: HandlerResult = { success: false, model, events: [] };
 
         // 1. Logical Synchronization (DomainModel)
         switch (this.symbol) {

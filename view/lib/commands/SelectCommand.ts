@@ -15,6 +15,6 @@ export class SelectCommand extends Command {
     execute(model: DomainModel): HandlerResult {
         postMessage({ command: 'log', level: 'info', text: `Select request: ${this.className}` });
         const ev = { type: 'UI_SELECT', payload: { className: this.className } };
-        return { model, events: [ev] } as any;
+        return { success: true, model, events: [ev] } as any;
     }
 }

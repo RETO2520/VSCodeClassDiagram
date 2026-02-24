@@ -52,7 +52,7 @@ export class ImportSpecDslCommand extends Command {
 
 
         const ev = { type: "IMPORT_SPEC_DSL" };
-        return { model: model, events: [ev] } as any;
+        return { success: true, model: model, events: [] };
     }
 }
 

@@ -14,6 +14,6 @@ export class ClearCommand extends Command {
         const service = new ClassDiagramService(model);
         service.replaceClassesFromArray([] as any);
         const ev = { type: 'MODEL_REPLACED', payload: { classes: [] } };
-        return { model: service.getModel(), events: [ev] } as any;
+        return { success: true, model: service.getModel(), events: [ev] };
     }
 }

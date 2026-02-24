@@ -13,6 +13,6 @@ export class HelpCommand extends Command {
     execute(model: DomainModel): HandlerResult {
         const helpText = 'Commands: c/ac/i/s/e, a, m, p, base, impl, ren, del, sel, generate-code, import, save, load, clear, list';
         postMessage({ command: 'showAlert', text: helpText });
-        return { model, events: [] };
+        return { success: true, model, events: [] };
     }
 }
