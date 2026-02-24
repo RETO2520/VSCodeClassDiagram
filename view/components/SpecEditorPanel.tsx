@@ -23,6 +23,10 @@ import React, { useRef, useState, useCallback, useEffect } from 'react'
 import Editor, { useMonaco, OnMount, OnChange } from '@monaco-editor/react'
 import type { ClassDiagramService } from '@/lib/application/ClassDiagramService'
 import { SpecDslParser } from '@/lib/SpecDslParser'
+import { lintWorkflow } from '@/lib/WorkflowLinter'
+import type { LintWarning } from '@/lib/WorkflowLinter'
+import { lintDsl } from '@/lib/DslLinter'
+import type { DslLintWarning } from '@/lib/DslLinter'
 import { DomainModel } from '@/lib/DomainModel'
 import type { ClassInfo, ClassOperation } from '@/lib/class-diagram-types'
 
@@ -181,6 +185,8 @@ function registerDslLanguage(monaco: typeof Monaco) {
 interface ParseStatus {
     state: 'idle' | 'parsing' | 'ok' | 'error'
     errors: string[]
+    warnings: LintWarning[]
+    dslWarnings: DslLintWarning[]
     classCount: number
     lastApplied: Date | null
 }
@@ -289,7 +295,14 @@ function StatusBar({ status, cursor, charCount }: {
     cursor: CursorPos
     charCount: number
 }) {
-    const stateColor = { idle: '#475569', parsing: '#fbbf24', ok: '#4ade80', error: '#f87171' }[status.state]
+    const warnCount = status.warnings?.length ?? 0
+    const dslWarnCount = status.dslWarnings?.length ?? 0
+    const totalWarn = warnCount + dslWarnCount
+    // 警告があっても state は 'ok' のまま。色はアンバー
+    const stateColor = status.state === 'error' ? '#f87171'
+        : status.state === 'ok' && totalWarn > 0 ? '#fbbf24'
+            : { idle: '#475569', parsing: '#fbbf24', ok: '#4ade80' }[status.state]
+
     const stateLabel = {
         idle: '待機中',
         parsing: '解析中…',
@@ -302,6 +315,13 @@ function StatusBar({ status, cursor, charCount }: {
         : '—'
 
     const SEP = <span style={{ color: '#1e293b', margin: '0 2px' }}>│</span>
+
+    // 警告の詳細テキスト（ホバーで全件表示）
+    const warnTooltip = status.warnings?.map((w, i) => {
+        const lines = [`${i + 1}. ${w.message}`]
+        if (w.suggestedOrder) lines.push(`   推奨順序: ${w.suggestedOrder.join(' → ')}`)
+        return lines.join('\n')
+    }).join('\n\n') ?? ''
 
     return (
         <div style={{
@@ -317,6 +337,34 @@ function StatusBar({ status, cursor, charCount }: {
                 <span style={{ color: '#ef4444', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                     title={status.errors.join('\n')}>
                     {status.errors[0]}
+                </span>
+            </>}
+
+            {warnCount > 0 && <>
+                {SEP}
+                <span
+                    title={warnTooltip}
+                    style={{
+                        color: '#fbbf24', cursor: 'help',
+                        maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                    ⚠ {warnCount} 件の順序警告 — {status.warnings[0].message}
+                </span>
+            </>}
+
+            {dslWarnCount > 0 && <>
+                {SEP}
+                <span
+                    title={status.dslWarnings.map((w, i) => {
+                        const lines = [`${i + 1}. ${w.message}`]
+                        if (w.cycle) lines.push(`   サイクル: ${w.cycle.join(' → ')}`)
+                        return lines.join('\n')
+                    }).join('\n\n')}
+                    style={{
+                        color: '#f87171', cursor: 'help',
+                        maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                    ✗ {dslWarnCount} 件の構造エラー — {status.dslWarnings[0].message}
                 </span>
             </>}
 
@@ -402,7 +450,7 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const parserRef = useRef(new SpecDslParser())
 
-    const [status, setStatus] = useState<ParseStatus>({ state: 'idle', errors: [], classCount: 0, lastApplied: null })
+    const [status, setStatus] = useState<ParseStatus>({ state: 'idle', errors: [], warnings: [], dslWarnings: [], classCount: 0, lastApplied: null })
     const [outline, setOutline] = useState<OutlineItem[]>([])
     const [cursor, setCursor] = useState<CursorPos>({ line: 1, col: 1 })
     const [charCount, setCharCount] = useState(INITIAL_DSL.length)
@@ -470,7 +518,21 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
                 monaco.editor.setModelMarkers(editorRef.current.getModel()!, 'dsl-parser', [])
             }
 
-            setStatus({ state: 'ok', errors: [], classCount: parsed.classes.length, lastApplied: new Date() })
+            // 6. シナリオ順序の静的解析（lintWorkflow）
+            const allWarnings: LintWarning[] = []
+            for (const cls of service.getModel().getClasses()) {
+                for (const op of cls.operations) {
+                    if (op.workflow && op.workflow.nodes.length > 0) {
+                        const opLabel = `${cls.name}.${op.name}()`
+                        allWarnings.push(...lintWorkflow(op.workflow as any, opLabel))
+                    }
+                }
+            }
+
+            // 7. DSL構造の静的解析（lintDsl）
+            const dslWarnings = lintDsl(parsed.classes)
+
+            setStatus({ state: 'ok', errors: [], warnings: allWarnings, dslWarnings, classCount: parsed.classes.length, lastApplied: new Date() })
         } catch (err: any) {
             const msg = err?.message ?? String(err)
 
@@ -484,7 +546,7 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
                 }])
             }
 
-            setStatus({ state: 'error', errors: [msg], classCount: 0, lastApplied: null })
+            setStatus({ state: 'error', errors: [msg], warnings: [], dslWarnings: [], classCount: 0, lastApplied: null })
         }
     }, [classes, service, monaco])
 

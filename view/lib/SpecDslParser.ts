@@ -336,11 +336,21 @@ export class SpecDslParser {
     // ============================================================
 
     private matchClassDecl(line: string): ParsedClass | null {
-        // abstract class Foo / class Foo / interface Foo / struct Foo
+        // 対応書式（1行記法・複数行記法どちらも可）:
+        //   class Foo
+        //   abstract class Foo
+        //   class Foo extends Bar
+        //   class Foo implements IBar, IBaz
+        //   class Foo extends Bar implements IBar, IBaz
+        //   interface Foo / struct Foo（同様）
         const m = line.match(
-            /^(abstract\s+)?(class|interface|struct)\s+(\w+)$/
+            /^(abstract\s+)?(class|interface|struct)\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w,\s]+))?$/
         );
         if (!m) return null;
+
+        const implementsNames = m[5]
+            ? m[5].split(',').map(s => s.trim()).filter(Boolean)
+            : [];
 
         return {
             name: m[3],
@@ -348,8 +358,8 @@ export class SpecDslParser {
             isAbstract: !!m[1],
             members: [],
             operations: [],
-            extendsName: null,
-            implementsNames: [],
+            extendsName: m[4] ?? null,
+            implementsNames,
         };
     }
 
