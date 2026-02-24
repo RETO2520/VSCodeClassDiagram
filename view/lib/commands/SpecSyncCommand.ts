@@ -22,14 +22,16 @@ export class SpecSyncCommand extends Command {
         //    - この処理は、クラス図エディタの機能として提供される
         //    - 詳細は、クラス図エディタのドキュメントを参照する
         const dslText = model.toDSL();
-        const result: HandlerResult = {
+        if (!dslText) {
+            return { success: false, message: 'DSLがありません', model, events: [] };
+        }
+
+        return {
             success: true,
             message: `${model.getClasses().length} クラスをDSLに同期しました`,
             model,
             payload: { dsl: dslText },
             events: []
         };
-
-        return result;
     }
 }
