@@ -51,6 +51,7 @@ export class ClassDiagramService {
     /** Replace internal model (rare) */
     setModel(model: DomainModel): void {
         this.model = model
+        this.notifyModelChanged();
     }
 
     /**

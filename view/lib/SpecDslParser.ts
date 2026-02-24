@@ -495,8 +495,8 @@ export class SpecDslParser {
         const nodes: NonNullable<ClassOperation['workflow']>['nodes'] = [];
         const edges: NonNullable<ClassOperation['workflow']>['edges'] = [];
 
-        const STEP_Y = 80;
-        let currentY = 60;
+        const STEP_Y = 100;
+        let currentY = 50;
         let currentX = 200;
         const SCENARIO_WIDTH = 250;
         let lastNodeId: string | null = null;
@@ -547,7 +547,7 @@ export class SpecDslParser {
                 currentScenarioName = parsed.name;
                 currentSrcs = parsed.srcs;
                 lastNodeId = startId;
-                currentY = 140;
+                currentY = 150;
                 currentX += SCENARIO_WIDTH;
                 i++;
                 continue;

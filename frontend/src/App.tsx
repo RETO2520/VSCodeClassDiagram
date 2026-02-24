@@ -367,6 +367,39 @@ export function App({ service }: { service: ClassDiagramService }) {
                             service={service}
                             classes={classes}
                             visible={specPaneOpen}
+                            onCursorContext={ctx => {
+                                if (!ctx.className) return
+                                const model = service.getModel()
+                                const cls = model.findClassByName(ctx.className)
+                                if (!cls) return
+
+                                if (ctx.operationName) {
+                                    // メソッドブロック内 → ワークフロー図に切り替え
+                                    // classes state は commandHistory 経由の更新のみ追従しており、
+                                    // SpecEditorPanel が直接 service を書き換えたケースでは空になる。
+                                    // そのため classIndex / opIndex の解決も含め service の最新モデルを使う。
+                                    const allClasses = model.getClasses()
+                                    const op = cls.operations.find(o => o.name === ctx.operationName)
+                                    if (!op) return
+
+                                    const classIndex = allClasses.findIndex(c => c.id === cls.id)
+                                    const opIndex = cls.operations.findIndex(o => o.id === op.id)
+                                    if (classIndex < 0 || opIndex < 0) return
+
+                                    setActiveOpRef({
+                                        classIndex,
+                                        opIndex,
+                                        classId: cls.id,
+                                        operationId: op.id,
+                                        label: `${cls.name}.${op.name}()`,
+                                    })
+                                    setEditorMode('workflow')
+                                } else {
+                                    // クラスブロック内（メソッド外）→ クラス図に切り替えて対象クラスを選択
+                                    setSelectedId(cls.id)
+                                    setEditorMode('class-diagram')
+                                }
+                            }}
                         />
                     </div>
                 </>

@@ -14,13 +14,13 @@
  *   - 中央: Monaco エディタ本体
  *   - 下端: ステータスバー（カーソル位置 / エラー数 / 最終適用時刻）
  */
+
+import React, { useRef, useState, useCallback, useEffect } from 'react'
+import Editor, { useMonaco, OnMount, OnChange } from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
 import * as monaco from 'monaco-editor';
 import { loader } from '@monaco-editor/react';
 loader.config({ monaco });
-
-import React, { useRef, useState, useCallback, useEffect } from 'react'
-import Editor, { useMonaco, OnMount, OnChange } from '@monaco-editor/react'
 import type { ClassDiagramService } from '@/lib/application/ClassDiagramService'
 import { SpecDslParser } from '@/lib/SpecDslParser'
 import { generateMarkdownFromClasses } from '@/lib/MarkdownGenerator'
@@ -32,6 +32,17 @@ import { DomainModel } from '@/lib/DomainModel'
 import type { ClassInfo, ClassOperation } from '@/lib/class-diagram-types'
 import { postMessage } from '../../frontend/src/bridge/vscode-bridge';
 
+// VSCode WebView 環境では acquireVsCodeApi 経由で postMessage を使う。
+// ブラウザ環境ではフォールバックとして <a download> でファイル保存する。
+function sendToHost(msg: object) {
+    try {
+        // @ts-ignore
+        if (typeof acquireVsCodeApi !== 'undefined') {
+            // @ts-ignore
+            acquireVsCodeApi().postMessage(msg)
+        }
+    } catch { /* ブラウザ環境ではスルー */ }
+}
 
 // ============================================================
 // DSL 言語定義
@@ -191,17 +202,70 @@ interface OutlineItem {
     line: number
 }
 
+// ============================================================
+// resolveContext
+//
+// DSL文字列とカーソル行番号から、カーソルが属する
+// クラス名・メソッド名を特定する純粋関数。
+//
+// 走査ルール:
+//   - "class/interface/struct Foo ..." 行 → className を更新
+//   - "+/- methodName(...)" 行          → operationName を更新
+//   - 新しいクラス宣言が来たら operationName をリセット
+//   - カーソル行以降の走査は不要なので targetLine で打ち切る
+// ============================================================
+
+const CLASS_DECL_RE = /^(?:abstract\s+)?(?:class|interface|struct)\s+(\w+)/
+const OPERATION_RE = /^[+\-#~]\s*(?:s|a\s+)?(\w+)\s*\(/
+
+function resolveContext(dsl: string, targetLine: number): CursorContext {
+    const lines = dsl.split("\n").map(l => l.trimEnd());
+    let className: string | null = null
+    let operationName: string | null = null
+
+    for (let i = 0; i < Math.min(targetLine, lines.length); i++) {
+        const trimmed = lines[i].trim()
+
+        const classM = trimmed.match(CLASS_DECL_RE)
+        if (classM) {
+            className = classM[1]
+            operationName = null   // クラスが変わったらメソッドコンテキストをリセット
+            continue
+        }
+
+        const opM = trimmed.match(OPERATION_RE)
+        if (opM && className) {
+            operationName = opM[1]
+        }
+    }
+
+    return { className, operationName }
+}
+
 interface CursorPos { line: number; col: number }
 
 // ============================================================
 // Props
 // ============================================================
 
+/** カーソル位置から特定したコンテキスト */
+export interface CursorContext {
+    /** カーソルが属するクラス名（クラス外なら null） */
+    className: string | null
+    /** カーソルが属するメソッド名（メソッドブロック外なら null） */
+    operationName: string | null
+}
+
 export interface SpecEditorPanelProps {
     service: ClassDiagramService
     /** ワークフローデータ引き継ぎ用・読み取り専用 */
     classes: ClassInfo[]
     visible: boolean
+    /**
+     * カーソル移動時にコンテキストが変わったら呼ばれる。
+     * 親はこれを受けてクラス図 / ワークフロー図を切り替える。
+     */
+    onCursorContext?: (ctx: CursorContext) => void
 }
 
 // ============================================================
@@ -282,68 +346,116 @@ function Outline({ items, onSelect }: {
 // ============================================================
 
 /** markdown文字列をHTMLに変換する最小実装（外部ライブラリ不要） */
-function mdToHtml(md: string): string {
-    let html = md
-        // エスケープ
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        // 見出し
-        .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
-        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-        // 水平線
-        .replace(/^---$/gm, '<hr/>')
-        // 引用
-        .replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
-        // 太字・イタリック・コード（インライン）
+/** インライン装飾（太字・イタリック・コード・リンク）を変換 */
+function inlineHtml(text: string): string {
+    return text
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
         .replace(/_\((.+?)\)_/g, '<em>($1)</em>')
         .replace(/`([^`]+)`/g, '<code>$1</code>')
-        // Markdownリンク
         .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-        // テーブル（ヘッダ行 + 区切り行 + データ行）
-        .replace(/^(\|.+\|\r?\n)+/gm, (block) => { // gmフラグで複数行を対象に
-            const rows = block.trim().split('\n');
-            if (rows.length < 2) return block;
+}
 
-            const isSep = (r: string) => /^\|[\s\-|:]+\|$/.test(r.trim());
+/** テーブル行かどうか */
+function isTableRow(line: string): boolean {
+    return line.trimStart().startsWith('|') && line.trimEnd().endsWith('|')
+}
 
-            let out = '<table>';
-            let hasThead = false;
+/** 区切り行（|---|---| など）かどうか */
+function isSepRow(line: string): boolean {
+    return /^\|[\s\-|:]+\|$/.test(line.trim())
+}
 
-            rows.forEach((row, i) => {
-                if (isSep(row)) {
-                    // セパレータ行自体はHTMLに出力しない
-                    return;
-                }
+/** テーブルブロック（行配列）→ HTML */
+function renderTable(rows: string[]): string {
+    let out = '<table><thead>'
+    let inBody = false
+    for (const row of rows) {
+        if (isSepRow(row)) {
+            out += '</thead><tbody>'
+            inBody = true
+            continue
+        }
+        const tag = inBody ? 'td' : 'th'
+        const cells = row.split('|').slice(1, -1).map(c => inlineHtml(c.trim()))
+        out += '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>'
+    }
+    out += inBody ? '</tbody></table>' : '</thead></table>'
+    return out
+}
 
-                // 2行目がセパレータなら、1行目はthead（th）として扱う
-                const isHeader = (i === 0 && isSep(rows[1]));
-                const tag = isHeader ? 'th' : 'td';
+function mdToHtml(md: string): string {
+    // まず & < > をエスケープ
+    const escaped = md
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
 
-                if (isHeader && !hasThead) {
-                    out += '<thead>';
-                    hasThead = true;
-                } else if (i === 2 && hasThead) { // セパレータの次の行
-                    out += '</thead><tbody>';
-                }
+    const lines = escaped.split('\n')
+    const output: string[] = []
+    let tableBuffer: string[] = []
+    let listBuffer: string[] = []
 
-                const cells = row.split('|').filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
-                out += '<tr>' + cells.map(c => `<${tag}>${c.trim()}</${tag}>`).join('') + '</tr>';
-            });
+    const flushTable = () => {
+        if (tableBuffer.length > 0) {
+            output.push(renderTable(tableBuffer))
+            tableBuffer = []
+        }
+    }
+    const flushList = () => {
+        if (listBuffer.length > 0) {
+            output.push('<ul>' + listBuffer.join('') + '</ul>')
+            listBuffer = []
+        }
+    }
 
-            out += hasThead ? '</tbody></table>' : '</table>';
-            return out;
-        })
-        // リスト項目
-        .replace(/^- (.+)$/gm, '<li>$1</li>')
-        .replace(/(<li>.*<\/li>?) + /g, m => `<ul>${m}</ul > `)
-        // 段落（連続する非HTMLタグ行）
-        .replace(/^(?!<)(.+)$/gm, '<p>$1</p>')
-        // 空の <p></p> 除去
-        .replace(/<p><\/p>/g, '')
+    for (const raw of lines) {
+        const line = raw
 
-    return html
+        // ── テーブル行の蓄積 ──
+        if (isTableRow(line)) {
+            flushList()
+            tableBuffer.push(line)
+            continue
+        }
+        flushTable()
+
+        // ── リスト項目 ──
+        const liM = line.match(/^- (.+)$/)
+        if (liM) {
+            output.length > 0 && output[output.length - 1] !== '' && flushList()
+            listBuffer.push(`<li>${inlineHtml(liM[1])}</li>`)
+            continue
+        }
+        flushList()
+
+        // ── 見出し ──
+        const h4 = line.match(/^#### (.+)$/)
+        if (h4) { output.push(`<h4>${inlineHtml(h4[1])}</h4>`); continue }
+        const h3 = line.match(/^### (.+)$/)
+        if (h3) { output.push(`<h3>${inlineHtml(h3[1])}</h3>`); continue }
+        const h2 = line.match(/^## (.+)$/)
+        if (h2) { output.push(`<h2>${inlineHtml(h2[1])}</h2>`); continue }
+        const h1 = line.match(/^# (.+)$/)
+        if (h1) { output.push(`<h1>${inlineHtml(h1[1])}</h1>`); continue }
+
+        // ── 水平線 ──
+        if (line.trim() === '---') { output.push('<hr/>'); continue }
+
+        // ── 引用 ──
+        const bq = line.match(/^&gt; (.+)$/)
+        if (bq) { output.push(`<blockquote>${inlineHtml(bq[1])}</blockquote>`); continue }
+
+        // ── 空行 ──
+        if (line.trim() === '') { output.push(''); continue }
+
+        // ── 通常テキスト → 段落 ──
+        output.push(`<p>${inlineHtml(line)}</p>`)
+    }
+
+    flushTable()
+    flushList()
+
+    return output.join('\n')
 }
 
 function MarkdownViewer({ markdown }: { markdown: string }) {
@@ -384,23 +496,23 @@ function MarkdownViewer({ markdown }: { markdown: string }) {
 
             {/* インラインCSS */}
             <style>{`
-                .md - viewer h1 { color: #f1f5f9; font - size: 18px; border - bottom: 1px solid #1e293b; padding - bottom: 4px; margin: 16px 0 8px; }
-        .md - viewer h2 { color: #e2e8f0; font - size: 15px; border - bottom: 1px solid #1e293b; padding - bottom: 2px; margin: 14px 0 6px; }
-        .md - viewer h3 { color: #cbd5e1; font - size: 13px; margin: 12px 0 4px; }
-        .md - viewer h4 { color: #94a3b8; font - size: 12px; margin: 8px 0 4px; }
-        .md - viewer table { border - collapse: collapse; width: 100 %; font - size: 11px; margin: 6px 0; }
-        .md - viewer th, .md - viewer td { border: 1px solid #1e293b; padding: 3px 8px; text - align: left; }
-        .md - viewer th { background: #0f172a; color: #94a3b8; }
-        .md - viewer code { background: #1e293b; padding: 1px 4px; border - radius: 3px; font - family: "Cascadia Code", monospace; font - size: 11px; color: #7dd3fc; }
-        .md - viewer a { color: #60a5fa; text - decoration: none; }
-        .md - viewer a:hover { text - decoration: underline; }
-        .md - viewer blockquote { border - left: 3px solid #334155; margin: 0; padding: 2px 8px; color: #64748b; }
-        .md - viewer hr { border: none; border - top: 1px solid #1e293b; margin: 8px 0; }
-        .md - viewer ul { padding - left: 16px; margin: 4px 0; }
-        .md - viewer li { margin: 2px 0; }
-        .md - viewer p { margin: 4px 0; }
-        .md - viewer strong { color: #e2e8f0; }
-    `}</style>
+        .md-viewer h1 { color: #f1f5f9; font-size: 18px; border-bottom: 1px solid #1e293b; padding-bottom: 4px; margin: 16px 0 8px; }
+        .md-viewer h2 { color: #e2e8f0; font-size: 15px; border-bottom: 1px solid #1e293b; padding-bottom: 2px; margin: 14px 0 6px; }
+        .md-viewer h3 { color: #cbd5e1; font-size: 13px; margin: 12px 0 4px; }
+        .md-viewer h4 { color: #94a3b8; font-size: 12px; margin: 8px 0 4px; }
+        .md-viewer table { border-collapse: collapse; width: 100%; font-size: 11px; margin: 6px 0; }
+        .md-viewer th, .md-viewer td { border: 1px solid #1e293b; padding: 3px 8px; text-align: left; }
+        .md-viewer th { background: #0f172a; color: #94a3b8; }
+        .md-viewer code { background: #1e293b; padding: 1px 4px; border-radius: 3px; font-family: "Cascadia Code",monospace; font-size: 11px; color: #7dd3fc; }
+        .md-viewer a { color: #60a5fa; text-decoration: none; }
+        .md-viewer a:hover { text-decoration: underline; }
+        .md-viewer blockquote { border-left: 3px solid #334155; margin: 0; padding: 2px 8px; color: #64748b; }
+        .md-viewer hr { border: none; border-top: 1px solid #1e293b; margin: 8px 0; }
+        .md-viewer ul { padding-left: 16px; margin: 4px 0; }
+        .md-viewer li { margin: 2px 0; }
+        .md-viewer p { margin: 4px 0; }
+        .md-viewer strong { color: #e2e8f0; }
+      `}</style>
         </div>
     )
 }
@@ -425,7 +537,7 @@ function StatusBar({ status, cursor, charCount }: {
     const stateLabel = {
         idle: '待機中',
         parsing: '解析中…',
-        ok: `✓ 適用済み(${status.classCount} クラス)`,
+        ok: `✓ 適用済み (${status.classCount} クラス)`,
         error: `✗ ${status.errors.length} エラー`,
     }[status.state]
 
@@ -437,8 +549,8 @@ function StatusBar({ status, cursor, charCount }: {
 
     // 警告の詳細テキスト（ホバーで全件表示）
     const warnTooltip = status.warnings?.map((w, i) => {
-        const lines = [`${i + 1}. ${w.message} `]
-        if (w.suggestedOrder) lines.push(`   推奨順序: ${w.suggestedOrder.join(' → ')} `)
+        const lines = [`${i + 1}. ${w.message}`]
+        if (w.suggestedOrder) lines.push(`   推奨順序: ${w.suggestedOrder.join(' → ')}`)
         return lines.join('\n')
     }).join('\n\n') ?? ''
 
@@ -475,8 +587,8 @@ function StatusBar({ status, cursor, charCount }: {
                 {SEP}
                 <span
                     title={status.dslWarnings.map((w, i) => {
-                        const lines = [`${i + 1}. ${w.message} `]
-                        if (w.cycle) lines.push(`   サイクル: ${w.cycle.join(' → ')} `)
+                        const lines = [`${i + 1}. ${w.message}`]
+                        if (w.cycle) lines.push(`   サイクル: ${w.cycle.join(' → ')}`)
                         return lines.join('\n')
                     }).join('\n\n')}
                     style={{
@@ -512,12 +624,12 @@ function ToolbarBtn({ onClick, title, accent = '#94a3b8', children }: {
         <button onClick={onClick} title={title}
             style={{
                 height: 22, padding: '0 8px', borderRadius: 3,
-                border: `1px solid ${accent} 30`, color: accent,
-                background: `${accent} 12`, fontSize: 10,
+                border: `1px solid ${accent}30`, color: accent,
+                background: `${accent}12`, fontSize: 10,
                 cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s',
             }}
-            onMouseEnter={e => (e.currentTarget.style.background = `${accent} 28`)}
-            onMouseLeave={e => (e.currentTarget.style.background = `${accent} 12`)}
+            onMouseEnter={e => (e.currentTarget.style.background = `${accent}28`)}
+            onMouseLeave={e => (e.currentTarget.style.background = `${accent}12`)}
         >
             {children}
         </button>
@@ -530,38 +642,37 @@ function ToolbarBtn({ onClick, title, accent = '#94a3b8', children }: {
 
 const DEBOUNCE_MS = 600
 
-const INITIAL_DSL = `
-// クラス仕様書 DSL
+const INITIAL_DSL = `// クラス仕様書 DSL
 // 書き込むとリアルタイムでクラス図に反映されます
 
 class Order
-    extends Entity
-    implements IAggregate
-    - id: string
-    - items: OrderItem[]
-    - status: OrderStatus
-    + getTotal(): number
-    + confirm(): void
-    + cancel(): void
+  extends Entity
+  implements IAggregate
+  - id: string
+  - items: OrderItem[]
+  - status: OrderStatus
+  + getTotal(): number
+  + confirm(): void
+  + cancel(): void
 
 class OrderItem
-    - productId: string
-    - quantity: int
-    - unitPrice: number
-    + getSubtotal(): number
+  - productId: string
+  - quantity: int
+  - unitPrice: number
+  + getSubtotal(): number
 
 interface IAggregate
-    + getId(): string
+  + getId(): string
 
 abstract class Entity
-    # id: string
-    + getId(): string
+  # id: string
+  + a getId(): string
 
 // リレーション
 Order *> OrderItem :items 1 *
 `
 
-export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelProps) {
+export function SpecEditorPanel({ service, classes, visible, onCursorContext }: SpecEditorPanelProps) {
     // @monaco-editor/react が用意する monaco インスタンス
     const monaco = useMonaco()
 
@@ -631,7 +742,7 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
                 memberCount: cls.members.length,
                 operationCount: cls.operations.length,
                 line: (lines.findIndex(l =>
-                    new RegExp(`(abstract\\s +) ? (class| interface | struct) \\s + ${cls.name} \\b`).test(l)
+                    new RegExp(`(abstract\\s+)?(class|interface|struct)\\s+${cls.name}\\b`).test(l)
                 ) + 1) || 1,
             })))
 
@@ -645,7 +756,7 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
             for (const cls of service.getModel().getClasses()) {
                 for (const op of cls.operations) {
                     if (op.workflow && op.workflow.nodes.length > 0) {
-                        const opLabel = `${cls.name}.${op.name} ()`
+                        const opLabel = `${cls.name}.${op.name}()`
                         allWarnings.push(...lintWorkflow(op.workflow as any, opLabel))
                     }
                 }
@@ -684,9 +795,26 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
         // 言語・テーマ登録（useMonaco より確実なタイミング）
         registerDslLanguage(monacoInstance)
 
-        // カーソル位置
+        // カーソル位置 + コンテキスト解決
+        let lastCtxKey = ''  // 前回のコンテキストと同じなら通知しない
         editor.onDidChangeCursorPosition(e => {
-            setCursor({ line: e.position.lineNumber, col: e.position.column })
+            const lineNumber = e.position.lineNumber
+            setCursor({ line: lineNumber, col: e.position.column })
+            postMessage({ command: 'log', level: 'debug', text: 'Cursor position: ' + lineNumber });
+            if (onCursorContext) {
+                const dsl = editor.getValue()
+                const ctx = resolveContext(dsl, lineNumber)
+                const key = `${ctx.className ?? ''}::${ctx.operationName ?? ''}`
+                postMessage({ command: 'log', level: 'debug', text: `key=${key} lastCtxKey=${lastCtxKey} ${key !== lastCtxKey}` });
+                if (key !== lastCtxKey) {
+                    lastCtxKey = key
+                    onCursorContext(ctx)
+                }
+            } else {
+                // log
+
+            }
+
         })
 
         // 初回パース
@@ -706,6 +834,15 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
 
         if (debounceRef.current) clearTimeout(debounceRef.current)
         debounceRef.current = setTimeout(() => applyDsl(dsl), DEBOUNCE_MS)
+
+        // 2. 変更時にも現在のカーソル位置でコンテキストを再計算して通知する
+        if (editorRef.current && onCursorContext) {
+            const position = editorRef.current.getPosition();
+            if (position) {
+                const ctx = resolveContext(value || '', position.lineNumber);
+                onCursorContext(ctx); // これにより、入力直後にワークフロー表示が切り替わる
+            }
+        }
     }, [applyDsl])
 
     // ── アウトライン → エディタジャンプ ─────────────────────
