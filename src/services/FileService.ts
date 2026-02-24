@@ -240,7 +240,10 @@ export class FileService {
      * @returns Save result or null if cancelled
      */
     public async saveDsl(
-        content: string,
+        content: {
+            dsl: string;
+            fileName: string;
+        },
         options?: {
             defaultUri?: vscode.Uri;
             saveLabel?: string;
@@ -248,7 +251,7 @@ export class FileService {
         }
     ): Promise<SaveResult | null> {
         const defaultUri = options?.defaultUri ??
-            (options?.defaultFileName ? this.getDefaultUri(options.defaultFileName) : this.getDefaultUri('spec.dsl'));
+            (options?.defaultFileName ? this.getDefaultUri(content.fileName) : this.getDefaultUri('spec.dsl'));
 
         const uri = await vscode.window.showSaveDialog({
             filters: { 'DSL': ['dsl'] },
@@ -261,7 +264,7 @@ export class FileService {
         }
 
         const encoder = new TextEncoder();
-        await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
+        await vscode.workspace.fs.writeFile(uri, encoder.encode(content.dsl));
 
         return {
             uri,

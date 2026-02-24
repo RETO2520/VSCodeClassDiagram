@@ -30,18 +30,8 @@ import { lintDsl } from '@/lib/DslLinter'
 import type { DslLintWarning } from '@/lib/DslLinter'
 import { DomainModel } from '@/lib/DomainModel'
 import type { ClassInfo, ClassOperation } from '@/lib/class-diagram-types'
+import { postMessage } from '../../frontend/src/bridge/vscode-bridge';
 
-// VSCode WebView 環境では acquireVsCodeApi 経由で postMessage を使う。
-// ブラウザ環境ではフォールバックとして <a download> でファイル保存する。
-function sendToHost(msg: object) {
-    try {
-        // @ts-ignore
-        if (typeof acquireVsCodeApi !== 'undefined') {
-            // @ts-ignore
-            acquireVsCodeApi().postMessage(msg)
-        }
-    } catch { /* ブラウザ環境ではスルー */ }
-}
 
 // ============================================================
 // DSL 言語定義
@@ -547,7 +537,7 @@ const INITIAL_DSL = `
 class Order
     extends Entity
     implements IAggregate
-  - id: string
+    - id: string
     - items: OrderItem[]
     - status: OrderStatus
     + getTotal(): number
@@ -752,7 +742,7 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
         try {
             // @ts-ignore
             if (typeof acquireVsCodeApi !== 'undefined') {
-                sendToHost({ command: 'saveDsl', payload: { dsl, fileName } })
+                postMessage({ command: 'saveDsl', payload: { dsl, fileName } })
                 return
             }
         } catch { /* ignore */ }
