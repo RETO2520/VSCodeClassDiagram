@@ -23,6 +23,7 @@ import React, { useRef, useState, useCallback, useEffect } from 'react'
 import Editor, { useMonaco, OnMount, OnChange } from '@monaco-editor/react'
 import type { ClassDiagramService } from '@/lib/application/ClassDiagramService'
 import { SpecDslParser } from '@/lib/SpecDslParser'
+import { generateMarkdownFromClasses } from '@/lib/MarkdownGenerator'
 import { lintWorkflow } from '@/lib/WorkflowLinter'
 import type { LintWarning } from '@/lib/WorkflowLinter'
 import { lintDsl } from '@/lib/DslLinter'
@@ -287,6 +288,134 @@ function Outline({ items, onSelect }: {
 }
 
 // ============================================================
+// MarkdownViewer
+// ============================================================
+
+/** markdown文字列をHTMLに変換する最小実装（外部ライブラリ不要） */
+function mdToHtml(md: string): string {
+    let html = md
+        // エスケープ
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        // 見出し
+        .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+        // 水平線
+        .replace(/^---$/gm, '<hr/>')
+        // 引用
+        .replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
+        // 太字・イタリック・コード（インライン）
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/_\((.+?)\)_/g, '<em>($1)</em>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        // Markdownリンク
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+        // テーブル（ヘッダ行 + 区切り行 + データ行）
+        .replace(/^(\|.+\|\r?\n)+/gm, (block) => { // gmフラグで複数行を対象に
+            const rows = block.trim().split('\n');
+            if (rows.length < 2) return block;
+
+            const isSep = (r: string) => /^\|[\s\-|:]+\|$/.test(r.trim());
+
+            let out = '<table>';
+            let hasThead = false;
+
+            rows.forEach((row, i) => {
+                if (isSep(row)) {
+                    // セパレータ行自体はHTMLに出力しない
+                    return;
+                }
+
+                // 2行目がセパレータなら、1行目はthead（th）として扱う
+                const isHeader = (i === 0 && isSep(rows[1]));
+                const tag = isHeader ? 'th' : 'td';
+
+                if (isHeader && !hasThead) {
+                    out += '<thead>';
+                    hasThead = true;
+                } else if (i === 2 && hasThead) { // セパレータの次の行
+                    out += '</thead><tbody>';
+                }
+
+                const cells = row.split('|').filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
+                out += '<tr>' + cells.map(c => `<${tag}>${c.trim()}</${tag}>`).join('') + '</tr>';
+            });
+
+            out += hasThead ? '</tbody></table>' : '</table>';
+            return out;
+        })
+        // リスト項目
+        .replace(/^- (.+)$/gm, '<li>$1</li>')
+        .replace(/(<li>.*<\/li>?) + /g, m => `<ul>${m}</ul > `)
+        // 段落（連続する非HTMLタグ行）
+        .replace(/^(?!<)(.+)$/gm, '<p>$1</p>')
+        // 空の <p></p> 除去
+        .replace(/<p><\/p>/g, '')
+
+    return html
+}
+
+function MarkdownViewer({ markdown }: { markdown: string }) {
+    const html = mdToHtml(markdown)
+
+    return (
+        <div style={{
+            width: 480, minWidth: 320, maxWidth: '45%', flexShrink: 0,
+            borderLeft: '1px solid #1e293b',
+            background: '#0d1829',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        }}>
+            {/* ヘッダ */}
+            <div style={{
+                padding: '5px 12px', fontSize: 10, fontWeight: 700,
+                color: '#334155', letterSpacing: '0.1em', textTransform: 'uppercase',
+                borderBottom: '1px solid #1e293b', flexShrink: 0,
+                fontFamily: '"Cascadia Code","SF Mono",monospace',
+                display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+                <span style={{
+                    display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
+                    background: markdown ? '#4ade80' : '#334155',
+                }} />
+                MARKDOWN PREVIEW
+            </div>
+
+            {/* コンテンツ */}
+            <div
+                className="md-viewer"
+                dangerouslySetInnerHTML={{ __html: html }}
+                style={{
+                    flex: 1, overflowY: 'auto', padding: '12px 16px',
+                    color: '#cbd5e1', fontSize: 12, lineHeight: 1.7,
+                    fontFamily: 'system-ui, "Segoe UI", sans-serif',
+                }}
+            />
+
+            {/* インラインCSS */}
+            <style>{`
+                .md - viewer h1 { color: #f1f5f9; font - size: 18px; border - bottom: 1px solid #1e293b; padding - bottom: 4px; margin: 16px 0 8px; }
+        .md - viewer h2 { color: #e2e8f0; font - size: 15px; border - bottom: 1px solid #1e293b; padding - bottom: 2px; margin: 14px 0 6px; }
+        .md - viewer h3 { color: #cbd5e1; font - size: 13px; margin: 12px 0 4px; }
+        .md - viewer h4 { color: #94a3b8; font - size: 12px; margin: 8px 0 4px; }
+        .md - viewer table { border - collapse: collapse; width: 100 %; font - size: 11px; margin: 6px 0; }
+        .md - viewer th, .md - viewer td { border: 1px solid #1e293b; padding: 3px 8px; text - align: left; }
+        .md - viewer th { background: #0f172a; color: #94a3b8; }
+        .md - viewer code { background: #1e293b; padding: 1px 4px; border - radius: 3px; font - family: "Cascadia Code", monospace; font - size: 11px; color: #7dd3fc; }
+        .md - viewer a { color: #60a5fa; text - decoration: none; }
+        .md - viewer a:hover { text - decoration: underline; }
+        .md - viewer blockquote { border - left: 3px solid #334155; margin: 0; padding: 2px 8px; color: #64748b; }
+        .md - viewer hr { border: none; border - top: 1px solid #1e293b; margin: 8px 0; }
+        .md - viewer ul { padding - left: 16px; margin: 4px 0; }
+        .md - viewer li { margin: 2px 0; }
+        .md - viewer p { margin: 4px 0; }
+        .md - viewer strong { color: #e2e8f0; }
+    `}</style>
+        </div>
+    )
+}
+
+// ============================================================
 // StatusBar
 // ============================================================
 
@@ -306,7 +435,7 @@ function StatusBar({ status, cursor, charCount }: {
     const stateLabel = {
         idle: '待機中',
         parsing: '解析中…',
-        ok: `✓ 適用済み (${status.classCount} クラス)`,
+        ok: `✓ 適用済み(${status.classCount} クラス)`,
         error: `✗ ${status.errors.length} エラー`,
     }[status.state]
 
@@ -318,8 +447,8 @@ function StatusBar({ status, cursor, charCount }: {
 
     // 警告の詳細テキスト（ホバーで全件表示）
     const warnTooltip = status.warnings?.map((w, i) => {
-        const lines = [`${i + 1}. ${w.message}`]
-        if (w.suggestedOrder) lines.push(`   推奨順序: ${w.suggestedOrder.join(' → ')}`)
+        const lines = [`${i + 1}. ${w.message} `]
+        if (w.suggestedOrder) lines.push(`   推奨順序: ${w.suggestedOrder.join(' → ')} `)
         return lines.join('\n')
     }).join('\n\n') ?? ''
 
@@ -356,8 +485,8 @@ function StatusBar({ status, cursor, charCount }: {
                 {SEP}
                 <span
                     title={status.dslWarnings.map((w, i) => {
-                        const lines = [`${i + 1}. ${w.message}`]
-                        if (w.cycle) lines.push(`   サイクル: ${w.cycle.join(' → ')}`)
+                        const lines = [`${i + 1}. ${w.message} `]
+                        if (w.cycle) lines.push(`   サイクル: ${w.cycle.join(' → ')} `)
                         return lines.join('\n')
                     }).join('\n\n')}
                     style={{
@@ -393,12 +522,12 @@ function ToolbarBtn({ onClick, title, accent = '#94a3b8', children }: {
         <button onClick={onClick} title={title}
             style={{
                 height: 22, padding: '0 8px', borderRadius: 3,
-                border: `1px solid ${accent}30`, color: accent,
-                background: `${accent}12`, fontSize: 10,
+                border: `1px solid ${accent} 30`, color: accent,
+                background: `${accent} 12`, fontSize: 10,
                 cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s',
             }}
-            onMouseEnter={e => (e.currentTarget.style.background = `${accent}28`)}
-            onMouseLeave={e => (e.currentTarget.style.background = `${accent}12`)}
+            onMouseEnter={e => (e.currentTarget.style.background = `${accent} 28`)}
+            onMouseLeave={e => (e.currentTarget.style.background = `${accent} 12`)}
         >
             {children}
         </button>
@@ -411,31 +540,32 @@ function ToolbarBtn({ onClick, title, accent = '#94a3b8', children }: {
 
 const DEBOUNCE_MS = 600
 
-const INITIAL_DSL = `// クラス仕様書 DSL
+const INITIAL_DSL = `
+// クラス仕様書 DSL
 // 書き込むとリアルタイムでクラス図に反映されます
 
 class Order
-  extends Entity
-  implements IAggregate
+    extends Entity
+    implements IAggregate
   - id: string
-  - items: OrderItem[]
-  - status: OrderStatus
-  + getTotal(): number
-  + confirm(): void
-  + cancel(): void
+    - items: OrderItem[]
+    - status: OrderStatus
+    + getTotal(): number
+    + confirm(): void
+    + cancel(): void
 
 class OrderItem
-  - productId: string
-  - quantity: int
-  - unitPrice: number
-  + getSubtotal(): number
+    - productId: string
+    - quantity: int
+    - unitPrice: number
+    + getSubtotal(): number
 
 interface IAggregate
-  + getId(): string
+    + getId(): string
 
 abstract class Entity
-  # id: string
-  + a getId(): string
+    # id: string
+    + getId(): string
 
 // リレーション
 Order *> OrderItem :items 1 *
@@ -454,6 +584,8 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
     const [outline, setOutline] = useState<OutlineItem[]>([])
     const [cursor, setCursor] = useState<CursorPos>({ line: 1, col: 1 })
     const [charCount, setCharCount] = useState(INITIAL_DSL.length)
+    const [showPreview, setShowPreview] = useState(false)
+    const [markdownText, setMarkdownText] = useState('')
 
     // ── DSL → クラス図 適用 ──────────────────────────────────
     const applyDsl = useCallback((dsl: string) => {
@@ -509,7 +641,7 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
                 memberCount: cls.members.length,
                 operationCount: cls.operations.length,
                 line: (lines.findIndex(l =>
-                    new RegExp(`(abstract\\s+)?(class|interface|struct)\\s+${cls.name}\\b`).test(l)
+                    new RegExp(`(abstract\\s +) ? (class| interface | struct) \\s + ${cls.name} \\b`).test(l)
                 ) + 1) || 1,
             })))
 
@@ -523,7 +655,7 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
             for (const cls of service.getModel().getClasses()) {
                 for (const op of cls.operations) {
                     if (op.workflow && op.workflow.nodes.length > 0) {
-                        const opLabel = `${cls.name}.${op.name}()`
+                        const opLabel = `${cls.name}.${op.name} ()`
                         allWarnings.push(...lintWorkflow(op.workflow as any, opLabel))
                     }
                 }
@@ -533,6 +665,11 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
             const dslWarnings = lintDsl(parsed.classes)
 
             setStatus({ state: 'ok', errors: [], warnings: allWarnings, dslWarnings, classCount: parsed.classes.length, lastApplied: new Date() })
+
+            // 8. Markdownプレビュー更新（showPreview が true のときのみ生成してコストを抑える）
+            const mdClasses = service.getModel().getClasses()
+            const mdRelationships = service.getModel().detectRelationships()
+            setMarkdownText(generateMarkdownFromClasses({ classes: mdClasses, relationships: mdRelationships }))
         } catch (err: any) {
             const msg = err?.message ?? String(err)
 
@@ -742,6 +879,17 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
 
                 <div style={{ flex: 1 }} />
 
+                {/* プレビュートグル */}
+                <ToolbarBtn
+                    onClick={() => setShowPreview(v => !v)}
+                    title="Markdown仕様書プレビューを表示/非表示"
+                    accent={showPreview ? '#38bdf8' : '#475569'}
+                >
+                    {showPreview ? '▣ Preview' : '□ Preview'}
+                </ToolbarBtn>
+
+                <div style={{ width: 1, height: 14, background: '#1e293b' }} />
+
                 {/* リアルタイム同期インジケーター */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                     <div style={{
@@ -759,7 +907,7 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
                 </div>
             </div>
 
-            {/* ── メイン: Outline + Editor ── */}
+            {/* ── メイン: Outline + Editor + Markdown Preview ── */}
             <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
 
                 <Outline items={outline} onSelect={handleOutlineSelect} />
@@ -795,6 +943,11 @@ export function SpecEditorPanel({ service, classes, visible }: SpecEditorPanelPr
                         }}
                     />
                 </div>
+
+                {/* ── Markdown Preview Pane ── */}
+                {showPreview && (
+                    <MarkdownViewer markdown={markdownText} />
+                )}
             </div>
 
             {/* ── StatusBar ── */}
