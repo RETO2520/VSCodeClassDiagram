@@ -1073,12 +1073,10 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
         editor.onDidChangeCursorPosition(e => {
             const lineNumber = e.position.lineNumber
             setCursor({ line: lineNumber, col: e.position.column })
-            postMessage({ command: 'log', level: 'debug', text: 'Cursor position: ' + lineNumber });
             if (onCursorContext) {
                 const dsl = editor.getValue()
                 const ctx = resolveContext(dsl, lineNumber)
                 const key = `${ctx.className ?? ''}::${ctx.operationName ?? ''}`
-                postMessage({ command: 'log', level: 'debug', text: `key=${key} lastCtxKey=${lastCtxKey} ${key !== lastCtxKey}` });
                 if (key !== lastCtxKey) {
                     lastCtxKey = key
                     onCursorContext(ctx)

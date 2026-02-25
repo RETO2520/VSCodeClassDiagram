@@ -253,6 +253,7 @@ export class ClassDiagramHandler {
     private async handleExportMarkdown(msg: any, ctx: MessageContext): Promise<void> {
         const payload = msg.payload || {};
         const markdown = payload.markdown || '';
+        const validationContent = payload.validationContent || '';
         const fileName = payload.fileName || 'spec.md';
 
         if (!markdown) {
@@ -260,7 +261,7 @@ export class ClassDiagramHandler {
             return;
         }
 
-        const result = await this.fileService.saveMarkdown(markdown, { defaultFileName: fileName });
+        const result = await this.fileService.saveMarkdown(markdown, validationContent, { defaultFileName: fileName });
         if (result) {
             vscode.window.showInformationMessage(`Exported specification to ${path.basename(result.filePath)}`);
         }

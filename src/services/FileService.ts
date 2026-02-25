@@ -205,31 +205,36 @@ export class FileService {
      */
     public async saveMarkdown(
         content: string,
+        validationContent: string,
         options?: {
             defaultUri?: vscode.Uri;
             saveLabel?: string;
             defaultFileName?: string;
         }
     ): Promise<SaveResult | null> {
+
+        const validationUri = this.getDefaultUri('spec.validation.md');
+
         const defaultUri = options?.defaultUri ??
             (options?.defaultFileName ? this.getDefaultUri(options.defaultFileName) : this.getDefaultUri('spec.md'));
 
-        const uri = await vscode.window.showSaveDialog({
-            filters: { 'Markdown': ['md'] },
-            defaultUri,
-            saveLabel: options?.saveLabel ?? 'Export Markdown'
-        });
 
-        if (!uri) {
+
+        if (!defaultUri) {
+            return null;
+        }
+
+        if (!validationUri) {
             return null;
         }
 
         const encoder = new TextEncoder();
-        await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
+        await vscode.workspace.fs.writeFile(defaultUri, encoder.encode(content));
+        await vscode.workspace.fs.writeFile(validationUri, encoder.encode(validationContent));
 
         return {
-            uri,
-            filePath: uri.fsPath
+            uri: defaultUri,
+            filePath: defaultUri.fsPath
         };
     }
 

@@ -41,17 +41,20 @@ export class ExportSpecCommand extends Command {
         const currentModel = service.getModel();
 
         const markdown = generateMarkdown(currentModel);
+        let validationContent = "";
+        //const validationContent = generateValidationMarkdown(currentModel);
 
         if (this.outputPath) {
             postMessage({
                 command: 'exportMarkdown',
                 payload: {
-                    markdown,
+                    markdown: markdown.markdown,
+                    validationContent: markdown.validationContent,
                     fileName: this.outputPath
                 }
             });
         } else {
-            postMessage({ command: 'log', level: 'info', text: markdown });
+            postMessage({ command: 'log', level: 'info', text: markdown.markdown });
         }
 
         const ev = { type: 'EXPORT_SPEC' };
@@ -63,7 +66,7 @@ export class ExportSpecCommand extends Command {
 // Markdown Generator
 // ============================================================
 
-function generateMarkdown(model: DomainModel): string {
+function generateMarkdown(model: DomainModel): { markdown: string, validationContent: string } {
     const classes = model.getClasses();
     const relationships = model.detectRelationships();
 
@@ -137,12 +140,14 @@ function generateMarkdown(model: DomainModel): string {
         lines.push(...renderClass(cls, model));
     }
 
-    // ---- バリデーション結果 ----
-    lines.push("## バリデーション結果");
-    lines.push("");
-    lines.push(...renderValidation(model));
+    const validationLines: string[] = [];
 
-    return lines.join("\n");
+    // ---- バリデーション結果 ----
+    validationLines.push("## バリデーション結果");
+    validationLines.push("");
+    validationLines.push(...renderValidation(model));
+
+    return { markdown: lines.join("\n"), validationContent: validationLines.join("\n") };
 }
 
 // ============================================================
