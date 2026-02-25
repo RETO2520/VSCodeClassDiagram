@@ -6,6 +6,7 @@ import { ClassDiagramService } from "../application/ClassDiagramService";
 export abstract class Command {
     abstract readonly type: CliCommandType;
     readonly raw: string;
+    public isDryRun: boolean = false;
 
     constructor(raw: string) {
         this.raw = raw;

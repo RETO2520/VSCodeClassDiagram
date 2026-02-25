@@ -101,8 +101,14 @@ export { ApplyFactoryPatternCommand } from './commands/ApplyFactoryPatternComman
 
 export class CliParser {
     public parse(input: string): Command | null {
-        const line = input.trim();
+        let line = input.trim();
         if (!line) return null;
+
+        let isDryRun = false;
+        if (line.toLowerCase().startsWith('dry-run ')) {
+            isDryRun = true;
+            line = line.substring(8).trim();
+        }
 
         // PRIORITIZE Relationship commands if relation symbols are present outside of a clear command
         const relationSymbols = ['+>', '>|', '>/', '->', 'o>', '*>', '-/>'];
@@ -112,88 +118,128 @@ export class CliParser {
                 const firstPart = line.split(/\s+/)[0].toLowerCase();
                 const prefixes = ['c', 'ac', 'i', 's', 'e', 'a', 'm', 'p', 'base', 'impl', 'ren', 'del', 'mod', 'change-modifier'];
                 if (!prefixes.includes(firstPart)) {
+                    rel.isDryRun = isDryRun;
                     return rel;
                 }
 
                 if (relationSymbols.some(s => line.split(/\s+/)[1] === s || line.split(/\s+/)[1]?.startsWith(s))) {
+                    rel.isDryRun = isDryRun;
                     return rel;
                 }
             }
         }
 
         const parts = line.split(/\s+/);
-        const cmd = parts[0].toLowerCase();
+        const cmdName = parts[0].toLowerCase();
 
-        switch (cmd) {
+        let command: Command | null = null;
+        switch (cmdName) {
             case 'c':
             case 'ac':
             case 'i':
             case 's':
             case 'e':
-                return this.parseAddType(line, parts);
+                command = this.parseAddType(line, parts);
+                break;
             case 'a':
-                return this.parseAddAttr(line, parts);
+                command = this.parseAddAttr(line, parts);
+                break;
             case 'm':
-                return this.parseAddMethod(line, parts);
+                command = this.parseAddMethod(line, parts);
+                break;
             case 'p':
-                return this.parseAddParam(line, parts);
+                command = this.parseAddParam(line, parts);
+                break;
             case 'base':
-                return this.parseSetBase(line, parts);
+                command = this.parseSetBase(line, parts);
+                break;
             case 'impl':
-                return this.parseSetImpl(line, parts);
+                command = this.parseSetImpl(line, parts);
+                break;
             case 'ren':
-                return this.parseRename(line, parts);
+                command = this.parseRename(line, parts);
+                break;
             case 'del':
-                return this.parseDelete(line, parts);
+                command = this.parseDelete(line, parts);
+                break;
             case 'help':
-                return this.parseHelp(line, parts);
+                command = this.parseHelp(line, parts);
+                break;
             case 'sel':
-                return this.parseSelect(line, parts);
+                command = this.parseSelect(line, parts);
+                break;
             case 'generate-code':
-                return this.parseGenerateCode(line, parts);
+                command = this.parseGenerateCode(line, parts);
+                break;
             case 'import':
-                return this.parseImport(line, parts);
+                command = this.parseImport(line, parts);
+                break;
             case 'save':
-                return this.parseSave(line, parts);
+                command = this.parseSave(line, parts);
+                break;
             case 'load':
-                return this.parseLoad(line, parts);
+                command = this.parseLoad(line, parts);
+                break;
             case 'clear':
-                return this.parseClear(line, parts);
+                command = this.parseClear(line, parts);
+                break;
             case 'undo':
-                return this.parseUndo(line, parts);
+                command = this.parseUndo(line, parts);
+                break;
             case 'redo':
-                return this.parseRedo(line, parts);
+                command = this.parseRedo(line, parts);
+                break;
             case 'change-modifier':
-                return this.parseChangeModifier(line, parts);
+                command = this.parseChangeModifier(line, parts);
+                break;
             case 'list':
-                return this.parseList(line, parts);
+                command = this.parseList(line, parts);
+                break;
             case 'apply-factory':
-                return this.parseApplyFactory(line, parts);
+                command = this.parseApplyFactory(line, parts);
+                break;
             case 'apply-singleton':
-                return this.parseApplySingleton(line, parts);
+                command = this.parseApplySingleton(line, parts);
+                break;
             case 'apply-adapter':
-                return this.parseApplyAdapter(line, parts);
+                command = this.parseApplyAdapter(line, parts);
+                break;
             case 'apply-template':
-                return this.parseApplyTemplate(line, parts);
+                command = this.parseApplyTemplate(line, parts);
+                break;
             case 'apply-strategy':
-                return this.parseApplyStrategy(line, parts);
+                command = this.parseApplyStrategy(line, parts);
+                break;
             case 'apply-observer':
-                return this.parseApplyObserver(line, parts);
+                command = this.parseApplyObserver(line, parts);
+                break;
             case 'apply-facade':
-                return this.parseApplyFacade(line, parts);
+                command = this.parseApplyFacade(line, parts);
+                break;
             case 'export-spec':
-                return this.parseExportSpec(line, parts);
+                command = this.parseExportSpec(line, parts);
+                break;
             case 'import-spec-dsl':
-                return this.parseImportSpecDsl(line, parts);
+                command = this.parseImportSpecDsl(line, parts);
+                break;
             case 'export-spec-dsl':
-                return this.parseExportSpecDsl(line, parts);
+                command = this.parseExportSpecDsl(line, parts);
+                break;
             case 'spec-sync':
-                return this.parseSpecSync(line, parts);
+                command = this.parseSpecSync(line, parts);
+                break;
             case 'refactor':
-                return this.parseRefactor(line, parts);
+                command = this.parseRefactor(line, parts);
+                break;
             default:
-                return this.parseRelation(line);
+                command = this.parseRelation(line);
+                break;
         }
+
+        if (command) {
+            command.isDryRun = isDryRun;
+        }
+        return command;
     }
 
     private parseHelp(raw: string, parts: string[]): HelpCommand | null {

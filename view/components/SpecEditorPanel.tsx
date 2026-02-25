@@ -34,6 +34,8 @@ import { postMessage } from '../../frontend/src/bridge/vscode-bridge';
 import { CommandLine } from './command-line';
 import { cn } from '@/lib/utils'
 import { CliParser } from '@/lib/CliParser';
+import { DiffViewer } from './DiffViewer';
+import { Command } from '@/lib/commands/Command';
 
 // VSCode WebView 環境では acquireVsCodeApi 経由で postMessage を使う。
 // ブラウザ環境ではフォールバックとして <a download> でファイル保存する。
@@ -693,6 +695,7 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
 
     // コマンドパレット用
     const [isCmdOpen, setIsCmdOpen] = useState(false);
+    const [diffData, setDiffData] = useState<{ original: string; modified: string; command: Command } | null>(null);
 
     // ── DSL → クラス図 適用 ──────────────────────────────────
     const applyDsl = useCallback((dsl: string) => {
@@ -810,10 +813,23 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
             postMessage({ command: 'log', level: 'error', text: 'Invalid command: ' + cmd });
             return;
         }
-        const result = command.executeFromService(service);
+        const result = command.isDryRun
+            ? command.execute(service.getModel())
+            : command.executeFromService(service);
 
-        if (result.success && result.payload?.dsl) {
-            const newDsl = result.payload.dsl;
+        if (result.success) {
+            const newDsl = result.payload?.dsl || result.model.toDSL();
+
+            if (command.isDryRun) {
+                const currentDsl = editorRef.current?.getValue() ?? '';
+                setDiffData({
+                    original: currentDsl,
+                    modified: newDsl,
+                    command: command
+                });
+                setIsCmdOpen(false);
+                return;
+            }
 
             // Monaco エディタの内容を置き換え
             // pushUndoStop + executeEdits を使うと Ctrl+Z で元に戻せる
@@ -1187,8 +1203,7 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
                                     classes={classes || []}
                                     onExecute={(cmd) => {
                                         handleCommandExecute(cmd);
-                                        setIsCmdOpen(false);
-                                        editorRef.current?.focus();
+                                        // setIsCmdOpen(false); // handleCommandExecute 内で dry-run の場合に制御するためここでは消さない
                                     }}
                                     onClose={() => {
                                         setIsCmdOpen(false);
@@ -1198,6 +1213,42 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
                             </div>
 
                         </div>
+                    )}
+
+                    {/* ── Diff Viewer Overlay ── */}
+                    {diffData && (
+                        <DiffViewer
+                            original={diffData.original}
+                            modified={diffData.modified}
+                            onApply={() => {
+                                const cmd = diffData.command;
+                                cmd.isDryRun = false; // 実際に適用する
+                                const res = cmd.executeFromService(service);
+                                if (res.success) {
+                                    const dsl = res.payload?.dsl || res.model.toDSL();
+                                    const editor = editorRef.current;
+                                    if (editor) {
+                                        const model = editor.getModel();
+                                        if (model) {
+                                            editor.pushUndoStop();
+                                            editor.executeEdits('spec-sync', [{
+                                                range: model.getFullModelRange(),
+                                                text: dsl,
+                                                forceMoveMarkers: true,
+                                            }]);
+                                            editor.pushUndoStop();
+                                        }
+                                    }
+                                    applyDsl(dsl);
+                                }
+                                setDiffData(null);
+                                editorRef.current?.focus();
+                            }}
+                            onCancel={() => {
+                                setDiffData(null);
+                                editorRef.current?.focus();
+                            }}
+                        />
                     )}
                 </div>
 
