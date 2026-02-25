@@ -61,12 +61,20 @@ export interface OperationWorkflow {
     label: string
     x: number
     y: number
+    metadata?: {
+      bindings?: string[]
+      constraints?: string[]
+      inferredState?: string
+    }
   }>
   edges: Array<{
     from: string
     to: string
     condition?: string | null
     mid?: { x: number; y: number }
+    metadata?: {
+      semantics?: string
+    }
   }>
 }
 
@@ -91,6 +99,11 @@ export interface ClassOperation {
       label: string
       x: number
       y: number
+      metadata?: {
+        bindings?: string[]
+        constraints?: string[]
+        inferredState?: string
+      }
     }>
     edges: Array<{
       from: string
@@ -98,6 +111,9 @@ export interface ClassOperation {
       condition?: string | null
       srcs?: { label: string; url: string }[]
       mid?: { x: number; y: number }
+      metadata?: {
+        semantics?: string
+      }
     }>
   }
   /**

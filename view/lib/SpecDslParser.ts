@@ -84,6 +84,7 @@ export interface ParsedDsl {
  * テストやGUI側からも直接利用できるよう独立クラスとして提供する。
  */
 export class SpecDslParser {
+    private aliases: Map<string, string> = new Map();
 
     /**
      * DSL文字列をパースして ParsedDsl を返す。
@@ -92,35 +93,30 @@ export class SpecDslParser {
         const classes: ParsedClass[] = [];
         const relations: ParsedRelation[] = [];
         const features: GherkinFeature[] = [];
-        // const lines = source
-        //     .split("\n")
-        //     .map((l) => l.trimEnd())
-        //     .filter((l) => {
-        //         // 空行・コメント行（// と #）を除外
-        //         const trimmed = l.trim();
-        //         return (
-        //             trimmed !== "" &&
-        //             !trimmed.startsWith("//") &&
-        //             !trimmed.startsWith("#")
-        //         );
-        //     });
+        this.aliases.clear();
 
         let current: ParsedClass | null = null;
-        let lastOp: ClassOperation | null = null; // IDだけでなくオブジェクトを保持すると扱いやすいです
 
-        const lines = source.split("\n").map(l => l.trimEnd()); // filterは後で行うためここではsplitのみ
+        const lines = source.split("\n").map(l => l.trimEnd());
 
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             const trimmed = line.trim();
             if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("#")) continue;
 
+            // ---- Alias 宣言 ----
+            // 書式: alias "受注金額" as "orderAmount"
+            const aliasMatch = trimmed.match(/^alias\s+"([^"]+)"\s+as\s+"([^"]+)"$/i);
+            if (aliasMatch) {
+                this.aliases.set(aliasMatch[1], aliasMatch[2]);
+                continue;
+            }
+
             // ---- クラス宣言 ----
             const classDecl = this.matchClassDecl(trimmed);
             if (classDecl) {
                 if (current) classes.push(current);
                 current = classDecl;
-                lastOp = null;
                 continue;
             }
 
@@ -148,10 +144,7 @@ export class SpecDslParser {
                 continue;
             }
 
-            // ---- Gherkin Scenario / ステップ行はスキップ（Pass2で処理）----
-            // Scenario: / シナリオ: 行と Given/When/Then 等のステップ行は
-            // Pass1では無視する（matchMember/matchOperation にマッチしないので
-            // 元々スルーされるが、明示的にcontinueして意図を明確にする）
+            // ---- Gherkin Scenario / ステップ行は Pass2 で処理 ----
             if (trimmed.match(/^(?:Scenario|シナリオ):/i)) continue;
             if (trimmed.match(/^(?:Given|When|Then|And|But|前提|もし|ならば|かつ|しかし)\s/i)) continue;
 
@@ -166,15 +159,11 @@ export class SpecDslParser {
             const operation = this.matchOperation(trimmed);
             if (operation) {
                 current.operations.push(operation);
-                lastOp = operation;
                 continue;
             }
         }
 
         if (current) classes.push(current);
-
-        // 既存モデルにマージするのではなく新規モデルとして構築
-        ///const service = new ClassDiagramService(DomainModel.createEmpty());
 
         // Pass 1: クラスを登録
         for (const cls of classes) {
@@ -193,49 +182,37 @@ export class SpecDslParser {
                     member,
                 });
             }
+            const classInfo = service.getClassByName(cls.name);
+
             for (const operation of cls.operations) {
-                // 操作の定義行を DSL から特定し、その直後の Scenario を探す
                 const opLineIndex = lines.findIndex(l => l.includes(`${operation.name}(`));
 
                 service.applyAddOperation({
                     className: cls.name,
                     operation,
                 });
-                if (opLineIndex !== -1) {
-                    // 次の行から Scenario があるかチェック
+                if (opLineIndex !== -1 && classInfo) {
                     for (let j = opLineIndex + 1; j < lines.length; j++) {
                         const nextLine = lines[j].trim();
                         if (!nextLine) continue;
-                        // 別の定義が始まったら終了
                         if (nextLine.match(/^[+\-#~]|class|interface|struct/)) break;
 
                         if (nextLine.match(/^(?:Scenario|シナリオ):/i)) {
                             const c = service.getClassByName(cls.name);
-                            if (!c) {
-                                console.error(`[Parser] class not found: ${cls.name}`);
-                                break;
-                            }
+                            if (!c) break;
                             const op = service.getOperationByName(cls.name, operation.name);
-                            if (!op) {
-                                console.error(`[Parser] operation not found: ${cls.name}.${operation.name}`);
-                                break;
-                            }
-                            const result = this.parseGherkinToWorkflow(lines, j);
-                            postMessage({ command: 'log', level: 'debug', text: `[Parser] applyUpdateOperationWorkflow: ${cls.name}.${operation.name} nodes=${result.workflow?.nodes?.length}` });
+                            if (!op) break;
+
+                            const result = this.parseGherkinToWorkflow(lines, j, classInfo);
                             service.applyUpdateOperationWorkflow({
                                 classId: c.id,
                                 operationId: op.id,
                                 workflow: result.workflow,
                             });
-                            postMessage({ command: 'log', level: 'debug', text: `[Parser] done. op.workflow after update: ${cls.name}.${operation.name} nodes=${service.getOperationByName(cls.name, operation.name)?.workflow?.nodes?.length}` });
                             break;
                         }
                     }
                 }
-                //postMessage({ command: 'log', level: 'info', text: "operation:" + JSON.stringify(op) });
-
-
-
 
                 for (const param of operation.parameters) {
                     service.applyAddParameter({
@@ -263,71 +240,6 @@ export class SpecDslParser {
             }
         }
 
-        // Pass 4: 明示リレーションを追加
-        for (const rel of relations) {
-            // if (rel.type === "realization") {
-            //     service.applyAddInterfaceImpl({
-            //         className: rel.source,
-            //         interfaceName: rel.target,
-            //     });
-            //     continue;
-            // }
-
-            // // それ以外は DesignGraphAggregate にエッジとして追加
-            // const currentModel = service.getModel();
-            // const srcClass = currentModel.findClassByName(rel.source);
-            // const tgtClass = currentModel.findClassByName(rel.target);
-            // if (!srcClass || !tgtClass) continue;
-
-            // // ノードが未登録なら追加（ClassInfo.id をそのまま DesignNode.id として使う）
-            // if (!graphModel.nodes[srcClass.id]) {
-            //     switch (srcClass.kind) {
-            //         case "class":
-            //             graphModel = graphModel.addNode({ id: srcClass.id, kind: "class", name: srcClass.name });
-            //             break;
-            //         case "interface":
-            //             graphModel = graphModel.addNode({ id: srcClass.id, kind: "interface", name: srcClass.name });
-            //             break;
-            //         case "struct":
-            //             graphModel = graphModel.addNode({ id: srcClass.id, kind: "struct", name: srcClass.name });
-            //             break;
-            //     }
-            // }
-            // if (!graphModel.nodes[tgtClass.id]) {
-            //     switch (tgtClass.kind) {
-            //         case "class":
-            //             graphModel = graphModel.addNode({ id: tgtClass.id, kind: "class", name: tgtClass.name });
-            //             break;
-            //         case "interface":
-            //             graphModel = graphModel.addNode({ id: tgtClass.id, kind: "interface", name: tgtClass.name });
-            //             break;
-            //         case "struct":
-            //             graphModel = graphModel.addNode({ id: tgtClass.id, kind: "struct", name: tgtClass.name });
-            //             break;
-            //     }
-            // }
-            // graphModel = graphModel.addEdge({
-            //     id: `${srcClass.id}:${tgtClass.id}:${rel.type}`,
-            //     from: srcClass.id,
-            //     to: tgtClass.id,
-            //     kind: RELATION_TO_EDGE_KIND[rel.type],
-            //     metadata: {
-            //         relationType: rel.type,
-            //         label: rel.label,
-            //         sourceMultiplicity: rel.sourceMultiplicity,
-            //         targetMultiplicity: rel.targetMultiplicity,
-            //     },
-            // });
-            // service.applyAddRelationship({
-            //     sourceClassName: rel.source,
-            //     targetClassName: rel.target,
-            //     type: rel.type,
-            //     label: rel.label,
-            //     sourceMultiplicity: rel.sourceMultiplicity,
-            //     targetMultiplicity: rel.targetMultiplicity,
-            // });
-        }
-
         return { classes, relations, features };
     }
 
@@ -336,13 +248,6 @@ export class SpecDslParser {
     // ============================================================
 
     private matchClassDecl(line: string): ParsedClass | null {
-        // 対応書式（1行記法・複数行記法どちらも可）:
-        //   class Foo
-        //   abstract class Foo
-        //   class Foo extends Bar
-        //   class Foo implements IBar, IBaz
-        //   class Foo extends Bar implements IBar, IBaz
-        //   interface Foo / struct Foo（同様）
         const m = line.match(
             /^(abstract\s+)?(class|interface|struct)\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w,\s]+))?$/
         );
@@ -364,8 +269,6 @@ export class SpecDslParser {
     }
 
     private matchMember(line: string): ClassMember | null {
-        // +/-/#/~ [s|a] name: Type
-        // 括弧を含む場合は操作として除外
         if (line.includes("(")) return null;
 
         const m = line.match(
@@ -387,7 +290,6 @@ export class SpecDslParser {
     }
 
     private matchOperation(line: string): ClassOperation | null {
-        // +/-/#/~ [s|a] methodName(params): ReturnType
         const m = line.match(
             /^([+\-#~])\s*(?:(s|a)\s+)?(\w+)\s*\(([^)]*)\)\s*(?::\s*(.+))?$/
         );
@@ -405,10 +307,8 @@ export class SpecDslParser {
     }
 
     private matchRelation(line: string): ParsedRelation | null {
-        // Source <symbol> Target [:label] [sourceMultiplicity targetMultiplicity]
-        // CliParser と同じ記号セット。長いものを先に評価して誤マッチを防ぐ
         const symbolMap: Record<string, ParsedRelation["type"]> = {
-            "-/>": "dependency",      // -/> を -> より先に評価
+            "-/>": "dependency",
             ">|": "generalization",
             ">/": "realization",
             "+>": "instantiation",
@@ -426,7 +326,6 @@ export class SpecDslParser {
             const source = parts[0].trim();
             const rest = parts[1].trim();
 
-            // "Target :label 1 *" 形式
             const restMatch = rest.match(
                 /^(\w+)(?:\s+:(\S+))?(?:\s+(\S+)\s+(\S+))?$/
             );
@@ -443,7 +342,6 @@ export class SpecDslParser {
         }
 
         return null;
-
     }
 
 
@@ -463,23 +361,17 @@ export class SpecDslParser {
 
     /**
      * Scenario 行から src: アノテーションをパースして除去したシナリオ名を返す。
-     *
-     * 書式: Scenario: <name> src: <label> <url> [src: <label> <url> ...]
-     * 例:   Scenario: ログイン成功 src: REQ-001 https://example.com/req#1
-     *       Scenario: ログイン成功 src: REQ-001 ./docs/requirements.md#login
      */
     private parseScenarioLine(raw: string): {
         name: string
         srcs: { label: string; url: string }[]
     } {
-        // src: 以降を切り出す
         const srcIdx = raw.search(/\bsrc:\s/)
         if (srcIdx === -1) return { name: raw.trim(), srcs: [] }
 
         const name = raw.slice(0, srcIdx).trim()
         const srcs: { label: string; url: string }[] = []
 
-        // src: label url を繰り返しマッチ
         const srcRe = /\bsrc:\s+(\S+)\s+(\S+)/g
         let m: RegExpExecArray | null
         while ((m = srcRe.exec(raw)) !== null) {
@@ -488,7 +380,7 @@ export class SpecDslParser {
         return { name, srcs }
     }
 
-    private parseGherkinToWorkflow(lines: string[], startIndex: number): {
+    private parseGherkinToWorkflow(lines: string[], startIndex: number, context?: any): {
         workflow: ClassOperation['workflow'],
         endIndex: number
     } {
@@ -501,9 +393,6 @@ export class SpecDslParser {
         const SCENARIO_WIDTH = 250;
         let lastNodeId: string | null = null;
 
-        // startIndex 行は最初の "Scenario: ..." 行。
-        // i = startIndex + 1 でその行自体をスキップするが、
-        // スキップ前にシナリオ名と src: を取り出しておく。
         const firstScenarioLine = lines[startIndex]?.trim() ?? "";
         const firstParsed = this.parseScenarioLine(
             firstScenarioLine.replace(/^(?:Scenario|シナリオ):\s*/i, "")
@@ -513,7 +402,6 @@ export class SpecDslParser {
 
         let i = startIndex + 1;
 
-        // Start / End ノードを生成
         const startId = createId();
         const endId = createId();
         nodes.push({ id: startId, type: 'start', label: '開始', x: 200, y: currentY });
@@ -526,18 +414,14 @@ export class SpecDslParser {
         while (i < lines.length) {
             const trimmed = lines[i].trim();
 
-            // 空行はスキップ
             if (trimmed === '') { i++; continue; }
 
-            // ブロック終了条件: 次のクラス宣言 or 次のメンバ/操作定義
             if (
                 trimmed.match(/^(abstract\s+)?(class|interface|struct)\b/) ||
                 trimmed.match(/^[+\-#~]/)
             ) break;
 
-            // 新しいシナリオの開始（英語・日本語両対応）
             if (trimmed.match(/^(?:Scenario|シナリオ):/i)) {
-                // 前のシナリオの末尾を End に繋ぐ
                 if (lastNodeId && lastNodeId !== startId) {
                     edges.push({ from: lastNodeId, to: endId });
                 }
@@ -553,17 +437,32 @@ export class SpecDslParser {
                 continue;
             }
 
-            // Gherkin ステップのパース
             const stepMatch = trimmed.match(/^(Given|When|Then|And|But|前提|もし|ならば|かつ|しかし)\s+(.+)$/i);
             if (stepMatch) {
                 const keyword = stepMatch[1];
                 const text = stepMatch[2].trim();
                 const nodeType = /^(When|もし)$/i.test(keyword) ? 'decision' : 'process';
 
-                const newId = createId();
-                nodes.push({ id: newId, type: nodeType, label: `${keyword}: ${text}`, x: currentX, y: currentY });
+                // Semantic Analysis
+                const bindings = this.resolveIdentifiers(text, context);
+                const isGiven = /^(Given|前提)$/i.test(keyword);
+                const constraints = isGiven ? this.extractConstraints(text) : undefined;
+                const inferredState = this.inferState(text);
 
-                // start → 最初のステップ間のエッジに condition + srcs を付与
+                const newId = createId();
+                nodes.push({
+                    id: newId,
+                    type: nodeType,
+                    label: `${keyword}: ${text}`,
+                    x: currentX,
+                    y: currentY,
+                    metadata: {
+                        bindings: bindings.length > 0 ? bindings : undefined,
+                        constraints: constraints && constraints.length > 0 ? constraints : undefined,
+                        inferredState
+                    }
+                });
+
                 const isFirstStep = lastNodeId === startId;
                 const edgeCondition = isFirstStep ? currentScenarioName : null;
                 const edgeSrcs = isFirstStep && currentSrcs.length > 0 ? currentSrcs : undefined;
@@ -576,7 +475,6 @@ export class SpecDslParser {
             i++;
         }
 
-        // 最後のシナリオの末尾を End に繋ぐ
         if (lastNodeId && lastNodeId !== startId) {
             edges.push({ from: lastNodeId, to: endId });
         }
@@ -588,6 +486,50 @@ export class SpecDslParser {
             workflow: { nodes, edges },
             endIndex: i - 1,
         };
+    }
+
+    private resolveIdentifiers(text: string, context?: any): string[] {
+        const found: string[] = [];
+        if (!context) return found;
+
+        // メンバ名を収集
+        const members = context.members?.map((m: any) => m.name) || [];
+        const operations = context.operations?.map((op: any) => op.name) || [];
+        const allIdentifiers = [...members, ...operations];
+
+        // エイリアスを考慮してテキスト内を検索
+        for (const id of allIdentifiers) {
+            if (text.includes(id)) {
+                found.push(id);
+            }
+        }
+
+        for (const [alias, realName] of this.aliases.entries()) {
+            if (text.includes(alias) && allIdentifiers.includes(realName)) {
+                if (!found.includes(realName)) {
+                    found.push(realName);
+                }
+            }
+        }
+
+        return found;
+    }
+
+    private extractConstraints(text: string): string[] {
+        const constraints: string[] = [];
+        // 「～が～であること」「～は～以上」などのパターンを抽出（簡易実装）
+        const pattern = /([^\s、。]+(?:が|は)[^\s、。]+(?:であること|以上|以下|未満|等しい|一致))/g;
+        let m;
+        while ((m = pattern.exec(text)) !== null) {
+            constraints.push(m[1]);
+        }
+        return constraints;
+    }
+
+    private inferState(text: string): string | undefined {
+        // 「～状態」「～済み」「～中」などのキーワードから状態を推論
+        const stateMatch = text.match(/([^\s、。]+(?:状態|済み|中|完了|待ち))/);
+        return stateMatch ? stateMatch[1] : undefined;
     }
 
     private parseParameters(raw: string): OperationParameter[] {
