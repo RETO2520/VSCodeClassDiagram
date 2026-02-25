@@ -16,7 +16,7 @@ import {
 } from './dtos'
 import { HandlerResult } from '../handler-registry'
 import type { ClassInfo, ClassKind, ClassMember, ClassOperation, OperationParameter, Relationship, Visibility } from '../class-diagram-types'
-import { createId } from '../class-diagram-types';
+import { createId, extractBaseTypeName } from '../class-diagram-types';
 import { postMessage } from '../../../frontend/src/bridge/vscode-bridge';
 /**
  * Optional EventDispatcher interface - if you have one.
@@ -1112,6 +1112,583 @@ export class ClassDiagramService {
         this.notifyModelChanged();
         this.dispatcher?.dispatchAll(events);
         return { success: true, model: this.model, events: [] };
+    }
+
+    /* =====================
+       Refactoring Methods
+    ===================== */
+
+    /**
+     * クラスの public メソッドからインターフェースを抽出し、implements 関係を追加する。
+     */
+    applyExtractInterface(input: {
+        className: string,
+        interfaceName: string
+    }): HandlerResult {
+        const events: DomainEvent[] = [];
+        let currentModel = this.model;
+
+        const source = currentModel.findClassByName(input.className);
+        if (!source) {
+            throw new DomainRuleViolation(`クラス "${input.className}" が見つかりません`);
+        }
+
+        const publicOps = source.operations.filter(op => op.visibility === 'public');
+        if (publicOps.length === 0) {
+            throw new DomainRuleViolation(`"${input.className}" に public メソッドがありません`);
+        }
+
+        // インターフェースを作成
+        currentModel = currentModel.registerClass(input.interfaceName, 'interface');
+        const iface = currentModel.findClassByName(input.interfaceName)!;
+
+        events.push({
+            type: 'TYPE_ADDED',
+            payload: { className: input.interfaceName, classInfo: iface }
+        });
+
+        // public メソッドのシグネチャをインターフェースにコピー
+        for (const op of publicOps) {
+            const ifaceOp: ClassOperation = {
+                id: createId(),
+                name: op.name,
+                returnType: op.returnType,
+                visibility: 'public',
+                parameters: op.parameters.map(p => ({ ...p, id: createId() })),
+                isStatic: false,
+                isAbstract: true
+            };
+            currentModel = currentModel.addOperation(input.interfaceName, ifaceOp);
+            events.push({
+                type: 'OPERATION_ADDED',
+                payload: { className: input.interfaceName, operation: ifaceOp }
+            });
+        }
+
+        // ソースクラスに implements を追加
+        const updatedIface = currentModel.findClassByName(input.interfaceName)!;
+        currentModel = currentModel.addInterfaceImplementation(source.id, updatedIface.id);
+        events.push({
+            type: 'IMPLEMENTED_INTERFACE_ADDED',
+            payload: { className: input.className, interfaceName: input.interfaceName }
+        });
+
+        this.model = currentModel;
+        this.notifyModelChanged();
+        this.dispatcher?.dispatchAll(events);
+        return { success: true, model: this.model, events };
+    }
+
+    /**
+     * 複数クラスの共通メンバ・メソッドを親クラスに引き上げる。
+     */
+    applyExtractSuperclass(input: {
+        classNames: string[],
+        superName: string
+    }): HandlerResult {
+        const events: DomainEvent[] = [];
+        let currentModel = this.model;
+
+        // 指定クラスを取得
+        const classes: import('../class-diagram-types').ClassInfo[] = [];
+        for (const name of input.classNames) {
+            const cls = currentModel.findClassByName(name);
+            if (!cls) {
+                throw new DomainRuleViolation(`クラスが見つかりません: ${name}`);
+            }
+            classes.push(cls);
+        }
+
+        // 共通メンバを特定（name と type が すべてのクラスに存在するもの）
+        const firstClass = classes[0];
+        const commonMembers = firstClass.members.filter(m =>
+            classes.every(cls => cls.members.some(cm => cm.name === m.name && cm.type === m.type))
+        );
+        const commonOps = firstClass.operations.filter(op =>
+            classes.every(cls => cls.operations.some(co => co.name === op.name && co.returnType === op.returnType))
+        );
+
+        // 親クラスを作成
+        currentModel = currentModel.registerClass(input.superName, 'class');
+        const superClass = currentModel.findClassByName(input.superName)!;
+
+        events.push({
+            type: 'TYPE_ADDED',
+            payload: { className: input.superName, classInfo: superClass }
+        });
+
+        // 共通メンバを親クラスに追加
+        for (const m of commonMembers) {
+            const newMember: ClassMember = {
+                id: createId(),
+                name: m.name,
+                type: m.type,
+                visibility: m.visibility,
+                isStatic: m.isStatic,
+                isAbstract: m.isAbstract,
+                relationship: m.relationship,
+                sourceMultiplicity: m.sourceMultiplicity,
+                targetMultiplicity: m.targetMultiplicity
+            };
+            currentModel = currentModel.addMember(input.superName, newMember);
+            events.push({
+                type: 'MEMBER_ADDED',
+                payload: { className: input.superName, member: newMember }
+            });
+        }
+
+        // 共通メソッドを親クラスに追加
+        for (const op of commonOps) {
+            const newOp: ClassOperation = {
+                id: createId(),
+                name: op.name,
+                returnType: op.returnType,
+                visibility: op.visibility,
+                parameters: op.parameters.map(p => ({ ...p, id: createId() })),
+                isStatic: op.isStatic,
+                isAbstract: op.isAbstract
+            };
+            currentModel = currentModel.addOperation(input.superName, newOp);
+            events.push({
+                type: 'OPERATION_ADDED',
+                payload: { className: input.superName, operation: newOp }
+            });
+        }
+
+        // 各子クラスに基底クラスを設定し、共通メンバ・メソッドを削除
+        const updatedSuper = currentModel.findClassByName(input.superName)!;
+        for (const name of input.classNames) {
+            const cls = currentModel.findClassByName(name)!;
+            currentModel = currentModel.setBaseClass(cls.id, updatedSuper.id);
+            events.push({
+                type: 'BASE_CLASS_ADDED',
+                payload: { className: name, baseClassName: input.superName }
+            });
+
+            // 共通メンバを子クラスから削除
+            for (const m of commonMembers) {
+                try {
+                    currentModel = currentModel.removeMember(name, m.name);
+                    events.push({
+                        type: 'MEMBER_REMOVED',
+                        payload: { className: name, member: m }
+                    });
+                } catch { /* メンバが見つからない場合は無視 */ }
+            }
+
+            // 共通メソッドを子クラスから削除
+            for (const op of commonOps) {
+                try {
+                    currentModel = currentModel.removeOperation(name, op.name);
+                    events.push({
+                        type: 'OPERATION_REMOVED',
+                        payload: { className: name, operation: op }
+                    });
+                } catch { /* メソッドが見つからない場合は無視 */ }
+            }
+        }
+
+        this.model = currentModel;
+        this.notifyModelChanged();
+        this.dispatcher?.dispatchAll(events);
+        return { success: true, model: this.model, events };
+    }
+
+    /**
+     * ソースクラスのメンバ・メソッドをターゲットクラスに統合し、ソースクラスを削除する。
+     */
+    applyInlineClass(input: {
+        sourceClass: string,
+        targetClass: string
+    }): HandlerResult {
+        const events: DomainEvent[] = [];
+        let currentModel = this.model;
+
+        const source = currentModel.findClassByName(input.sourceClass);
+        if (!source) {
+            throw new DomainRuleViolation(`"${input.sourceClass}" が見つかりません`);
+        }
+        const target = currentModel.findClassByName(input.targetClass);
+        if (!target) {
+            throw new DomainRuleViolation(`"${input.targetClass}" が見つかりません`);
+        }
+
+        // ソースのメンバをターゲットに追加
+        for (const m of source.members) {
+            // 重複チェック: ターゲットに同名メンバが無い場合のみ追加
+            const existing = currentModel.findClassByName(input.targetClass)!;
+            if (!existing.members.some(em => em.name === m.name)) {
+                const newMember: ClassMember = {
+                    id: createId(),
+                    name: m.name,
+                    type: m.type,
+                    visibility: m.visibility,
+                    isStatic: m.isStatic,
+                    isAbstract: m.isAbstract,
+                    relationship: m.relationship,
+                    sourceMultiplicity: m.sourceMultiplicity,
+                    targetMultiplicity: m.targetMultiplicity
+                };
+                currentModel = currentModel.addMember(input.targetClass, newMember);
+                events.push({
+                    type: 'MEMBER_ADDED',
+                    payload: { className: input.targetClass, member: newMember }
+                });
+            }
+        }
+
+        // ソースのメソッドをターゲットに追加
+        for (const op of source.operations) {
+            const existing = currentModel.findClassByName(input.targetClass)!;
+            if (!existing.operations.some(eo => eo.name === op.name)) {
+                const newOp: ClassOperation = {
+                    id: createId(),
+                    name: op.name,
+                    returnType: op.returnType,
+                    visibility: op.visibility,
+                    parameters: op.parameters.map(p => ({ ...p, id: createId() })),
+                    isStatic: op.isStatic,
+                    isAbstract: op.isAbstract
+                };
+                currentModel = currentModel.addOperation(input.targetClass, newOp);
+                events.push({
+                    type: 'OPERATION_ADDED',
+                    payload: { className: input.targetClass, operation: newOp }
+                });
+            }
+        }
+
+        // ソースクラスを削除
+        currentModel = currentModel.removeClassByName(input.sourceClass);
+        events.push({
+            type: 'TYPE_REMOVED',
+            payload: { className: input.sourceClass }
+        });
+
+        this.model = currentModel;
+        this.notifyModelChanged();
+        this.dispatcher?.dispatchAll(events);
+        return { success: true, model: this.model, events };
+    }
+
+    /**
+     * ソースクラスを分割するための新しいクラスをシェルとして生成し、関連を追加する。
+     */
+    applySplitClass(input: {
+        sourceClass: string,
+        newNames: string[]
+    }): HandlerResult {
+        const events: DomainEvent[] = [];
+        let currentModel = this.model;
+
+        const source = currentModel.findClassByName(input.sourceClass);
+        if (!source) {
+            throw new DomainRuleViolation(`"${input.sourceClass}" が見つかりません`);
+        }
+
+        // 分割先クラスをシェルとして生成し、ソースとの関連メンバを追加
+        for (const name of input.newNames) {
+            currentModel = currentModel.registerClass(name, 'class');
+            const newClass = currentModel.findClassByName(name)!;
+            events.push({
+                type: 'TYPE_ADDED',
+                payload: { className: name, classInfo: newClass }
+            });
+
+            // ソースクラスに分割先への参照メンバを追加
+            const refMember: ClassMember = {
+                id: createId(),
+                name: this.toCamelCase(name),
+                visibility: 'private',
+                type: name,
+                isStatic: false,
+                isAbstract: false,
+                relationship: 'association',
+                sourceMultiplicity: '',
+                targetMultiplicity: ''
+            };
+            currentModel = currentModel.addMember(input.sourceClass, refMember);
+            events.push({
+                type: 'MEMBER_ADDED',
+                payload: { className: input.sourceClass, member: refMember }
+            });
+        }
+
+        this.model = currentModel;
+        this.notifyModelChanged();
+        this.dispatcher?.dispatchAll(events);
+        return { success: true, model: this.model, events };
+    }
+
+    /**
+     * 依存性逆転: Client→Concrete の直接依存をインターフェース経由に変換する。
+     *
+     * 1. Concrete の public メソッドから I<Concrete> インターフェースを抽出
+     * 2. Concrete に I<Concrete> の implements を追加
+     * 3. Client のメンバ型・パラメータ型・戻り値型で Concrete → I<Concrete> に書き換え
+     */
+    applyInvertDependency(input: {
+        clientClass: string,
+        concreteClass: string,
+        interfaceName?: string
+    }): HandlerResult {
+        const events: DomainEvent[] = [];
+        let currentModel = this.model;
+
+        const client = currentModel.findClassByName(input.clientClass);
+        if (!client) {
+            throw new DomainRuleViolation(`クラス "${input.clientClass}" が見つかりません`);
+        }
+        const concrete = currentModel.findClassByName(input.concreteClass);
+        if (!concrete) {
+            throw new DomainRuleViolation(`クラス "${input.concreteClass}" が見つかりません`);
+        }
+
+        const ifaceName = input.interfaceName ?? `I${input.concreteClass}`;
+
+        // ── 1. インターフェース抽出 ─────────────────────
+        const publicOps = concrete.operations.filter(op => op.visibility === 'public');
+
+        // 同名インターフェースが既に存在する場合は作成をスキップ
+        let iface = currentModel.findClassByName(ifaceName);
+        if (!iface) {
+            currentModel = currentModel.registerClass(ifaceName, 'interface');
+            iface = currentModel.findClassByName(ifaceName)!;
+            events.push({
+                type: 'TYPE_ADDED',
+                payload: { className: ifaceName, classInfo: iface }
+            });
+
+            for (const op of publicOps) {
+                const ifaceOp: ClassOperation = {
+                    id: createId(),
+                    name: op.name,
+                    returnType: op.returnType,
+                    visibility: 'public',
+                    parameters: op.parameters.map(p => ({ ...p, id: createId() })),
+                    isStatic: false,
+                    isAbstract: true
+                };
+                currentModel = currentModel.addOperation(ifaceName, ifaceOp);
+                events.push({
+                    type: 'OPERATION_ADDED',
+                    payload: { className: ifaceName, operation: ifaceOp }
+                });
+            }
+        }
+
+        // ── 2. Concrete に implements を追加 ────────────
+        const updatedIface = currentModel.findClassByName(ifaceName)!;
+        if (!concrete.interfaces.includes(updatedIface.id)) {
+            currentModel = currentModel.addInterfaceImplementation(concrete.id, updatedIface.id);
+            events.push({
+                type: 'IMPLEMENTED_INTERFACE_ADDED',
+                payload: { className: input.concreteClass, interfaceName: ifaceName }
+            });
+        }
+
+        // ── 3. Client の参照型を書き換え ─────────────────
+        const concreteName = input.concreteClass;
+        currentModel = currentModel.updateClassByName(input.clientClass, cls => {
+            const updatedMembers = cls.members.map(m => {
+                const base = extractBaseTypeName(m.type);
+                if (base === concreteName) {
+                    return { ...m, type: m.type.replace(concreteName, ifaceName) };
+                }
+                return m;
+            });
+            const updatedOps = cls.operations.map(op => {
+                let changed = false;
+                let newReturnType = op.returnType;
+                const returnBase = extractBaseTypeName(op.returnType);
+                if (returnBase === concreteName) {
+                    newReturnType = op.returnType.replace(concreteName, ifaceName);
+                    changed = true;
+                }
+                const newParams = op.parameters.map(p => {
+                    const pBase = extractBaseTypeName(p.type);
+                    if (pBase === concreteName) {
+                        return { ...p, type: p.type.replace(concreteName, ifaceName) };
+                    }
+                    return p;
+                });
+                if (changed || newParams !== op.parameters) {
+                    return { ...op, returnType: newReturnType, parameters: newParams };
+                }
+                return op;
+            });
+            return { ...cls, members: updatedMembers, operations: updatedOps };
+        });
+        events.push({
+            type: 'CLASS_UPDATED',
+            payload: { className: input.clientClass }
+        });
+
+        this.model = currentModel;
+        this.notifyModelChanged();
+        this.dispatcher?.dispatchAll(events);
+        return { success: true, model: this.model, events };
+    }
+
+    /**
+     * 循環依存の解消: ClassA⇔ClassB の循環を検出し、
+     * ClassB 側にインターフェースを導入して ClassA→I<ClassB>←ClassB に変換する。
+     */
+    applyResolveCircular(input: {
+        classA: string,
+        classB: string
+    }): HandlerResult {
+        const currentModel = this.model;
+
+        const classA = currentModel.findClassByName(input.classA);
+        if (!classA) {
+            throw new DomainRuleViolation(`クラス "${input.classA}" が見つかりません`);
+        }
+        const classB = currentModel.findClassByName(input.classB);
+        if (!classB) {
+            throw new DomainRuleViolation(`クラス "${input.classB}" が見つかりません`);
+        }
+
+        // ── 循環依存の確認 ────────────────────────────
+        const hasDep = (from: ClassInfo, toName: string): boolean => {
+            // メンバ型に toName が含まれるか
+            for (const m of from.members) {
+                if (extractBaseTypeName(m.type) === toName) return true;
+            }
+            // 操作パラメータ・戻り値型に含まれるか
+            for (const op of from.operations) {
+                if (extractBaseTypeName(op.returnType) === toName) return true;
+                for (const p of op.parameters) {
+                    if (extractBaseTypeName(p.type) === toName) return true;
+                }
+            }
+            return false;
+        };
+
+        const aToB = hasDep(classA, input.classB);
+        const bToA = hasDep(classB, input.classA);
+
+        if (!aToB || !bToA) {
+            throw new DomainRuleViolation(
+                `"${input.classA}" と "${input.classB}" の間に循環依存が検出されませんでした`
+            );
+        }
+
+        // ── DIP を適用して A→B の直接依存を解消 ──────────
+        return this.applyInvertDependency({
+            clientClass: input.classA,
+            concreteClass: input.classB
+        });
+    }
+
+    
+    applyResolveCircularInheritance(input: {
+        classA: string,
+        classB: string
+    }): HandlerResult {
+        const events: DomainEvent[] = [];
+        let currentModel = this.model;
+
+        const classA = currentModel.findClassByName(input.classA);
+        if (!classA) {
+            throw new DomainRuleViolation('Class "' + input.classA + '" not found');
+        }
+        const classB = currentModel.findClassByName(input.classB);
+        if (!classB) {
+            throw new DomainRuleViolation('Class "' + input.classB + '" not found');
+        }
+
+        const visited = new Set<string>();
+        let cur: import('../class-diagram-types').ClassInfo | undefined = classA;
+        let hasCycle = false;
+        while (cur && cur.baseClassId) {
+            if (visited.has(cur.id)) {
+                hasCycle = true;
+                break;
+            }
+            visited.add(cur.id);
+            cur = currentModel.getClasses().find(c => c.id === cur!.baseClassId);
+        }
+
+        if (!hasCycle) {
+            throw new DomainRuleViolation(
+                'No circular inheritance detected between "' + input.classA + '" and "' + input.classB + '"'
+            );
+        }
+
+        currentModel = currentModel.updateClassByName(input.classB, cls => ({
+            ...cls,
+            baseClassId: null
+        }));
+        events.push({
+            type: 'BASE_CLASS_REMOVED',
+            payload: { className: input.classB }
+        });
+
+        const aOps = classA.operations.filter(op => op.visibility === 'public');
+        const bOps = classB.operations.filter(op => op.visibility === 'public');
+        const commonOps = aOps.filter(aOp =>
+            bOps.some(bOp => bOp.name === aOp.name && bOp.returnType === aOp.returnType)
+        );
+
+        if (commonOps.length > 0) {
+            const ifaceName = 'I' + input.classA + input.classB + 'Common';
+
+            currentModel = currentModel.registerClass(ifaceName, 'interface');
+            const iface = currentModel.findClassByName(ifaceName)!;
+            events.push({
+                type: 'TYPE_ADDED',
+                payload: { className: ifaceName, classInfo: iface }
+            });
+
+            for (const op of commonOps) {
+                const ifaceOp: ClassOperation = {
+                    id: createId(),
+                    name: op.name,
+                    returnType: op.returnType,
+                    visibility: 'public',
+                    parameters: op.parameters.map(p => ({ ...p, id: createId() })),
+                    isStatic: false,
+                    isAbstract: true
+                };
+                currentModel = currentModel.addOperation(ifaceName, ifaceOp);
+                events.push({
+                    type: 'OPERATION_ADDED',
+                    payload: { className: ifaceName, operation: ifaceOp }
+                });
+            }
+
+            const updatedIface = currentModel.findClassByName(ifaceName)!;
+            for (const name of [input.classA, input.classB]) {
+                const cls = currentModel.findClassByName(name)!;
+                if (!cls.interfaces.includes(updatedIface.id)) {
+                    currentModel = currentModel.addInterfaceImplementation(cls.id, updatedIface.id);
+                    events.push({
+                        type: 'IMPLEMENTED_INTERFACE_ADDED',
+                        payload: { className: name, interfaceName: ifaceName }
+                    });
+                }
+            }
+        }
+
+        this.model = currentModel;
+        this.notifyModelChanged();
+        this.dispatcher?.dispatchAll(events);
+        return { success: true, model: this.model, events };
+    }
+
+    /**
+     * 型名を一括リネームする。
+     */
+    applyRenameType(input: {
+        oldName: string,
+        newName: string
+    }): HandlerResult {
+        return this.applyRename({
+            target: 'type',
+            oldName: input.oldName,
+            newName: input.newName
+        });
     }
 
     toPasscalName(name: string): string {

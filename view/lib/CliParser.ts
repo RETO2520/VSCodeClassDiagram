@@ -34,6 +34,7 @@ import { ExportSpecCommand } from './commands/ExportSpecCommand';
 import { ImportSpecDslCommand } from './commands/ImportSpecDslCommand';
 import { ExportSpecDslCommand } from './commands/ExportSpecDslCommand';
 import { SpecSyncCommand } from './commands/SpecSyncCommand';
+import { RefactorCommand, RefactorKind } from './commands/RefactorCommand';
 
 export type CliCommandType =
     | 'ADD_TYPE'
@@ -66,7 +67,8 @@ export type CliCommandType =
     | 'EXPORT_SPEC'
     | 'EXPORT_SPEC_DSL'
     | 'IMPORT_SPEC_DSL'
-    | 'SPEC_SYNC';
+    | 'SPEC_SYNC'
+    | 'REFACTOR';
 
 
 export type TypePrefix = 'c' | 'ac' | 'i' | 's' | 'e';
@@ -187,6 +189,8 @@ export class CliParser {
                 return this.parseExportSpecDsl(line, parts);
             case 'spec-sync':
                 return this.parseSpecSync(line, parts);
+            case 'refactor':
+                return this.parseRefactor(line, parts);
             default:
                 return this.parseRelation(line);
         }
@@ -636,5 +640,79 @@ export class CliParser {
     private parseSpecSync(raw: string, parts: string[]) {
         // spec-sync
         return new SpecSyncCommand(raw);
+    }
+
+    private parseRefactor(raw: string, parts: string[]) {
+        if (parts.length < 2) return null;
+
+        // --sync オプション検出・除去
+        const sync = parts.includes('--sync');
+        const args = parts.filter(p => p !== '--sync');
+
+        // kind のエイリアス正規化（generate-code の language マップと同じ方式）
+        const kindMap: Record<string, RefactorKind> = {
+            'extract-interface': 'extract-interface',
+            'ei': 'extract-interface',   // 短縮形
+            'extract-superclass': 'extract-superclass',
+            'es': 'extract-superclass',
+            'inline-class': 'inline-class',
+            'ic': 'inline-class',
+            'split-class': 'split-class',
+            'sc': 'split-class',
+            'rename-type': 'rename-type',
+            'rt': 'rename-type',
+            'invert-dependency': 'invert-dependency',
+            'id': 'invert-dependency',
+            'resolve-circular': 'resolve-circular',
+            'rc': 'resolve-circular',
+            'resolve-circular-inheritance': 'resolve-circular-inheritance',
+            'rci': 'resolve-circular-inheritance',
+        };
+
+        const kind = kindMap[args[1].toLowerCase()];
+        if (!kind) return null;  // 不明な kind は null → パーサが default に落ちる
+
+        switch (kind) {
+            case 'extract-interface':
+                // refactor ei <ClassName> <InterfaceName> [--sync]
+                if (args.length < 4) return null;
+                return new RefactorCommand(raw, { kind, className: args[2], interfaceName: args[3] }, sync);
+
+            case 'extract-superclass':
+                // refactor es <SuperName> <ClassA> <ClassB> ... [--sync]
+                if (args.length < 4) return null;
+                return new RefactorCommand(raw, { kind, superName: args[2], classNames: args.slice(3) }, sync);
+
+            case 'inline-class':
+                // refactor ic <SourceClass> <TargetClass> [--sync]
+                if (args.length < 4) return null;
+                return new RefactorCommand(raw, { kind, sourceClass: args[2], targetClass: args[3] }, sync);
+
+            case 'split-class':
+                // refactor sc <SourceClass> <NewNameA> <NewNameB> ... [--sync]
+                if (args.length < 4) return null;
+                return new RefactorCommand(raw, { kind, sourceClass: args[2], newNames: args.slice(3) }, sync);
+
+            case 'rename-type':
+                // refactor rt <OldName> <NewName> [--sync]
+                if (args.length < 4) return null;
+                return new RefactorCommand(raw, { kind, oldName: args[2], newName: args[3] }, sync);
+
+            case 'invert-dependency':
+                // refactor id <ClientClass> <ConcreteClass> [--sync]
+                if (args.length < 4) return null;
+                return new RefactorCommand(raw, { kind, clientClass: args[2], concreteClass: args[3] }, sync);
+
+            case 'resolve-circular':
+                // refactor rc <ClassA> <ClassB> [--sync]
+                if (args.length < 4) return null;
+                return new RefactorCommand(raw, { kind, classA: args[2], classB: args[3] }, sync);
+
+            case 'resolve-circular-inheritance':
+                // refactor rci <ClassA> <ClassB> [--sync]
+                if (args.length < 4) return null;
+                return new RefactorCommand(raw, { kind, classA: args[2], classB: args[3] }, sync);
+        }
+        return null;
     }
 }

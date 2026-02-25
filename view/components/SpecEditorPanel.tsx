@@ -810,7 +810,7 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
             postMessage({ command: 'log', level: 'error', text: 'Invalid command: ' + cmd });
             return;
         }
-        const result = command.execute(service.getModel());
+        const result = command.executeFromService(service);
 
         if (result.success && result.payload?.dsl) {
             const newDsl = result.payload.dsl;
@@ -845,7 +845,7 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
 
         //postMessage({ command: 'log', level: 'debug', text: 'DSL: ' + dsl });
         setIsCmdOpen(false);
-    }, []);
+    }, [service, applyDsl]);
     const [cmdPosition, setCmdPosition] = useState<{ top: number; left: number } | null>(null);
     // ── Monaco マウント時 ─────────────────────────────────────
     const handleMount: OnMount = useCallback((editor, monacoInstance) => {

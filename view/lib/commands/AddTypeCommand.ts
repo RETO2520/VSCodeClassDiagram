@@ -36,4 +36,17 @@ export class AddTypeCommand extends Command {
             ...result
         };
     }
+
+    executeFromService(service: ClassDiagramService): HandlerResult {
+        const kindMap: Record<TypePrefix, ClassKind> = {
+            'c': 'class', 'ac': 'class', 'i': 'interface', 's': 'struct', 'e': 'class'
+        };
+        const input: AddTypeInput = {
+            name: this.name,
+            kind: kindMap[this.kind],
+            isAbstract: this.kind === 'ac',
+            extendsNames: this.extends && this.extends.length ? this.extends.slice() : undefined
+        };
+        return service.addTypeFromCli(input);
+    }
 }
