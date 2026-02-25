@@ -23,6 +23,7 @@ import { loader } from '@monaco-editor/react';
 loader.config({ monaco });
 import type { ClassDiagramService } from '@/lib/application/ClassDiagramService'
 import { SpecDslParser } from '@/lib/SpecDslParser'
+import type { CliSuggestion, ParsedDsl } from '@/lib/SpecDslParser'
 import { generateMarkdownFromClasses } from '@/lib/MarkdownGenerator'
 import { lintWorkflow } from '@/lib/WorkflowLinter'
 import type { LintWarning } from '@/lib/WorkflowLinter'
@@ -196,6 +197,8 @@ interface ParseStatus {
     dslWarnings: DslLintWarning[]
     classCount: number
     lastApplied: Date | null
+    /** CLI提案リスト（優先度降順） */
+    cliSuggestions: CliSuggestion[]
 }
 
 interface OutlineItem {
@@ -616,6 +619,117 @@ function StatusBar({ status, cursor, charCount }: {
 }
 
 // ============================================================
+// CliSuggestionsPanel
+// ============================================================
+
+/**
+ * CLI提案をステータスバー上部に折りたたみ表示するパネル。
+ * 提案をクリックするとコマンドラインに自動入力される。
+ */
+function CliSuggestionsPanel({
+    suggestions,
+    onSelectSuggestion,
+}: {
+    suggestions: CliSuggestion[]
+    onSelectSuggestion: (cmd: string, dryRun: boolean) => void
+}) {
+    const [expanded, setExpanded] = useState(false)
+
+    if (suggestions.length === 0) return null
+
+    const kindIcon: Record<string, string> = {
+        'generate-code': '⚙',
+        'add-member': '＋',
+        'add-state-machine': '◎',
+        'add-constraint': '⊘',
+        'add-relation': '↔',
+    }
+
+    return (
+        <div style={{
+            borderTop: '1px solid #1e293b',
+            background: '#0a1628',
+            flexShrink: 0,
+            overflow: 'hidden',
+        }}>
+            {/* ヘッダ（折りたたみトグル） */}
+            <button
+                onClick={() => setExpanded(v => !v)}
+                style={{
+                    width: '100%', textAlign: 'left',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '3px 12px', background: 'transparent', border: 'none',
+                    cursor: 'pointer', color: '#f59e0b',
+                    fontFamily: '"Cascadia Code","SF Mono",monospace', fontSize: 10,
+                }}
+            >
+                <span style={{ fontSize: 9 }}>{expanded ? '▾' : '▸'}</span>
+                <span style={{ fontWeight: 700 }}>⚡ CLI提案</span>
+                <span style={{
+                    background: '#f59e0b22', border: '1px solid #f59e0b44',
+                    borderRadius: 8, padding: '0 5px', fontSize: 9, color: '#fbbf24',
+                }}>
+                    {suggestions.length}
+                </span>
+                {!expanded && (
+                    <span style={{ color: '#64748b', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        — {suggestions[0].reason}
+                    </span>
+                )}
+            </button>
+
+            {/* 提案リスト */}
+            {expanded && (
+                <div style={{ maxHeight: 160, overflowY: 'auto', padding: '0 0 4px' }}>
+                    {suggestions.map((s, i) => (
+                        <div
+                            key={i}
+                            style={{
+                                display: 'flex', alignItems: 'flex-start', gap: 8,
+                                padding: '4px 12px', cursor: 'pointer',
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.background = '#1e293b')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                            onClick={() => onSelectSuggestion(s.command, s.dryRun ?? false)}
+                            title={s.reason}
+                        >
+                            {/* アイコン */}
+                            <span style={{ fontSize: 10, color: '#f59e0b', flexShrink: 0, marginTop: 1 }}>
+                                {kindIcon[s.kind] ?? '•'}
+                            </span>
+                            {/* コマンド */}
+                            <span style={{
+                                fontSize: 10, color: '#7dd3fc', flexShrink: 0,
+                                fontFamily: '"Cascadia Code","SF Mono",monospace',
+                            }}>
+                                {s.command}
+                            </span>
+                            {/* dry-run バッジ */}
+                            {s.dryRun && (
+                                <span style={{
+                                    fontSize: 9, color: '#a78bfa',
+                                    border: '1px solid #a78bfa44', borderRadius: 3,
+                                    padding: '0 4px', flexShrink: 0, lineHeight: '14px',
+                                }}>
+                                    preview
+                                </span>
+                            )}
+                            {/* 理由 */}
+                            <span style={{
+                                fontSize: 10, color: '#475569',
+                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>
+                                {s.reason}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    )
+}
+
+// ============================================================
 // ToolbarBtn
 // ============================================================
 
@@ -685,8 +799,14 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const parserRef = useRef(new SpecDslParser())
+    /** CodeLens に渡す最新のCLI提案。applyDsl が更新する。 */
+    const cliSuggestionsRef = useRef<CliSuggestion[]>([])
+    /** 元DSLのコメント・alias行を保持。toDSL()生成後に先頭へ差し込む。 */
+    const headerBlockRef = useRef<string>('')
+    /** パーサが収集したaliasマップ。toDSL()に渡してalias宣言を再生成する。 */
+    const aliasMapRef = useRef<Map<string, string>>(new Map())
 
-    const [status, setStatus] = useState<ParseStatus>({ state: 'idle', errors: [], warnings: [], dslWarnings: [], classCount: 0, lastApplied: null })
+    const [status, setStatus] = useState<ParseStatus>({ state: 'idle', errors: [], warnings: [], dslWarnings: [], classCount: 0, lastApplied: null, cliSuggestions: [] })
     const [outline, setOutline] = useState<OutlineItem[]>([])
     const [cursor, setCursor] = useState<CursorPos>({ line: 1, col: 1 })
     const [charCount, setCharCount] = useState(INITIAL_DSL.length)
@@ -696,6 +816,8 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
     // コマンドパレット用
     const [isCmdOpen, setIsCmdOpen] = useState(false);
     const [diffData, setDiffData] = useState<{ original: string; modified: string; command: Command } | null>(null);
+    /** CodeLens からコマンドラインを開く際の初期入力値 */
+    const [cmdInitialValue, setCmdInitialValue] = useState<string>('');
 
     // ── DSL → クラス図 適用 ──────────────────────────────────
     const applyDsl = useCallback((dsl: string) => {
@@ -774,7 +896,17 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
             // 7. DSL構造の静的解析（lintDsl）
             const dslWarnings = lintDsl(parsed.classes)
 
-            setStatus({ state: 'ok', errors: [], warnings: allWarnings, dslWarnings, classCount: parsed.classes.length, lastApplied: new Date() })
+            setStatus({ state: 'ok', errors: [], warnings: allWarnings, dslWarnings, classCount: parsed.classes.length, lastApplied: new Date(), cliSuggestions: parsed.cliSuggestions })
+
+            // 9. CodeLens の更新：提案をエディタ上に表示する
+            //    registerCodeLensProvider は Monaco マウント時に一度だけ登録するため、
+            //    ここでは最新の cliSuggestions を shared ref 経由で渡す。
+            cliSuggestionsRef.current = parsed.cliSuggestions;
+
+            // 10. headerBlock と aliasMap を保持する
+            //     コマンド実行後に toDSL() を呼ぶ際、これらを差し込んでコメント・alias を復元する。
+            headerBlockRef.current = parsed.headerBlock;
+            aliasMapRef.current = parserRef.current.getAliasMap();
 
             // 8. Markdownプレビュー更新（showPreview が true のときのみ生成してコストを抑える）
             const mdClasses = service.getModel().getClasses()
@@ -793,7 +925,7 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
                 }])
             }
 
-            setStatus({ state: 'error', errors: [msg], warnings: [], dslWarnings: [], classCount: 0, lastApplied: null })
+            setStatus({ state: 'error', errors: [msg], warnings: [], dslWarnings: [], classCount: 0, lastApplied: null, cliSuggestions: [] })
         }
     }, [classes, service, monaco])
 
@@ -818,7 +950,12 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
             : command.executeFromService(service);
 
         if (result.success) {
-            const newDsl = result.payload?.dsl || result.model.toDSL();
+            // toDSL() にaliasMapを渡してalias宣言を再生成し、
+            // headerBlock（コメント行）を先頭に差し込む
+            const rawDsl = result.payload?.dsl
+                || result.model.toDSL(aliasMapRef.current);
+            const header = headerBlockRef.current;
+            const newDsl = header ? `${header}\n\n${rawDsl}` : rawDsl;
 
             if (command.isDryRun) {
                 const currentDsl = editorRef.current?.getValue() ?? '';
@@ -869,6 +1006,67 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
 
         // 言語・テーマ登録（useMonaco より確実なタイミング）
         registerDslLanguage(monacoInstance)
+
+        // ── CodeLens 登録（CLI提案をエディタ上に表示） ──────────────
+        // 既に登録済みの場合は再登録しない（Monaco は言語IDごとに管理）
+        if (!monacoInstance.languages.getLanguages().some(
+            (l: any) => l.id === DSL_LANGUAGE_ID && (l as any)._codeLensRegistered
+        )) {
+            monacoInstance.languages.registerCodeLensProvider(DSL_LANGUAGE_ID, {
+                provideCodeLenses(model: any) {
+                    const suggestions = cliSuggestionsRef.current;
+                    if (!suggestions.length) return { lenses: [], dispose: () => { } };
+
+                    const text = model.getValue();
+                    const lines = text.split('\n');
+                    const lenses: Monaco.languages.CodeLens[] = [];
+
+                    for (const suggestion of suggestions.slice(0, 5)) { // 上位5件まで表示
+                        if (!suggestion.className) continue;
+
+                        // クラス宣言行を探す
+                        const lineIdx = lines.findIndex((l: any) =>
+                            new RegExp(`(abstract\\s+)?(class|interface|struct)\\s+${suggestion.className}\\b`).test(l)
+                        );
+                        if (lineIdx === -1) continue;
+
+                        const prefix = suggestion.dryRun ? 'dry-run ' : '';
+                        lenses.push({
+                            range: {
+                                startLineNumber: lineIdx + 1,
+                                startColumn: 1,
+                                endLineNumber: lineIdx + 1,
+                                endColumn: 1,
+                            },
+                            command: {
+                                id: 'spec.applyCliSuggestion',
+                                title: `⚡ ${suggestion.dryRun ? '👁 ' : ''}${suggestion.command}`,
+                                tooltip: `${suggestion.reason}${suggestion.dryRun ? '\n(DiffViewerでプレビュー後に適用)' : ''}`,
+                                arguments: [prefix + suggestion.command],
+                            },
+                        });
+                    }
+                    return { lenses, dispose: () => { } };
+                },
+                resolveCodeLens(_: any, codeLens: any) {
+                    return codeLens;
+                },
+            });
+        }
+
+        // ── CodeLens コマンドのハンドラ登録 ───────────────────────
+        // addCommand(0,...) は arguments を受け取れないため、
+        // monacoInstance.editor.registerCommand を使う。
+        // CodeLens の command.id にはここで登録した ID を使う。
+        monacoInstance.editor.registerCommand(
+            'spec.applyCliSuggestion',
+            (_accessor: any, cmd: string) => {
+                if (cmd) {
+                    setCmdInitialValue(cmd);
+                    setIsCmdOpen(true);
+                }
+            }
+        );
 
         // カーソル位置 + コンテキスト解決
         let lastCtxKey = ''  // 前回のコンテキストと同じなら通知しない
@@ -1201,11 +1399,14 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
                                 {/* ここにCommandLine を配置 */}
                                 <CommandLine
                                     classes={classes || []}
+                                    initialValue={cmdInitialValue}
                                     onExecute={(cmd) => {
+                                        setCmdInitialValue('');
                                         handleCommandExecute(cmd);
                                         // setIsCmdOpen(false); // handleCommandExecute 内で dry-run の場合に制御するためここでは消さない
                                     }}
                                     onClose={() => {
+                                        setCmdInitialValue('');
                                         setIsCmdOpen(false);
                                         editorRef.current?.focus();
                                     }}
@@ -1225,7 +1426,10 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
                                 cmd.isDryRun = false; // 実際に適用する
                                 const res = cmd.executeFromService(service);
                                 if (res.success) {
-                                    const dsl = res.payload?.dsl || res.model.toDSL();
+                                    const rawDsl = res.payload?.dsl
+                                        || res.model.toDSL(aliasMapRef.current);
+                                    const header = headerBlockRef.current;
+                                    const dsl = header ? `${header}\n\n${rawDsl}` : rawDsl;
                                     const editor = editorRef.current;
                                     if (editor) {
                                         const model = editor.getModel();
@@ -1258,6 +1462,26 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
                 )}
             </div>
 
+
+            {/* ── CLI提案パネル ── */}
+            <CliSuggestionsPanel
+                suggestions={status.cliSuggestions}
+                onSelectSuggestion={(cmd, dryRun) => {
+                    const finalCmd = dryRun ? `dry-run ${cmd}` : cmd;
+                    setCmdInitialValue(finalCmd);
+                    const editor = editorRef.current;
+                    if (editor) {
+                        const cursor = editor.getPosition();
+                        if (cursor) {
+                            const pixelCoords = editor.getScrolledVisiblePosition(cursor);
+                            if (pixelCoords) {
+                                setCmdPosition({ top: pixelCoords.top + 22, left: pixelCoords.left });
+                            }
+                        }
+                    }
+                    setIsCmdOpen(true);
+                }}
+            />
 
             {/* ── StatusBar ── */}
             <StatusBar status={status} cursor={cursor} charCount={charCount} />

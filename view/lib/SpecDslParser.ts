@@ -9,6 +9,7 @@ import {
 import { ClassDiagramService } from "./application/ClassDiagramService";
 import { DomainModel } from "./DomainModel";
 import { postMessage } from "../../frontend/src/bridge/vscode-bridge";
+import { RefactorSuggester } from "./RefactorSuggester";
 
 // ============================================================
 // Public Types
@@ -33,20 +34,15 @@ export interface ParsedRelation {
     targetMultiplicity?: string;
 }
 
-export interface ParsedDsl {
-    classes: ParsedClass[];
-    relations: ParsedRelation[];
-}
 // UI側(WorkflowEditorPanel)と構造を合わせたローカルインターフェース
 // インポートせずに、このファイル内でのパース用に使用します
 interface LocalWFNode { id: string; type: string; label: string; x: number; y: number; }
 interface LocalWFEdge { from: string; to: string; }
 interface LocalWorkflow { nodes: LocalWFNode[]; edges: LocalWFEdge[]; }
-// ============================================================
-// Public Types
-// ============================================================
 
-// ... 既存の型 ...
+// ============================================================
+// Gherkin Types
+// ============================================================
 
 export interface GherkinStep {
     keyword: string; // "Given", "When", "Then", "And", "But"
@@ -63,10 +59,108 @@ export interface GherkinFeature {
     scenarios: GherkinScenario[];
 }
 
+// ============================================================
+// Structured Constraint（制約の構造化）
+// ============================================================
+
+/**
+ * 制約の種別
+ * - range    : 以上/以下/未満/超過 などの範囲制約
+ * - equality : 等しい/一致/である などの等値制約
+ * - state    : 〜状態/〜済み などの状態制約
+ * - existence: 存在する/nullでない などの存在制約
+ * - custom   : 上記に当てはまらないカスタム制約
+ */
+export type ConstraintKind = 'range' | 'equality' | 'state' | 'existence' | 'custom';
+
+export interface StructuredConstraint {
+    kind: ConstraintKind;
+    /** 制約の主語（「受注金額」「ユーザー」等） */
+    subject: string;
+    /** 演算子に相当するテキスト（「以上」「等しい」等） */
+    operator: string;
+    /** 値部分（「1000」「未確認」等）。取得できない場合は空文字 */
+    value: string;
+    /** パース元の原文 */
+    raw: string;
+}
+
+// ============================================================
+// Workflow Backref（ワークフロー逆参照）
+// ============================================================
+
+/**
+ * DSL内のメンバ名・操作名が、どのワークフローノードで参照されているかを示す逆参照エントリ。
+ * ParsedDsl.backrefIndex のキーは identifierName（メンバ名または操作名）。
+ */
+export interface WorkflowBackref {
+    /** 参照しているワークフローノードのID */
+    nodeId: string;
+    /** 参照しているシナリオ名 */
+    scenarioName: string;
+    /** 参照しているクラス名 */
+    className: string;
+    /** 参照している操作名 */
+    operationName: string;
+    /** Gherkin ステップのキーワード（Given/When/Then 等） */
+    stepKeyword: string;
+    /** ステップ本文 */
+    stepText: string;
+}
+
+// ============================================================
+// CLI Suggestion（CLI提案）
+// ============================================================
+
+export type CliSuggestionKind =
+    | 'add-member'        // メンバ追加が推奨される
+    | 'add-state-machine' // 状態機械の追加が推奨される
+    | 'generate-code'     // コード生成が推奨される
+    | 'add-constraint'    // 制約の明示化が推奨される
+    | 'add-relation';     // リレーション追加が推奨される
+
+export interface CliSuggestion {
+    kind: CliSuggestionKind;
+    /** CLIへ直接貼り付け可能なコマンド文字列 */
+    command: string;
+    /** 提案の理由（UIのツールチップ等に使用） */
+    reason: string;
+    /** 関連するクラス名 */
+    className?: string;
+    /** 関連するメンバ・操作名 */
+    identifierName?: string;
+    /** 優先度（高いほど先に表示） */
+    priority: number;
+    /**
+     * true のとき、コマンドラインへ渡す際に自動で "dry-run " を先頭に付与する。
+     * refactor / add-relation 系など副作用が大きいコマンドはデフォルト true。
+     * add-member など軽微な変更は false にしてプレビューなしで流せる。
+     */
+    dryRun?: boolean;
+}
+
+// ============================================================
+// ParsedDsl（統合型）
+// ============================================================
+
 export interface ParsedDsl {
     classes: ParsedClass[];
     relations: ParsedRelation[];
-    features: GherkinFeature[]; // ← 追加: パースされたGherkinフィーチャー群
+    features: GherkinFeature[];
+    /**
+     * identifierName → そのidentifierを参照しているワークフローノード群
+     */
+    backrefIndex: Map<string, WorkflowBackref[]>;
+    /**
+     * CLIやCodeLensに渡す提案リスト。優先度降順でソート済み。
+     */
+    cliSuggestions: CliSuggestion[];
+    /**
+     * DSL先頭のコメント行・alias宣言をそのまま保持したブロック。
+     * toDSL() で生成した本体の前に差し込むことで、
+     * コメントと alias が失われないようにする。
+     */
+    headerBlock: string;
 }
 
 
@@ -87,6 +181,31 @@ export class SpecDslParser {
     private aliases: Map<string, string> = new Map();
 
     /**
+     * 名詞正規化辞書（ドメインワード→正規形）
+     * parse() のたびに動的に再構築される。
+     */
+    private nounDictionary: Map<string, string> = new Map();
+
+    /**
+     * 逆参照インデックス（identifierName → WorkflowBackref[]）
+     * parseGherkinToWorkflow() 内で随時追記される。
+     */
+    private backrefIndex: Map<string, WorkflowBackref[]> = new Map();
+
+    /**
+     * CLI提案リスト。parse() の後半で生成される。
+     */
+    private cliSuggestions: CliSuggestion[] = [];
+
+    /**
+     * 最後に parse() した際に収集した alias マップを返す。
+     * SpecEditorPanel が toDSL() に渡すために使用する。
+     */
+    getAliasMap(): Map<string, string> {
+        return new Map(this.aliases);
+    }
+
+    /**
      * DSL文字列をパースして ParsedDsl を返す。
      */
     parse(source: string, service: ClassDiagramService): ParsedDsl {
@@ -94,10 +213,38 @@ export class SpecDslParser {
         const relations: ParsedRelation[] = [];
         const features: GherkinFeature[] = [];
         this.aliases.clear();
+        this.backrefIndex.clear();
+        this.cliSuggestions = [];
 
         let current: ParsedClass | null = null;
 
         const lines = source.split("\n").map(l => l.trimEnd());
+
+        // ── ヘッダブロック抽出 ─────────────────────────────────────
+        // ファイル先頭から最初のクラス・リレーション宣言の直前までに存在する
+        // コメント行（// # で始まる行）と alias 宣言をそのまま保持する。
+        // toDSL() で生成した本体の前に差し込むことで紛失を防ぐ。
+        const headerLines: string[] = [];
+        for (const line of lines) {
+            const t = line.trim();
+            const isClassOrRelation =
+                t.match(/^(abstract\s+)?(class|interface|struct)\b/) ||
+                t.match(/^[+\-#~]/) ||
+                ['->', '+>', '*>', '>|', '>/', '-/>', 'o>'].some(sym => t.includes(sym));
+            if (isClassOrRelation) break;
+            // コメント行・alias行・空行のみ保持
+            if (!t || t.startsWith('//') || t.startsWith('#') || t.match(/^alias\s+/i)) {
+                // toDSL() が自動生成するヘッダ行（# generated by ...）は除外
+                if (!t.startsWith('# generated by') && !t.match(/^# \d{4}/)) {
+                    headerLines.push(line);
+                }
+            }
+        }
+        // 末尾の空行を1つに正規化
+        while (headerLines.length > 0 && headerLines[headerLines.length - 1].trim() === '') {
+            headerLines.pop();
+        }
+        const headerBlock = headerLines.join('\n');
 
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
@@ -165,6 +312,19 @@ export class SpecDslParser {
 
         if (current) classes.push(current);
 
+        // ── 名詞正規化辞書をDSLから動的構築 ─────────────────────────
+        // クラス名・メンバ名・操作名をドメインワードとして登録する。
+        // alias 宣言があれば「日本語表記→英語識別子」のマッピングも登録する。
+        this.nounDictionary.clear();
+        for (const cls of classes) {
+            this.nounDictionary.set(cls.name, cls.name);
+            for (const m of cls.members) this.nounDictionary.set(m.name, m.name);
+            for (const op of cls.operations) this.nounDictionary.set(op.name, op.name);
+        }
+        for (const [alias, realName] of this.aliases.entries()) {
+            this.nounDictionary.set(alias, realName);
+        }
+
         // Pass 1: クラスを登録
         for (const cls of classes) {
             service.applyAddType({
@@ -184,42 +344,58 @@ export class SpecDslParser {
             }
             const classInfo = service.getClassByName(cls.name);
 
-            for (const operation of cls.operations) {
-                const opLineIndex = lines.findIndex(l => l.includes(`${operation.name}(`));
+            // クラス宣言行を特定して、Scenario検索をそのブロック内に限定する
+            // （他クラスの同名メソッドを誤検出しないための措置）
+            const classBlockStart = lines.findIndex(l =>
+                new RegExp(`(abstract\\s+)?(class|interface|struct)\\s+${cls.name}\\b`).test(l.trim())
+            );
+            const classBlockEnd = lines.findIndex((l, idx) =>
+                idx > classBlockStart &&
+                /^(abstract\s+)?(class|interface|struct)\s+\w+/.test(l.trim())
+            );
+            const blockEnd = classBlockEnd === -1 ? lines.length : classBlockEnd;
 
+            for (const operation of cls.operations) {
+                // パラメータは matchOperation → parseParameters で既に operation に含まれており、
+                // applyAddOperation 内で登録済み。applyAddParameter による二重登録は行わない。
                 service.applyAddOperation({
                     className: cls.name,
                     operation,
                 });
-                if (opLineIndex !== -1 && classInfo) {
-                    for (let j = opLineIndex + 1; j < lines.length; j++) {
-                        const nextLine = lines[j].trim();
-                        if (!nextLine) continue;
-                        if (nextLine.match(/^[+\-#~]|class|interface|struct/)) break;
 
-                        if (nextLine.match(/^(?:Scenario|シナリオ):/i)) {
-                            const c = service.getClassByName(cls.name);
-                            if (!c) break;
-                            const op = service.getOperationByName(cls.name, operation.name);
-                            if (!op) break;
+                if (classInfo) {
+                    // クラスブロック内のみで操作行を検索
+                    const opLineIndex = lines.findIndex((l, idx) =>
+                        idx >= classBlockStart &&
+                        idx < blockEnd &&
+                        l.includes(`${operation.name}(`)
+                    );
 
-                            const result = this.parseGherkinToWorkflow(lines, j, classInfo);
-                            service.applyUpdateOperationWorkflow({
-                                classId: c.id,
-                                operationId: op.id,
-                                workflow: result.workflow,
-                            });
-                            break;
+                    if (opLineIndex !== -1) {
+                        for (let j = opLineIndex + 1; j < blockEnd; j++) {
+                            const nextLine = lines[j].trim();
+                            if (!nextLine) continue;
+                            // 次のメンバ・操作宣言が来たらシナリオ探索を終了
+                            if (nextLine.match(/^[+\-#~]/)) break;
+
+                            if (nextLine.match(/^(?:Scenario|シナリオ):/i)) {
+                                const c = service.getClassByName(cls.name);
+                                if (!c) break;
+                                const op = service.getOperationByName(cls.name, operation.name);
+                                if (!op) break;
+
+                                // 逆参照インデックスで操作名を使えるよう context に注入
+                                const contextWithOp = { ...classInfo, _currentOperationName: operation.name };
+                                const result = this.parseGherkinToWorkflow(lines, j, contextWithOp);
+                                service.applyUpdateOperationWorkflow({
+                                    classId: c.id,
+                                    operationId: op.id,
+                                    workflow: result.workflow,
+                                });
+                                break;
+                            }
                         }
                     }
-                }
-
-                for (const param of operation.parameters) {
-                    service.applyAddParameter({
-                        className: cls.name,
-                        operationName: operation.name,
-                        parameter: param,
-                    });
                 }
             }
         }
@@ -240,7 +416,17 @@ export class SpecDslParser {
             }
         }
 
-        return { classes, relations, features };
+        // ── CLI提案の生成 ─────────────────────────────────────────
+        this.cliSuggestions = this.generateCliSuggestions(classes, relations);
+
+        return {
+            classes,
+            relations,
+            features,
+            backrefIndex: new Map(this.backrefIndex),
+            cliSuggestions: [...this.cliSuggestions],
+            headerBlock,
+        };
     }
 
     // ============================================================
@@ -463,6 +649,31 @@ export class SpecDslParser {
                     }
                 });
 
+                // ── 逆参照インデックスの構築 ─────────────────────────
+                // resolveIdentifiers で解決された識別子ごとに backrefIndex へ登録する。
+                // context から className / operationName を取得できる場合のみ記録する。
+                if (bindings.length > 0 && context) {
+                    const className: string = context.name ?? '';
+                    const operationName: string =
+                        context._currentOperationName ?? context.operations?.[0]?.name ?? '';
+                    for (const identifierName of bindings) {
+                        const entry: WorkflowBackref = {
+                            nodeId: newId,
+                            scenarioName: currentScenarioName,
+                            className,
+                            operationName,
+                            stepKeyword: keyword,
+                            stepText: text,
+                        };
+                        const existing = this.backrefIndex.get(identifierName);
+                        if (existing) {
+                            existing.push(entry);
+                        } else {
+                            this.backrefIndex.set(identifierName, [entry]);
+                        }
+                    }
+                }
+
                 const isFirstStep = lastNodeId === startId;
                 const edgeCondition = isFirstStep ? currentScenarioName : null;
                 const edgeSrcs = isFirstStep && currentSrcs.length > 0 ? currentSrcs : undefined;
@@ -492,44 +703,164 @@ export class SpecDslParser {
         const found: string[] = [];
         if (!context) return found;
 
-        // メンバ名を収集
+        // メンバ名・操作名を収集
         const members = context.members?.map((m: any) => m.name) || [];
         const operations = context.operations?.map((op: any) => op.name) || [];
         const allIdentifiers = [...members, ...operations];
 
-        // エイリアスを考慮してテキスト内を検索
+        // 正規化済みテキストでも検索（語尾変化を除去）
+        const normalizedText = this.normalizeNoun(text);
+
         for (const id of allIdentifiers) {
-            if (text.includes(id)) {
+            // 元テキスト、または正規化後テキストのどちらかにマッチすれば採用
+            if (text.includes(id) || normalizedText.includes(id)) {
                 found.push(id);
+                continue;
             }
         }
 
+        // エイリアス経由の解決（"受注金額" → "orderAmount" 等）
         for (const [alias, realName] of this.aliases.entries()) {
-            if (text.includes(alias) && allIdentifiers.includes(realName)) {
-                if (!found.includes(realName)) {
-                    found.push(realName);
-                }
+            if ((text.includes(alias) || normalizedText.includes(alias))
+                && allIdentifiers.includes(realName)
+                && !found.includes(realName)) {
+                found.push(realName);
+            }
+        }
+
+        // 名詞辞書経由の解決（ドメインワードの揺れを吸収）
+        for (const [dictKey, realName] of this.nounDictionary.entries()) {
+            if (dictKey === realName) continue; // 自己参照はスキップ
+            if ((text.includes(dictKey) || normalizedText.includes(dictKey))
+                && allIdentifiers.includes(realName)
+                && !found.includes(realName)) {
+                found.push(realName);
             }
         }
 
         return found;
     }
 
-    private extractConstraints(text: string): string[] {
-        const constraints: string[] = [];
-        // 「～が～であること」「～は～以上」などのパターンを抽出（簡易実装）
-        const pattern = /([^\s、。]+(?:が|は)[^\s、。]+(?:であること|以上|以下|未満|等しい|一致))/g;
-        let m;
-        while ((m = pattern.exec(text)) !== null) {
-            constraints.push(m[1]);
+    /**
+     * テキストから制約を構造化して抽出する。
+     * 形態素解析の代わりにルールベースのパターンマッチを使用。
+     */
+    private extractConstraints(text: string): StructuredConstraint[] {
+        const constraints: StructuredConstraint[] = [];
+
+        // ── 範囲制約: 「〜は〜以上」「〜が〜未満」等 ──
+        const rangePattern = /([^\s、。,]+(?:は|が))([^\s、。,]+)(?:の)?(以上|以下|未満|超|超過)/g;
+        let m: RegExpExecArray | null;
+        while ((m = rangePattern.exec(text)) !== null) {
+            const subject = m[1].replace(/[はが]$/, '');
+            constraints.push({
+                kind: 'range',
+                subject: this.normalizeNoun(subject),
+                operator: m[3],
+                value: m[2],
+                raw: m[0],
+            });
         }
+
+        // ── 等値制約: 「〜が〜であること」「〜は〜と等しい」「〜に一致する」──
+        const eqPattern = /([^\s、。,]+(?:は|が))([^\s、。,]+)(?:に|と)?(であること|等しい|一致する|である)/g;
+        while ((m = eqPattern.exec(text)) !== null) {
+            const subject = m[1].replace(/[はが]$/, '');
+            constraints.push({
+                kind: 'equality',
+                subject: this.normalizeNoun(subject),
+                operator: m[3],
+                value: m[2],
+                raw: m[0],
+            });
+        }
+
+        // ── 状態制約: 「〜状態」「〜済み」「〜中」「〜完了」「〜待ち」──
+        const statePattern = /([^\s、。,]+(?:が|は|の))([^\s、。,]+(?:状態|済み|中|完了|待ち))/g;
+        while ((m = statePattern.exec(text)) !== null) {
+            const subject = m[1].replace(/[がはの]$/, '');
+            constraints.push({
+                kind: 'state',
+                subject: this.normalizeNoun(subject),
+                operator: '状態',
+                value: m[2],
+                raw: m[0],
+            });
+        }
+
+        // ── 存在制約: 「〜が存在する」「〜がnullでない」等 ──
+        const existPattern = /([^\s、。,]+)(?:が|は)(存在する|nullでない|空でない|設定されている|登録済み)/g;
+        while ((m = existPattern.exec(text)) !== null) {
+            constraints.push({
+                kind: 'existence',
+                subject: this.normalizeNoun(m[1]),
+                operator: m[2],
+                value: '',
+                raw: m[0],
+            });
+        }
+
         return constraints;
     }
 
+    /**
+     * テキストから状態名を推論する。
+     * 「〜状態」「〜済み」「〜中」「〜完了」「〜待ち」のパターンを検出する。
+     */
     private inferState(text: string): string | undefined {
-        // 「～状態」「～済み」「～中」などのキーワードから状態を推論
-        const stateMatch = text.match(/([^\s、。]+(?:状態|済み|中|完了|待ち))/);
-        return stateMatch ? stateMatch[1] : undefined;
+        const stateMatch = text.match(/([^\s、。,]+(?:状態|済み|中|完了|待ち|確認済|未確認|保留))/);
+        if (stateMatch) return stateMatch[1];
+
+        // 英語キーワードも対応
+        const engStateMatch = text.match(/\b(pending|confirmed|cancelled|processing|completed|draft|active|inactive)\b/i);
+        return engStateMatch ? engStateMatch[1].toLowerCase() : undefined;
+    }
+
+    /**
+     * 名詞の正規化（形態素解析の代替）。
+     * 語尾変化パターン（する→、された→、されている→等）を除去し
+     * 辞書形に近い形へ変換する。
+     *
+     * 優先度順:
+     *   1. alias マップ直接マッチ（「受注金額」→「orderAmount」等）
+     *   2. 名詞辞書マッチ（DSLから収集した識別子群）
+     *   3. 語尾変化ルール（正規表現による除去）
+     */
+    private normalizeNoun(text: string): string {
+        // Step 1: alias マップ直接置換
+        for (const [alias, realName] of this.aliases.entries()) {
+            if (text.includes(alias)) {
+                text = text.replace(new RegExp(alias, 'g'), realName);
+            }
+        }
+
+        // Step 2: 語尾変化ルールを適用
+        const suffixRules: [RegExp, string][] = [
+            [/する$/, ''],      // 注文する → 注文
+            [/した$/, ''],      // 確認した → 確認
+            [/された$/, ''],      // 処理された → 処理
+            [/されている$/, ''],      // 登録されている → 登録
+            [/している$/, ''],      // 処理している → 処理
+            [/できる$/, ''],      // 注文できる → 注文
+            [/できない$/, 'できない'], // 変更できない はそのまま保持
+            [/である$/, ''],      // 有効である → 有効
+            [/であった$/, ''],      // 有効であった → 有効
+            [/ている$/, ''],      // 待っている → 待
+            [/ている $/, ''],
+        ];
+
+        // Step 3: 句読点・助詞の除去（後続パターンマッチを助けるため）
+        text = text
+            .replace(/[、。,.！!？?]/g, ' ')
+            .replace(/\b(は|が|を|に|で|と|の|も|から|まで|へ)\b/g, ' ')
+            .trim();
+
+        for (const [pattern, replacement] of suffixRules) {
+            // テキスト全体の末尾に適用
+            text = text.replace(pattern, replacement);
+        }
+
+        return text;
     }
 
     private parseParameters(raw: string): OperationParameter[] {
@@ -549,5 +880,125 @@ export class SpecDslParser {
                     type: p.slice(colonIdx + 1).trim(),
                 };
             });
+    }
+
+    // ============================================================
+    // CLI Suggestion Generator
+    // ============================================================
+
+    /**
+     * パース結果を元にCLI提案リストを生成する。
+     *
+     * 検出ルール:
+     *   1. 操作の返却型が "any" または "void" で、かつ逆参照が多い → コード生成を提案
+     *   2. Gherkin の Given 節で状態が推論されているのに、対応するメンバがない → メンバ追加を提案
+     *   3. 操作がある一方で、対応するリレーションが存在しない → リレーション追加を提案
+     *   4. backrefIndex に多数の参照があるクラス → コード生成の優先候補として提案
+     *   5. 操作パラメータの型が "any" → 型の明示化を提案
+     */
+    private generateCliSuggestions(
+        classes: ParsedClass[],
+        relations: ParsedRelation[],
+    ): CliSuggestion[] {
+        const suggestions: CliSuggestion[] = [];
+
+        for (const cls of classes) {
+            // ── 提案1: 逆参照数が多いクラスはコード生成優先候補 ──
+            // generate-code は副作用なし（ファイル出力のみ）→ dryRun 不要
+            let totalBackrefs = 0;
+            for (const member of cls.members) {
+                totalBackrefs += this.backrefIndex.get(member.name)?.length ?? 0;
+            }
+            for (const op of cls.operations) {
+                totalBackrefs += this.backrefIndex.get(op.name)?.length ?? 0;
+            }
+            if (totalBackrefs >= 2) {
+                suggestions.push({
+                    kind: 'generate-code',
+                    command: `generate-code --class ${cls.name}`,
+                    reason: `${cls.name} は ${totalBackrefs} 件のシナリオから参照されています。コード生成の優先候補です。`,
+                    className: cls.name,
+                    priority: 80 + totalBackrefs,
+                    dryRun: false,
+                });
+            }
+
+            // ── 提案2: anyパラメータを持つ操作 → 型の明示化 ──
+            // モデルを直接書き換えるため dryRun: true でプレビューを挟む
+            for (const op of cls.operations) {
+                const anyParams = op.parameters.filter((p: any) => p.type === 'any');
+                for (const param of anyParams) {
+                    suggestions.push({
+                        kind: 'add-member',
+                        command: `edit-param --class ${cls.name} --op ${op.name} --param ${param.name} --type <type>`,
+                        reason: `${cls.name}.${op.name}() のパラメータ "${param.name}" の型が未指定です。`,
+                        className: cls.name,
+                        identifierName: op.name,
+                        priority: 60,
+                        dryRun: true,
+                    });
+                }
+            }
+
+            // ── 提案3: 状態名メンバが存在しない → add-member を提案 ──
+            // メンバ追加はモデル変更なので dryRun: true
+            const memberNames = new Set(cls.members.map(m => m.name));
+            for (const [, backrefs] of this.backrefIndex.entries()) {
+                const isForThisClass = backrefs.some(r => r.className === cls.name);
+                if (!isForThisClass) continue;
+
+                const stateBackrefs = backrefs.filter(r =>
+                    r.stepKeyword.match(/^(Given|前提)$/i) &&
+                    r.className === cls.name
+                );
+                for (const ref of stateBackrefs) {
+                    const inferredState = this.inferState(ref.stepText);
+                    if (inferredState && !memberNames.has('status') && !memberNames.has('state')) {
+                        suggestions.push({
+                            kind: 'add-member',
+                            command: `add-member --class ${cls.name} --name status --type ${cls.name}Status`,
+                            reason: `シナリオ "${ref.scenarioName}" で "${inferredState}" という状態が言及されていますが、statusメンバが存在しません。`,
+                            className: cls.name,
+                            priority: 70,
+                            dryRun: true,
+                        });
+                        break;
+                    }
+                }
+            }
+
+            // ── 提案4: リレーション未定義 → add-relation を提案 ──
+            // リレーション追加はモデル変更なので dryRun: true
+            for (const op of cls.operations) {
+                const returnType = op.returnType?.replace(/\[\]$/, '');
+                if (!returnType || returnType === 'void' || returnType === 'any') continue;
+                const targetExists = classes.some(c => c.name === returnType);
+                if (!targetExists) continue;
+
+                const hasRelation = relations.some(r =>
+                    (r.source === cls.name && r.target === returnType) ||
+                    (r.source === returnType && r.target === cls.name)
+                );
+                if (!hasRelation) {
+                    suggestions.push({
+                        kind: 'add-relation',
+                        command: `add-relation --from ${cls.name} --to ${returnType} --type dependency`,
+                        reason: `${cls.name}.${op.name}() が ${returnType} を返しますが、リレーションが定義されていません。`,
+                        className: cls.name,
+                        identifierName: op.name,
+                        priority: 50,
+                        dryRun: true,
+                    });
+                }
+            }
+        }
+
+        // ── リファクタリング提案（RefactorSuggesterに委譲）──────────
+        // refactor 系はすべて副作用大のため dryRun: true を付与してから追加
+        const refactorSuggestions = new RefactorSuggester().suggest(classes, relations)
+            .map(s => ({ ...s, dryRun: true }));
+        suggestions.push(...refactorSuggestions);
+
+        return suggestions.sort((a, b) => b.priority - a.priority);
     }
 }

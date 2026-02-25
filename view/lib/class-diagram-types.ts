@@ -63,7 +63,7 @@ export interface OperationWorkflow {
     y: number
     metadata?: {
       bindings?: string[]
-      constraints?: string[]
+      constraints?: StructuredConstraint[]
       inferredState?: string
     }
   }>
@@ -77,6 +77,34 @@ export interface OperationWorkflow {
     }
   }>
 }
+
+
+// ============================================================
+// Structured Constraint（制約の構造化）
+// ============================================================
+
+/**
+ * 制約の種別
+ * - range    : 以上/以下/未満/超過 などの範囲制約
+ * - equality : 等しい/一致/である などの等値制約
+ * - state    : 〜状態/〜済み などの状態制約
+ * - existence: 存在する/nullでない などの存在制約
+ * - custom   : 上記に当てはまらないカスタム制約
+ */
+export type ConstraintKind = 'range' | 'equality' | 'state' | 'existence' | 'custom';
+
+export interface StructuredConstraint {
+  kind: ConstraintKind;
+  /** 制約の主語（「受注金額」「ユーザー」等） */
+  subject: string;
+  /** 演算子に相当するテキスト（「以上」「等しい」等） */
+  operator: string;
+  /** 値部分（「1000」「未確認」等）。取得できない場合は空文字 */
+  value: string;
+  /** パース元の原文 */
+  raw: string;
+}
+
 
 /** 操作（メソッド） */
 export interface ClassOperation {
@@ -101,7 +129,7 @@ export interface ClassOperation {
       y: number
       metadata?: {
         bindings?: string[]
-        constraints?: string[]
+        constraints?: StructuredConstraint[]
         inferredState?: string
       }
     }>

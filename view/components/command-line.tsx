@@ -4,11 +4,23 @@ import { cn } from '@/lib/utils'
 import { ClassInfo } from '../lib/class-diagram-types'
 import { Search } from 'lucide-react'
 import { Command as CommandPrimitive } from 'cmdk'
+import type { CliSuggestion } from '@/lib/SpecDslParser'
+
 interface CommandLineProps {
     onExecute: (command: string) => void;
-    onClose?: () => void; // 追加: 閉じるためのコールバック
+    onClose?: () => void;
     classes: ClassInfo[];
     className?: string;
+    /**
+     * CodeLens / CliSuggestionsPanel からコマンドラインを開く際の初期入力値。
+     * 設定されている場合は入力欄にプリセットされ、サジェストが即時展開する。
+     */
+    initialValue?: string;
+    /**
+     * パーサから渡される CLI 提案リスト。
+     * 入力が空のときに「提案」グループとして表示される。
+     */
+    cliSuggestions?: CliSuggestion[];
 }
 
 interface Suggestion {
@@ -16,13 +28,21 @@ interface Suggestion {
     label: string;
     group: string;
     valueToInsert: string;
+    /** 補足説明（CliSuggestionのreasonなど） */
+    description?: string;
+    /** 提案の由来 */
+    kind?: 'builtin' | 'cli-suggestion';
 }
 
 export function CommandLine({
     onExecute,
     onClose,
-    classes, className }: CommandLineProps) {
-    const [input, setInput] = React.useState('')
+    classes,
+    className,
+    initialValue = '',
+    cliSuggestions = [],
+}: CommandLineProps) {
+    const [input, setInput] = React.useState(initialValue)
     const [history, setHistory] = React.useState<string[]>([])
     const [historyIndex, setHistoryIndex] = React.useState(-1)
     const [selectedIdx, setSelectedIdx] = React.useState(-1)
@@ -32,6 +52,20 @@ export function CommandLine({
     const [prefixAtLock, setPrefixAtLock] = React.useState('')
 
     const inputRef = React.useRef<HTMLInputElement>(null)
+
+    const resetCycling = React.useCallback(() => {
+        setLockedSuggestions(null)
+        setSelectedIdx(-1)
+        setPrefixAtLock('')
+    }, [])
+
+    // initialValue が変化したとき（CodeLens / CliSuggestionsPanelからの呼び出し）に入力欄を更新
+    React.useEffect(() => {
+        if (initialValue) {
+            setInput(initialValue);
+            resetCycling();
+        }
+    }, [initialValue, resetCycling])
 
     // マウント時に自動フォーカス
     React.useEffect(() => {
@@ -55,7 +89,22 @@ export function CommandLine({
 
     // Get current suggestions based on input (Standard real-time parsing)
     const getSuggestionsData = (currentInput: string): Suggestion[] => {
-        if (!classes || !Array.isArray(classes)) return []; // 安全策
+        if (!classes || !Array.isArray(classes)) return [];
+
+        // ── 入力が空のとき: CLI提案をプリセット表示 ──────────────────
+        // CliSuggestionsPanel からの初期値がある場合を含め、
+        // 入力空欄時は cliSuggestions を「Suggestions」グループとして提示する。
+        if (currentInput.trim() === '' && cliSuggestions.length > 0) {
+            return cliSuggestions.slice(0, 8).map(s => ({
+                id: s.command,
+                label: s.command,
+                group: 'Suggestions',
+                valueToInsert: s.command,
+                description: s.reason,
+                kind: 'cli-suggestion' as const,
+            }));
+        }
+
         const trimmed = currentInput.trimStart()
         const parts = currentInput.split(/\s+/)
         const isTrailingSpace = currentInput.endsWith(' ')
@@ -314,12 +363,6 @@ export function CommandLine({
         }
     }
 
-    const resetCycling = () => {
-        setLockedSuggestions(null)
-        setSelectedIdx(-1)
-        setPrefixAtLock('')
-    }
-
     const onInputChange = (val: string) => {
         // If the change came from typing (not Tab cycling), reset cycling
         // We handle this in handleKeyDown usually, but this is a safety.
@@ -352,27 +395,44 @@ export function CommandLine({
                     <CommandList className={cn(
                         "w-full max-h-[300px] bg-popover border rounded-md shadow-2xl overflow-y-auto",
                         "animate-in fade-in slide-in-from-top-2 duration-100 ease-out",
-                        input === '' && "hidden")}>
+                        // 入力が空でもcliSuggestionsがあれば表示する。
+                        // 両方とも0件のときだけ隠す。
+                        (input === '' && cliSuggestions.length === 0) && "hidden")}>
                         {/* suggestions が undefined でも落ちないように ?.length を使用 */}
                         {(currentSuggestions?.length ?? 0) === 0 && input.length > 0 && (
                             <CommandEmpty className="p-2 text-[12px]">No results found.</CommandEmpty>
                         )}
                         {/* <CommandEmpty>No suggestions found.</CommandEmpty> */}
-                        {['Types', 'Members', 'Operations', 'Relationships', 'Target Type', 'Classes', 'Visibility', 'Modifiers', 'Attributes', 'Methods', 'Utilities', 'Languages'].map(g => {
+                        {['Suggestions', 'Types', 'Members', 'Operations', 'Relationships', 'Target Type', 'Classes', 'Visibility', 'Modifiers', 'Attributes', 'Methods', 'Utilities', 'Languages'].map(g => {
                             const groupItems = currentSuggestions.filter(s => s.group === g)
                             if (groupItems.length === 0) return null
                             return (
                                 <CommandGroup key={g} heading={g} className="text-[11px] uppercase tracking-wider opacity-70">
                                     {groupItems.map((s) => {
                                         const absoluteIdx = currentSuggestions.indexOf(s)
+                                        const isCliSuggestion = s.kind === 'cli-suggestion'
                                         return (
                                             <CommandItem
                                                 key={s.id + s.group}
                                                 onSelect={() => handleSelect(s)}
                                                 data-selected={absoluteIdx === selectedIdx}
-                                                className={cn(absoluteIdx === selectedIdx && "bg-accent text-accent-foreground", "text-[13px] py-1 px-2 cursor-pointer")}
+                                                className={cn(
+                                                    absoluteIdx === selectedIdx && "bg-accent text-accent-foreground",
+                                                    "text-[13px] py-1 px-2 cursor-pointer",
+                                                    isCliSuggestion && "flex-col items-start gap-0.5"
+                                                )}
                                             >
-                                                {s.label}
+                                                <span className={cn(
+                                                    isCliSuggestion && "text-[12px] font-mono text-blue-400"
+                                                )}>
+                                                    {isCliSuggestion && <span className="mr-1 text-amber-400">⚡</span>}
+                                                    {s.label}
+                                                </span>
+                                                {isCliSuggestion && s.description && (
+                                                    <span className="text-[10px] text-muted-foreground/70 pl-4 truncate w-full">
+                                                        {s.description}
+                                                    </span>
+                                                )}
                                             </CommandItem>
                                         )
                                     })}
