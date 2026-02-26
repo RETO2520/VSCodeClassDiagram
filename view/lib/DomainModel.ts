@@ -31,6 +31,7 @@ import {
     RelationshipType,
     MemberRelationshipType,
     Relationship,
+    ParsedEndpoint,
     createId,
     visibilitySymbol,
 } from './class-diagram-types'
@@ -214,8 +215,9 @@ export class DomainModel {
     /**
      * DSL文字列を取得
      * @param aliasMap alias宣言を含める場合に渡す（"日本語名" → "識別子名"）
+     * @param endpoints エンドポイント定義を含める場合に渡す
      */
-    toDSL(aliasMap?: Map<string, string>): string {
+    toDSL(aliasMap?: Map<string, string>, endpoints?: ParsedEndpoint[]): string {
         const classes = this.getClasses();
         // generalization / realization は extends / implements として
         // クラスブロック内に出力するため、明示リレーションからは除外する
@@ -241,6 +243,15 @@ export class DomainModel {
         // ---- クラスブロック ----
         for (const cls of classes) {
             lines.push(...this.renderClassDsl(cls, this));
+        }
+
+        // ---- エンドポイントブロック ----
+        if (endpoints && endpoints.length > 0) {
+            lines.push("# Endpoints");
+            lines.push("");
+            for (const ep of endpoints) {
+                lines.push(...this.renderEndpointDsl(ep));
+            }
         }
 
         // ---- 明示リレーション ----
@@ -346,16 +357,50 @@ export class DomainModel {
                 const node = nodeMap.get(currentId);
                 if (!node || node.type === 'start' || node.type === 'end') break;
 
-                // label から keyword と text を分離
-                // 形式: "Given: テキスト" or "When: テキスト" etc.
-                const colonIdx = node.label.indexOf(': ');
-                if (colonIdx !== -1) {
-                    const keyword = node.label.slice(0, colonIdx);
-                    const text = node.label.slice(colonIdx + 2);
+                // node.typeからキーワードを復元、fallbackとしてlabelから分離
+                const TYPE_TO_KEYWORD: Record<string, string> = {
+                    given: 'Given', when: 'When', then: 'Then', how: 'How',
+                    process: '', decision: '', loop: '', call: '',
+                };
+                const keywordFromType = TYPE_TO_KEYWORD[node.type];
+                let keyword: string;
+                let text: string;
+
+                if (keywordFromType !== undefined) {
+                    // typeベースで復元（ラベルにプレフィックスがあれば除去）
+                    keyword = keywordFromType || node.label.split(': ')[0];
+                    text = node.label.replace(/^(Given|When|Then|How|And|But|前提|もし|ならば|かつ|しかし):\s*/i, '');
+                } else {
+                    // フォールバック: label の "keyword: text" 形式
+                    const colonIdx = node.label.indexOf(': ');
+                    if (colonIdx !== -1) {
+                        keyword = node.label.slice(0, colonIdx);
+                        text = node.label.slice(colonIdx + 2);
+                    } else {
+                        keyword = '';
+                        text = node.label;
+                    }
+                }
+
+                if (keyword) {
                     lines.push(`      ${keyword} ${text}`);
                 } else {
-                    // フォールバック（予期しない形式はそのまま出力）
-                    lines.push(`      ${node.label}`);
+                    lines.push(`      ${text}`);
+                }
+
+                // Howステップ（実装順指針）を出力
+                const howSteps = node.metadata?.howSteps;
+                if (howSteps && howSteps.length > 0) {
+                    lines.push(`      How`);
+                    for (const s of howSteps) {
+                        lines.push(`        "${s}"`);
+                    }
+                }
+
+                // Whyステップ（設計意図）を出力
+                const whyReason = node.metadata?.whyReason;
+                if (whyReason) {
+                    lines.push(`      Why ${whyReason}`);
                 }
 
                 // 次のノードへ（シナリオ開始エッジ以外の edge.from === currentId を辿る）
@@ -373,7 +418,37 @@ export class DomainModel {
     renderMemberDsl(m: ClassMember): string {
         const vis = visibilitySymbol(m.visibility);
         const modifier = m.isStatic ? "s " : m.isAbstract ? "a " : "";
-        return `${vis} ${modifier}${m.name}: ${m.type}`;
+        const base = `${vis} ${modifier}${m.name}: ${m.type}`;
+        if (!m.needs) return base;
+        const ownerToken = m.needs.isOwner ? " owner" : "";
+        const reasonToken = m.needs.reason ? ` "${m.needs.reason}"` : "";
+        return `${base}\n    needs${ownerToken}${reasonToken}`;
+    }
+
+    renderEndpointDsl(ep: ParsedEndpoint): string[] {
+        const lines: string[] = [];
+        lines.push(`endpoint ${ep.method} ${ep.path}`);
+        if (ep.needs) {
+            lines.push(`  needs ${ep.needs.target}`);
+            if (ep.needs.reason) {
+                lines.push(`    "${ep.needs.reason}"`);
+            }
+        }
+        for (const scenario of ep.scenarios) {
+            lines.push(`  Scenario: ${scenario.name}`);
+            for (const step of scenario.steps) {
+                if (step.keyword === 'How') {
+                    lines.push(`    How`);
+                    for (const s of step.howSteps ?? []) {
+                        lines.push(`      "${s}"`);
+                    }
+                } else {
+                    lines.push(`    ${step.keyword} ${step.text}`);
+                }
+            }
+        }
+        lines.push("");
+        return lines;
     }
     renderOperationDsl(op: ClassOperation): string {
         const vis = visibilitySymbol(op.visibility);
@@ -1283,8 +1358,10 @@ export class DomainModel {
                     let relType: RelationshipType
 
                     if (member.relationship === 'auto') {
-                        // 自動判定
-                        if (targetClass.kind === 'struct') {
+                        // needs.isOwner が true なら composition、それ以外は種別で自動判定
+                        if (member.needs?.isOwner) {
+                            relType = 'composition'
+                        } else if (targetClass.kind === 'struct') {
                             relType = 'composition'
                         } else {
                             relType = 'aggregation'

@@ -34,6 +34,14 @@ export interface OperationParameter {
   type: string
 }
 
+/** メンバのneeds宣言（設計意図と責務） */
+export interface MemberNeeds {
+  /** 生成・ライフサイクル管理の責務を持つか */
+  isOwner: boolean
+  /** このフィールドが必要な理由（設計意図） */
+  reason: string
+}
+
 /** メンバ（属性） */
 export interface ClassMember {
   id: string
@@ -48,6 +56,28 @@ export interface ClassMember {
   sourceMultiplicity: Multiplicity
   /** ターゲット側の多重度 */
   targetMultiplicity: Multiplicity
+  /** 設計意図と責務の宣言 */
+  needs?: MemberNeeds
+}
+
+/** Gherkinステップのキーワード種別 */
+export type GherkinKeyword =
+  | 'Given' | 'When' | 'Then' | 'And' | 'But'
+  | 'How' | 'Why'
+  | '前提' | 'もし' | 'ならば' | 'かつ' | 'しかし'
+
+/** ワークフローノードのメタデータ */
+export interface WorkflowNodeMetadata {
+  /** DSL識別子へのバインディング */
+  bindings?: string[]
+  /** 構造化された制約 */
+  constraints?: StructuredConstraint[]
+  /** 推論された状態名 */
+  inferredState?: string
+  /** 実装順指針（Howブロック） */
+  howSteps?: string[]
+  /** 設計意図（Whyステップ） */
+  whyReason?: string
 }
 
 /** ワークフロー図データ */
@@ -61,11 +91,7 @@ export interface OperationWorkflow {
     label: string
     x: number
     y: number
-    metadata?: {
-      bindings?: string[]
-      constraints?: StructuredConstraint[]
-      inferredState?: string
-    }
+    metadata?: WorkflowNodeMetadata
   }>
   edges: Array<{
     from: string
@@ -106,6 +132,8 @@ export interface StructuredConstraint {
 }
 
 
+/** Howブロック・WhyStepは WorkflowNodeMetadata に統合されたため削除 */
+
 /** 操作（メソッド） */
 export interface ClassOperation {
   id: string
@@ -119,7 +147,6 @@ export interface ClassOperation {
    * このオペレーションに紐づくワークフロー図データ。
    * WorkflowEditorPanel が保存したノード/エッジグラフ。
    */
-
   workflow?: {
     nodes: Array<{
       id: string
@@ -127,11 +154,7 @@ export interface ClassOperation {
       label: string
       x: number
       y: number
-      metadata?: {
-        bindings?: string[]
-        constraints?: StructuredConstraint[]
-        inferredState?: string
-      }
+      metadata?: WorkflowNodeMetadata
     }>
     edges: Array<{
       from: string
@@ -170,6 +193,34 @@ export interface ClassInfo {
   /** キャンバス上の位置 */
   x: number
   y: number
+}
+
+/** エンドポイント定義 */
+export interface EndpointNeeds {
+  /** 参照するドメイン操作（例: "Ticket.resolve"） */
+  target: string
+  /** このエンドポイントがその操作を必要とする理由 */
+  reason: string
+}
+
+export interface ParsedEndpoint {
+  id: string
+  /** HTTPメソッド（GET / POST / PUT / PATCH / DELETE 等） */
+  method: string
+  /** パス（例: "/tickets/{id}/resolve"） */
+  path: string
+  /** このエンドポイントが依存するドメイン操作 */
+  needs?: EndpointNeeds
+  /** エンドポイントに紐づくシナリオ群 */
+  scenarios: Array<{
+    name: string
+    steps: Array<{
+      keyword: GherkinKeyword
+      text: string
+      /** Howブロックの場合の実装順指針 */
+      howSteps?: string[]
+    }>
+  }>
 }
 
 /** 自動検出されたリレーションシップ */

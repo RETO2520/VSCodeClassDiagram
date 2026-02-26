@@ -25,6 +25,7 @@ import React, {
 // ============================================================
 
 export type NodeType = 'start' | 'end' | 'process' | 'decision' | 'loop' | 'call'
+    | 'given' | 'when' | 'then' | 'how'
 
 export interface WFNode {
     id: string
@@ -32,6 +33,13 @@ export interface WFNode {
     label: string
     x: number
     y: number
+    /** How/Why等の拡張メタデータ */
+    metadata?: {
+        /** 実装順指針（Howブロック） */
+        howSteps?: string[]
+        /** 設計意図（Whyステップ） */
+        whyReason?: string
+    }
 }
 
 export interface WFEdge {
@@ -75,9 +83,30 @@ export interface WorkflowEditorPanelProps {
 // Node geometry (workflow.draw.js に合わせた寸法)
 // ============================================================
 
+const HOW_ITEM_H = 16  // Howステップ1行の高さ
+const HOW_PADDING = 8  // Howブロック上下パディング
+
+function nodeSizeWithMeta(node: WFNode): { w: number; h: number } {
+    const base = nodeSize(node.type)
+    if (node.type !== 'how' && node.type !== 'when' && node.type !== 'then') return base
+
+    // How展開分を加算
+    const howSteps = node.metadata?.howSteps ?? []
+    const whyReason = node.metadata?.whyReason
+    const howH = howSteps.length > 0
+        ? HOW_PADDING + howSteps.length * HOW_ITEM_H + HOW_PADDING
+        : 0
+    const whyH = whyReason ? HOW_ITEM_H + 4 : 0
+    return { w: base.w, h: base.h + howH + whyH }
+}
+
 function nodeSize(type: NodeType): { w: number; h: number } {
     if (type === 'decision') return { w: 120, h: 80 }
     if (type === 'start' || type === 'end') return { w: 100, h: 50 }
+    if (type === 'given') return { w: 160, h: 40 }
+    if (type === 'when') return { w: 160, h: 40 }
+    if (type === 'then') return { w: 160, h: 40 }
+    if (type === 'how') return { w: 160, h: 40 }
     return { w: 140, h: 40 }
 }
 
@@ -117,9 +146,13 @@ function boundaryPointTowards(node: WFNode, target: { x: number; y: number }) {
     const cx = node.x, cy = node.y
     const dx = target.x - cx, dy = target.y - cy
     if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return { x: cx, y: cy }
-    const { w, h } = nodeSize(node.type)
+    // Gherkin系はHow/Why展開込みの実サイズで計算
+    const { w, h } = GHERKIN_KEYWORDS.includes(node.type as any)
+        ? nodeSizeWithMeta(node)
+        : nodeSize(node.type)
 
-    if (node.type === 'process' || node.type === 'loop' || node.type === 'call') {
+    if (node.type === 'process' || node.type === 'loop' || node.type === 'call'
+        || GHERKIN_KEYWORDS.includes(node.type as any)) {
         const sx = dx === 0 ? Infinity : (w / 2) / Math.abs(dx)
         const sy = dy === 0 ? Infinity : (h / 2) / Math.abs(dy)
         const s = Math.min(sx, sy)
@@ -238,6 +271,7 @@ type WFAction =
     | { type: 'ADD_NODE'; node: WFNode }
     | { type: 'MOVE_NODE'; id: string; x: number; y: number }
     | { type: 'RENAME_NODE'; id: string; label: string }
+    | { type: 'SET_NODE_METADATA'; id: string; metadata: WFNode['metadata'] }
     | { type: 'DEL_NODE'; id: string }
     | { type: 'ADD_EDGE'; edge: WFEdge }
     | { type: 'SET_EDGE_MID'; edgeKey: string; mid: { x: number; y: number } }
@@ -251,6 +285,7 @@ function wfReducer(s: WFWorkflow, a: WFAction): WFWorkflow {
         case 'ADD_NODE': return { ...s, nodes: [...s.nodes, a.node] }
         case 'MOVE_NODE': return { ...s, nodes: s.nodes.map(n => n.id === a.id ? { ...n, x: a.x, y: a.y } : n) }
         case 'RENAME_NODE': return { ...s, nodes: s.nodes.map(n => n.id === a.id ? { ...n, label: a.label } : n) }
+        case 'SET_NODE_METADATA': return { ...s, nodes: s.nodes.map(n => n.id === a.id ? { ...n, metadata: a.metadata } : n) }
         case 'DEL_NODE': return { nodes: s.nodes.filter(n => n.id !== a.id), edges: s.edges.filter(e => e.from !== a.id && e.to !== a.id) }
         case 'ADD_EDGE': return { ...s, edges: [...s.edges, a.edge] }
         case 'SET_EDGE_MID': return { ...s, edges: s.edges.map(e => edgeKey(e) === a.edgeKey ? { ...e, mid: a.mid } : e) }
@@ -270,8 +305,27 @@ const STYLE: Record<NodeType, { fill: string; stroke: string; text: string }> = 
     decision: { fill: '#2e1065', stroke: '#c084fc', text: '#f3e8ff' },
     loop: { fill: '#0c2a4a', stroke: '#38bdf8', text: '#e0f2fe' },
     call: { fill: '#431407', stroke: '#fb923c', text: '#ffedd5' },
+    // Gherkin系 — Given:緑, When:紫, Then:青, How:紺
+    given: { fill: '#052e16', stroke: '#22c55e', text: '#bbf7d0' },
+    when: { fill: '#2e1065', stroke: '#a855f7', text: '#f3e8ff' },
+    then: { fill: '#0c1a4a', stroke: '#60a5fa', text: '#dbeafe' },
+    how: { fill: '#0f172a', stroke: '#1d4ed8', text: '#93c5fd' },
 }
 const ACCENT = '#3b82f6'
+
+// ============================================================
+// Gherkin系ノード用ヘルパー
+// ============================================================
+
+const GHERKIN_KEYWORDS: NodeType[] = ['given', 'when', 'then', 'how']
+const KEYWORD_LABEL: Record<string, string> = {
+    given: 'Given', when: 'When', then: 'Then', how: 'How'
+}
+
+/** ラベルからキーワードプレフィックスを除去して本文だけ返す */
+function stripKeyword(label: string): string {
+    return label.replace(/^(Given|When|Then|How|And|But|前提|もし|ならば|かつ|しかし):\s*/i, '')
+}
 
 // ============================================================
 // NodeShape
@@ -287,7 +341,9 @@ interface NodeShapeProps {
 }
 
 function NodeShape({ node, isSelected, onPointerDown, onHandlePointerDown, onDoubleClick, onContextMenu }: NodeShapeProps) {
-    const { w, h } = nodeSize(node.type)
+    const isGherkin = GHERKIN_KEYWORDS.includes(node.type as any)
+    const { w, h: baseH } = nodeSize(node.type)
+    const { h: totalH } = isGherkin ? nodeSizeWithMeta(node) : { h: baseH }
     const st = STYLE[node.type]
     const stroke = isSelected ? ACCENT : st.stroke
     const sw = isSelected ? 2.5 : 1.5
@@ -295,14 +351,142 @@ function NodeShape({ node, isSelected, onPointerDown, onHandlePointerDown, onDou
 
     const bodyProps = { fill: st.fill, stroke, strokeWidth: sw, filter: `url(#${fid})` }
 
+    // ── Gherkin系ノード ──────────────────────────────────────────
+    if (isGherkin) {
+        const howSteps = node.metadata?.howSteps ?? []
+        const whyReason = node.metadata?.whyReason
+        const keyword = KEYWORD_LABEL[node.type] ?? node.type
+        const bodyText = stripKeyword(node.label)
+
+        // How展開ブロックの高さ
+        const howH = howSteps.length > 0
+            ? HOW_PADDING + howSteps.length * HOW_ITEM_H + HOW_PADDING
+            : 0
+        const whyH = whyReason ? HOW_ITEM_H + 4 : 0
+        const expandH = howH + whyH
+
+        return (
+            <g
+                transform={`translate(${node.x},${node.y})`}
+                style={{ cursor: 'move', userSelect: 'none' }}
+                onPointerDown={e => onPointerDown(e, node.id)}
+                onDoubleClick={e => onDoubleClick(e, node)}
+                onContextMenu={e => onContextMenu(e, node)}
+            >
+                <defs>
+                    <filter id={fid} x="-30%" y="-30%" width="160%" height="160%">
+                        <feDropShadow dx="0" dy="2" stdDeviation="3"
+                            floodColor={isSelected ? '#3b82f650' : '#00000060'} />
+                    </filter>
+                </defs>
+
+                {/* メインボディ */}
+                <rect x={-w / 2} y={-totalH / 2} width={w} height={totalH}
+                    rx={6} {...bodyProps} />
+
+                {/* キーワードバッジ（左上） */}
+                <rect x={-w / 2 + 4} y={-totalH / 2 + 4} width={34} height={14}
+                    rx={3} fill={st.stroke} opacity={0.25} pointerEvents="none" />
+                <text
+                    x={-w / 2 + 21} y={-totalH / 2 + 11}
+                    textAnchor="middle" dominantBaseline="central"
+                    fontSize={8} fontWeight="700" fill={st.stroke}
+                    fontFamily='"Cascadia Code","SF Mono",monospace'
+                    pointerEvents="none"
+                >
+                    {keyword}
+                </text>
+
+                {/* 本文テキスト */}
+                <text
+                    x={0} y={-totalH / 2 + baseH / 2 + 2}
+                    textAnchor="middle" dominantBaseline="central"
+                    fontSize={10} fill={st.text}
+                    fontFamily='"Cascadia Code","SF Mono","Fira Code",monospace'
+                    pointerEvents="none"
+                >
+                    {bodyText.length > 20 ? bodyText.slice(0, 19) + '…' : bodyText}
+                </text>
+
+                {/* How展開ブロック */}
+                {howSteps.length > 0 && (
+                    <g pointerEvents="none">
+                        {/* 区切り線 */}
+                        <line
+                            x1={-w / 2 + 8} y1={-totalH / 2 + baseH}
+                            x2={w / 2 - 8} y2={-totalH / 2 + baseH}
+                            stroke={st.stroke} strokeWidth={0.5} opacity={0.4}
+                        />
+                        {/* How ラベル */}
+                        <text
+                            x={-w / 2 + 8} y={-totalH / 2 + baseH + HOW_PADDING - 2}
+                            fontSize={7} fontWeight="700" fill="#93c5fd"
+                            fontFamily='"Cascadia Code","SF Mono",monospace'
+                        >
+                            How
+                        </text>
+                        {/* ステップ行 */}
+                        {howSteps.map((step, i) => (
+                            <text
+                                key={i}
+                                x={-w / 2 + 10}
+                                y={-totalH / 2 + baseH + HOW_PADDING + i * HOW_ITEM_H + 10}
+                                fontSize={8} fill="#bfdbfe"
+                                fontFamily='"Cascadia Code","SF Mono",monospace'
+                            >
+                                {`${i + 1}. ${step.length > 17 ? step.slice(0, 16) + '…' : step}`}
+                            </text>
+                        ))}
+                    </g>
+                )}
+
+                {/* Why行 */}
+                {whyReason && (
+                    <g pointerEvents="none">
+                        <line
+                            x1={-w / 2 + 8} y1={-totalH / 2 + baseH + howH}
+                            x2={w / 2 - 8} y2={-totalH / 2 + baseH + howH}
+                            stroke="#a78bfa" strokeWidth={0.5} opacity={0.4}
+                        />
+                        <text
+                            x={-w / 2 + 8}
+                            y={-totalH / 2 + baseH + howH + HOW_ITEM_H / 2 + 2}
+                            fontSize={7} fontWeight="700" fill="#a78bfa"
+                            fontFamily='"Cascadia Code","SF Mono",monospace'
+                        >
+                            Why
+                        </text>
+                        <text
+                            x={-w / 2 + 28}
+                            y={-totalH / 2 + baseH + howH + HOW_ITEM_H / 2 + 2}
+                            fontSize={8} fill="#c4b5fd"
+                            fontFamily='"Cascadia Code","SF Mono",monospace'
+                        >
+                            {whyReason.length > 15 ? whyReason.slice(0, 14) + '…' : whyReason}
+                        </text>
+                    </g>
+                )}
+
+                {/* エッジ作成ハンドル */}
+                <circle
+                    cx={w / 2 + 9} cy={0} r={5.5}
+                    fill={ACCENT} stroke="#0f172a" strokeWidth={1.5}
+                    style={{ cursor: 'crosshair' }}
+                    onPointerDown={e => { e.stopPropagation(); onHandlePointerDown(e, node) }}
+                />
+            </g>
+        )
+    }
+
+    // ── 従来ノード ───────────────────────────────────────────────
     let body: React.ReactNode
     if (node.type === 'start' || node.type === 'end') {
-        body = <ellipse cx={0} cy={0} rx={w / 2} ry={h / 2} {...bodyProps} />
+        body = <ellipse cx={0} cy={0} rx={w / 2} ry={baseH / 2} {...bodyProps} />
     } else if (node.type === 'decision') {
-        const pts = `0,${-h / 2} ${w / 2},0 0,${h / 2} ${-w / 2},0`
+        const pts = `0,${-baseH / 2} ${w / 2},0 0,${baseH / 2} ${-w / 2},0`
         body = <polygon points={pts} {...bodyProps} />
     } else {
-        body = <rect x={-w / 2} y={-h / 2} width={w} height={h} rx={5} {...bodyProps} />
+        body = <rect x={-w / 2} y={-baseH / 2} width={w} height={baseH} rx={5} {...bodyProps} />
     }
 
     return (
@@ -322,21 +506,18 @@ function NodeShape({ node, isSelected, onPointerDown, onHandlePointerDown, onDou
 
             {body}
 
-            {/* Loop 装飾 */}
             {node.type === 'loop' && <>
-                <path d={`M${-w / 2 + 10},${-h / 2 + 6} L${-w / 2 + 4},0 L${-w / 2 + 10},${h / 2 - 6}`}
+                <path d={`M${-w / 2 + 10},${-baseH / 2 + 6} L${-w / 2 + 4},0 L${-w / 2 + 10},${baseH / 2 - 6}`}
                     fill="none" stroke={st.text} strokeWidth={1.2} opacity={0.5} pointerEvents="none" />
-                <path d={`M${w / 2 - 10},${-h / 2 + 6} L${w / 2 - 4},0 L${w / 2 - 10},${h / 2 - 6}`}
+                <path d={`M${w / 2 - 10},${-baseH / 2 + 6} L${w / 2 - 4},0 L${w / 2 - 10},${baseH / 2 - 6}`}
                     fill="none" stroke={st.text} strokeWidth={1.2} opacity={0.5} pointerEvents="none" />
             </>}
 
-            {/* Call 装飾 */}
             {node.type === 'call' && <>
-                <line x1={-w / 2 + 12} y1={-h / 2 + 4} x2={-w / 2 + 12} y2={h / 2 - 4} stroke={st.text} strokeWidth={1.2} opacity={0.5} pointerEvents="none" />
-                <line x1={w / 2 - 12} y1={-h / 2 + 4} x2={w / 2 - 12} y2={h / 2 - 4} stroke={st.text} strokeWidth={1.2} opacity={0.5} pointerEvents="none" />
+                <line x1={-w / 2 + 12} y1={-baseH / 2 + 4} x2={-w / 2 + 12} y2={baseH / 2 - 4} stroke={st.text} strokeWidth={1.2} opacity={0.5} pointerEvents="none" />
+                <line x1={w / 2 - 12} y1={-baseH / 2 + 4} x2={w / 2 - 12} y2={baseH / 2 - 4} stroke={st.text} strokeWidth={1.2} opacity={0.5} pointerEvents="none" />
             </>}
 
-            {/* ラベル */}
             <text
                 textAnchor="middle" dominantBaseline="central"
                 fill={st.text} fontSize={11}
@@ -347,7 +528,6 @@ function NodeShape({ node, isSelected, onPointerDown, onHandlePointerDown, onDou
                 {node.label.length > 17 ? node.label.slice(0, 16) + '…' : node.label}
             </text>
 
-            {/* エッジ作成ハンドル */}
             <circle
                 cx={w / 2 + 9} cy={0} r={5.5}
                 fill={ACCENT} stroke="#0f172a" strokeWidth={1.5}
@@ -376,20 +556,38 @@ function EdgeShape({ edge, nodeMap, isSelected, onMidPointerDown, onContextMenu 
     const [s, m, e_] = pts
     const d = `M${s.x},${s.y} L${m.x},${m.y} L${e_.x},${e_.y}`
     const lp = computePolylineMidpoint([s, m, e_])
-    const col = isSelected ? ACCENT : '#64748b'
+
+    // Scenario境界エッジ（conditionあり）は破線＋強調色
+    const isScenarioBoundary = edge.condition != null
+    const col = isSelected ? ACCENT : isScenarioBoundary ? '#a78bfa' : '#64748b'
+    const strokeDash = isScenarioBoundary ? '6 3' : undefined
 
     return (
         <g onContextMenu={ev => { ev.preventDefault(); onContextMenu(ev, edge) }}>
             {/* ヒット領域 */}
             <path d={d} fill="none" stroke="transparent" strokeWidth={14} style={{ cursor: 'context-menu' }} />
             {/* エッジ本体 */}
-            <path d={d} fill="none" stroke={col} strokeWidth={isSelected ? 2 : 1.5} markerEnd="url(#wf-arrow)" />
-            {/* condition ラベル */}
-            {edge.condition != null && (
-                <text x={lp.x} y={lp.y - 9} textAnchor="middle" fontSize={10}
-                    fontFamily='"Cascadia Code","SF Mono",monospace' fill="#94a3b8" pointerEvents="none">
-                    {String(edge.condition)}
-                </text>
+            <path d={d} fill="none" stroke={col}
+                strokeWidth={isSelected ? 2 : isScenarioBoundary ? 1.5 : 1.5}
+                strokeDasharray={strokeDash}
+                markerEnd="url(#wf-arrow)" />
+            {/* Scenario境界ラベル */}
+            {isScenarioBoundary && (
+                <g pointerEvents="none">
+                    <rect
+                        x={lp.x - 54} y={lp.y - 22}
+                        width={108} height={16} rx={3}
+                        fill="#1e1b4b" stroke="#a78bfa" strokeWidth={0.8} opacity={0.9}
+                    />
+                    <text x={lp.x} y={lp.y - 14}
+                        textAnchor="middle" dominantBaseline="central"
+                        fontSize={9} fill="#c4b5fd"
+                        fontFamily='"Cascadia Code","SF Mono",monospace'>
+                        Scenario: {String(edge.condition).length > 14
+                            ? String(edge.condition).slice(0, 13) + '…'
+                            : String(edge.condition)}
+                    </text>
+                </g>
             )}
             {/* 中点ドラッグハンドル */}
             <circle cx={m.x} cy={m.y} r={5}
@@ -450,9 +648,11 @@ function InlineEditor({ node, svgRef, onCommit, onCancel }: {
 // ============================================================
 
 const NODE_TYPES: NodeType[] = ['start', 'process', 'decision', 'loop', 'call', 'end']
+const GHERKIN_NODE_TYPES: NodeType[] = ['given', 'when', 'then', 'how']
 const NODE_COL: Record<NodeType, string> = {
     start: '#4ade80', end: '#f87171', process: '#94a3b8',
     decision: '#c084fc', loop: '#38bdf8', call: '#fb923c',
+    given: '#22c55e', when: '#a855f7', then: '#60a5fa', how: '#1d4ed8',
 }
 
 // ============================================================
@@ -725,10 +925,48 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
     // Node context menu
     const onNodeCtx = useCallback((e: React.MouseEvent, node: WFNode) => {
         e.preventDefault(); e.stopPropagation()
+
+        // Whenノードのみ How/Why 編集を提供
+        const isWhenNode = node.label.startsWith('When')
+        const isThenNode = node.label.startsWith('Then')
+
         setCtxMenu({
             x: e.clientX, y: e.clientY,
             items: [
                 { label: 'Edit label', fn: () => setEditing(node) },
+                // How編集（Whenノードのみ）
+                ...(isWhenNode ? [{
+                    label: node.metadata?.howSteps?.length
+                        ? `Edit How (${node.metadata.howSteps.length}件)`
+                        : 'Add How（実装順指針）',
+                    col: '#93c5fd',
+                    fn: () => {
+                        const current = node.metadata?.howSteps?.join('\n') ?? ''
+                        const input = prompt('実装順指針を1行ずつ入力してください:', current)
+                        if (input === null) return
+                        const howSteps = input.split('\n').map(s => s.trim()).filter(Boolean)
+                        dispatch({
+                            type: 'SET_NODE_METADATA',
+                            id: node.id,
+                            metadata: { ...node.metadata, howSteps },
+                        })
+                    },
+                }] : []),
+                // Why編集（Then/Whenノード）
+                ...((isWhenNode || isThenNode) ? [{
+                    label: node.metadata?.whyReason ? 'Edit Why（設計意図）' : 'Add Why（設計意図）',
+                    col: '#c4b5fd',
+                    fn: () => {
+                        const current = node.metadata?.whyReason ?? ''
+                        const input = prompt('設計意図を入力してください:', current)
+                        if (input === null) return
+                        dispatch({
+                            type: 'SET_NODE_METADATA',
+                            id: node.id,
+                            metadata: { ...node.metadata, whyReason: input.trim() || undefined },
+                        })
+                    },
+                }] : []),
                 ...NODE_TYPES.map(t => ({
                     label: `Add ${capitalize(t)} →`,
                     col: NODE_COL[t],
@@ -854,6 +1092,18 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                             cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4,
                         }}>
                         + {capitalize(t)}
+                    </button>
+                ))}
+                <div style={{ width: 1, height: 20, background: '#334155', margin: '0 4px' }} />
+                {/* Gherkin系ノード */}
+                {GHERKIN_NODE_TYPES.map(t => (
+                    <button key={t} onClick={() => addNode(t)} disabled={!opRef}
+                        style={{
+                            height: 26, padding: '0 10px', borderRadius: 4, border: `1px solid ${NODE_COL[t]}`,
+                            color: NODE_COL[t], background: `${NODE_COL[t]}18`, fontSize: 11,
+                            cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4,
+                        }}>
+                        + {KEYWORD_LABEL[t]}
                     </button>
                 ))}
                 <div style={{ flex: 1 }} />

@@ -5,6 +5,11 @@ import {
     ClassKind,
     Visibility,
     createId,
+    GherkinKeyword,
+    ParsedEndpoint,
+    EndpointNeeds,
+    MemberNeeds,
+    WorkflowNodeMetadata,
 } from "./class-diagram-types";
 import { ClassDiagramService } from "./application/ClassDiagramService";
 import { DomainModel } from "./DomainModel";
@@ -45,8 +50,10 @@ interface LocalWorkflow { nodes: LocalWFNode[]; edges: LocalWFEdge[]; }
 // ============================================================
 
 export interface GherkinStep {
-    keyword: string; // "Given", "When", "Then", "And", "But"
+    keyword: GherkinKeyword;
     text: string;
+    /** Howブロックの場合の実装順指針（keyword === "How" の時のみ） */
+    howSteps?: string[];
 }
 
 export interface GherkinScenario {
@@ -147,6 +154,7 @@ export interface ParsedDsl {
     classes: ParsedClass[];
     relations: ParsedRelation[];
     features: GherkinFeature[];
+    endpoints: ParsedEndpoint[];
     /**
      * identifierName → そのidentifierを参照しているワークフローノード群
      */
@@ -212,6 +220,7 @@ export class SpecDslParser {
         const classes: ParsedClass[] = [];
         const relations: ParsedRelation[] = [];
         const features: GherkinFeature[] = [];
+        const endpoints: ParsedEndpoint[] = [];
         this.aliases.clear();
         this.backrefIndex.clear();
         this.cliSuggestions = [];
@@ -293,12 +302,22 @@ export class SpecDslParser {
 
             // ---- Gherkin Scenario / ステップ行は Pass2 で処理 ----
             if (trimmed.match(/^(?:Scenario|シナリオ):/i)) continue;
-            if (trimmed.match(/^(?:Given|When|Then|And|But|前提|もし|ならば|かつ|しかし)\s/i)) continue;
+            if (trimmed.match(/^(?:Given|When|Then|And|But|How|Why|前提|もし|ならば|かつ|しかし)\s/i)) continue;
+            // Howブロック内の文字列行もスキップ
+            if (trimmed.match(/^"[^"]*"$/)) continue;
+
+            // ---- endpoint宣言 ----
+            const endpoint = this.matchEndpoint(trimmed);
+            if (endpoint) {
+                if (current) { classes.push(current); current = null; }
+                endpoints.push(endpoint);
+                continue;
+            }
 
             // ---- メンバ ----
             const member = this.matchMember(trimmed);
             if (member) {
-                current.members.push(member);
+                current?.members.push(member);
                 continue;
             }
 
@@ -416,6 +435,37 @@ export class SpecDslParser {
             }
         }
 
+        // ── Pass2.5: needsをメンバに紐づける ─────────────────────────
+        // フィールド宣言の直下にある needs 行を対応するメンバに付与する
+        for (const cls of classes) {
+            const classStart = lines.findIndex(l =>
+                new RegExp(`(abstract\\s+)?(class|interface|struct)\\s+${cls.name}\\b`).test(l.trim())
+            );
+            const classEnd = lines.findIndex((l, idx) =>
+                idx > classStart &&
+                /^(abstract\s+)?(class|interface|struct)\s+\w+/.test(l.trim())
+            );
+            const blockEnd = classEnd === -1 ? lines.length : classEnd;
+
+            for (let i = classStart; i < blockEnd; i++) {
+                const memberMatch = this.matchMember(lines[i].trim());
+                if (!memberMatch) continue;
+
+                // 直後のneeds行を探す（空行・コメントをスキップしない）
+                const nextLine = lines[i + 1]?.trim() ?? '';
+                const needsMatch = nextLine.match(/^needs(?:\s+(owner))?\s*(?:"([^"]*)")?$/);
+                if (needsMatch) {
+                    const member = cls.members.find(m => m.name === memberMatch.name);
+                    if (member) {
+                        member.needs = {
+                            isOwner: !!needsMatch[1],
+                            reason: needsMatch[2] ?? '',
+                        };
+                    }
+                }
+            }
+        }
+
         // ── CLI提案の生成 ─────────────────────────────────────────
         this.cliSuggestions = this.generateCliSuggestions(classes, relations);
 
@@ -423,6 +473,7 @@ export class SpecDslParser {
             classes,
             relations,
             features,
+            endpoints,
             backrefIndex: new Map(this.backrefIndex),
             cliSuggestions: [...this.cliSuggestions],
             headerBlock,
@@ -432,6 +483,18 @@ export class SpecDslParser {
     // ============================================================
     // Line Matchers
     // ============================================================
+
+    private matchEndpoint(line: string): ParsedEndpoint | null {
+        // 書式: endpoint METHOD /path
+        const m = line.match(/^endpoint\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(\S+)$/i);
+        if (!m) return null;
+        return {
+            id: createId(),
+            method: m[1].toUpperCase(),
+            path: m[2],
+            scenarios: [],
+        };
+    }
 
     private matchClassDecl(line: string): ParsedClass | null {
         const m = line.match(
@@ -623,11 +686,74 @@ export class SpecDslParser {
                 continue;
             }
 
-            const stepMatch = trimmed.match(/^(Given|When|Then|And|But|前提|もし|ならば|かつ|しかし)\s+(.+)$/i);
+            const stepMatch = trimmed.match(/^(Given|When|Then|And|But|How|Why|前提|もし|ならば|かつ|しかし)\s*(.*)$/i);
             if (stepMatch) {
-                const keyword = stepMatch[1];
+                const keyword = stepMatch[1] as GherkinKeyword;
                 const text = stepMatch[2].trim();
-                const nodeType = /^(When|もし)$/i.test(keyword) ? 'decision' : 'process';
+
+                // ── Howブロック: 実装順指針を複数行収集 ──
+                if (keyword === 'How') {
+                    const howSteps: string[] = [];
+                    // 同一行にテキストがあればそれも追加
+                    if (text) howSteps.push(text);
+                    // 次行以降の "..." 形式の行を収集
+                    let j = i + 1;
+                    while (j < lines.length) {
+                        const howLine = lines[j].trim();
+                        const howItemMatch = howLine.match(/^"([^"]*)"$/);
+                        if (howItemMatch) {
+                            howSteps.push(howItemMatch[1]);
+                            j++;
+                        } else {
+                            break;
+                        }
+                    }
+                    i = j - 1;
+                    // Howはワークフローノードには追加せず、最後のノードのmetadataに付与
+                    if (lastNodeId && lastNodeId !== startId) {
+                        const lastNode = nodes.find(n => n.id === lastNodeId);
+                        if (lastNode) {
+                            lastNode.metadata = {
+                                ...lastNode.metadata,
+                                howSteps,
+                            };
+                        }
+                    }
+                    i++;
+                    continue;
+                }
+
+                // ── Whyステップ: 設計意図 ──
+                if (keyword === 'Why') {
+                    // 直前のノード（Then相当）にreason付与
+                    if (lastNodeId && lastNodeId !== startId) {
+                        const lastNode = nodes.find(n => n.id === lastNodeId);
+                        if (lastNode) {
+                            lastNode.metadata = {
+                                ...lastNode.metadata,
+                                whyReason: text,
+                            };
+                        }
+                    }
+                    i++;
+                    continue;
+                }
+
+                // キーワードをNodeTypeに変換
+                const nodeType = (() => {
+                    switch (keyword.toLowerCase()) {
+                        case 'given': case '前提': return 'given';
+                        case 'when': case 'もし': return 'when';
+                        case 'then': case 'ならば': return 'then';
+                        case 'and': case 'but':
+                        case 'かつ': case 'しかし': {
+                            // And/But は直前のノードのtypeを継承
+                            const prevNode = lastNodeId ? nodes.find(n => n.id === lastNodeId) : null;
+                            return (prevNode?.type ?? 'process') as typeof prevNode extends null ? 'process' : NonNullable<typeof prevNode>['type'];
+                        }
+                        default: return 'process';
+                    }
+                })() as any;
 
                 // Semantic Analysis
                 const bindings = this.resolveIdentifiers(text, context);
