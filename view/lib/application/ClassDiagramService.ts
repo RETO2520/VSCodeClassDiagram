@@ -184,6 +184,52 @@ export class ClassDiagramService {
         return { success: true, model: this.model, events: [event] }
     }
 
+    /**
+     * メンバの needs 宣言（設計意図・owner責務）を更新する。
+     *
+     * SpecDslParser の Pass2.5 から呼ばれる正規経路。
+     * DomainModel.updateMember を通すことでモデル更新と notifyModelChanged が保証される。
+     *
+     * @param input.className  対象クラス名
+     * @param input.memberName 対象メンバ名
+     * @param input.needs      設定する MemberNeeds（null で削除）
+     */
+    applyUpdateMemberNeeds(input: {
+        className: string
+        memberName: string
+        needs: import('../class-diagram-types').MemberNeeds | null
+    }): HandlerResult {
+        const cls = this.model.findClassByName(input.className)
+        if (!cls) throw new DomainRuleViolation(`Class "${input.className}" not found`)
+
+        const member = cls.members.find(m => m.name === input.memberName)
+        if (!member) throw new DomainRuleViolation(
+            `Member "${input.memberName}" not found in class "${input.className}"`
+        )
+
+        const updated = this.model.updateMember(
+            input.className,
+            input.memberName,
+            m => ({ ...m, needs: input.needs ?? undefined })
+        )
+
+        const event: DomainEvent = {
+            type: 'MEMBER_UPDATED',
+            payload: {
+                className: input.className,
+                member: updated.findClassByName(input.className)!
+                    .members.find(m => m.name === input.memberName)!,
+                oldName: input.memberName,
+                newName: input.memberName,
+            },
+        }
+
+        this.model = updated
+        this.notifyModelChanged()
+        this.dispatcher?.dispatchAll([event])
+        return { success: true, model: this.model, events: [event] }
+    }
+
     applyAddOperation(input: AddOperationInput): HandlerResult {
         let classNameToUse: string | undefined = input.className
         if (input.classId && !classNameToUse) {
@@ -1581,7 +1627,7 @@ export class ClassDiagramService {
         });
     }
 
-    
+
     applyResolveCircularInheritance(input: {
         classA: string,
         classB: string

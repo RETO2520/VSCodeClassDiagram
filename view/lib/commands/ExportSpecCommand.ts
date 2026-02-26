@@ -12,7 +12,8 @@ import {
     visibilitySymbol,
 } from "../class-diagram-types";
 import { postMessage } from "../../../frontend/src/bridge/vscode-bridge";
-
+import { generateMarkdownFromClasses } from '../MarkdownGenerator'
+import { generateValidationReport } from '../ValidationReport'
 /**
  * ExportSpecCommand
  *
@@ -55,6 +56,39 @@ export class ExportSpecCommand extends Command {
             });
         } else {
             postMessage({ command: 'log', level: 'info', text: markdown.markdown });
+        }
+
+        const ev = { type: 'EXPORT_SPEC' };
+        return { success: true, model: currentModel, events: [] };
+    }
+
+    executeFromService(service: ClassDiagramService): HandlerResult {
+        const currentModel = service.getModel();
+
+        const currentClasses = currentModel.getClasses();
+        const currentRelation = currentModel.detectRelationships();
+
+        postMessage({ command: 'log', level: 'info', text: 'currentClasses: ' + currentClasses.length });
+        postMessage({ command: 'log', level: 'info', text: 'currentRelation: ' + currentRelation.length });
+        //const markdown = generateMarkdown(currentModel);
+        const m = generateMarkdownFromClasses({ classes: currentClasses, relationships: currentRelation })
+        postMessage({ command: 'log', level: 'info', text: 'markdown: generateMarkdownFromClasses is done' });
+        const v = generateValidationReport({ classes: currentClasses, relationships: currentRelation });
+        postMessage({ command: 'log', level: 'info', text: 'validation: generateValidationReport is done' });
+        let validationContent = "";
+        //const validationContent = generateValidationMarkdown(currentModel);
+        postMessage({ command: 'log', level: 'info', text: 'export spec command checked' });
+        if (this.outputPath) {
+            postMessage({
+                command: 'exportMarkdown',
+                payload: {
+                    markdown: m,
+                    validationContent: v,
+                    fileName: this.outputPath
+                }
+            });
+        } else {
+            postMessage({ command: 'log', level: 'info', text: m });
         }
 
         const ev = { type: 'EXPORT_SPEC' };

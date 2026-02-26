@@ -14,7 +14,7 @@ export function activate(context: vscode.ExtensionContext) {
   const tm: TypeModel = new TypeModel();
   const logger = new Logger(vscode.window.createOutputChannel("Class Diagram Editor Log"));
   context.subscriptions.push(logger);
-  const fileService = new FileService();
+  const fileService = new FileService(logger);
 
   // ハンドラの初期化
   const classDiagramHandler = new ClassDiagramHandler(context, tm, logger);

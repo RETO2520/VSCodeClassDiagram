@@ -35,6 +35,7 @@ import { ImportSpecDslCommand } from './commands/ImportSpecDslCommand';
 import { ExportSpecDslCommand } from './commands/ExportSpecDslCommand';
 import { SpecSyncCommand } from './commands/SpecSyncCommand';
 import { RefactorCommand, RefactorKind } from './commands/RefactorCommand';
+import { postMessage } from '../../frontend/src/bridge/vscode-bridge';
 
 export type CliCommandType =
     | 'ADD_TYPE'
@@ -662,6 +663,9 @@ export class CliParser {
     private parseExportSpec(raw: string, parts: string[]) {
         // export-spec <output-path>
         if (parts.length < 2) return null;
+
+        postMessage({ command: 'log', level: 'debug', text: `Result: ${raw}` });
+
 
         const outputPath = parts[1];
 

@@ -6,6 +6,7 @@ type Tree = Parser.Tree;
 type Node = Parser.Node;
 import { IAstParser } from '../IAstParser';
 import { ClassInfo, OperationInfo, AttributeInfo, ParameterInfo } from '../../types';
+import * as cdt from "../../../../../view/lib/class-diagram-types";
 import { Logger } from '../../../../LoggerComponents/Logger';
 
 /**

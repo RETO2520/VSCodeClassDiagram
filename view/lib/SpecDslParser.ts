@@ -188,6 +188,9 @@ export interface ParsedDsl {
 export class SpecDslParser {
     private aliases: Map<string, string> = new Map();
 
+    /** parse() に渡された ClassDiagramService への参照。Pass2.5 で利用する */
+    private service: ClassDiagramService | null = null;
+
     /**
      * 名詞正規化辞書（ドメインワード→正規形）
      * parse() のたびに動的に再構築される。
@@ -217,6 +220,7 @@ export class SpecDslParser {
      * DSL文字列をパースして ParsedDsl を返す。
      */
     parse(source: string, service: ClassDiagramService): ParsedDsl {
+        this.service = service
         const classes: ParsedClass[] = [];
         const relations: ParsedRelation[] = [];
         const features: GherkinFeature[] = [];
@@ -437,6 +441,7 @@ export class SpecDslParser {
 
         // ── Pass2.5: needsをメンバに紐づける ─────────────────────────
         // フィールド宣言の直下にある needs 行を対応するメンバに付与する
+        // ※ 直接 member.needs = ... とミュートせず、必ずサービス経由で更新する
         for (const cls of classes) {
             const classStart = lines.findIndex(l =>
                 new RegExp(`(abstract\\s+)?(class|interface|struct)\\s+${cls.name}\\b`).test(l.trim())
@@ -455,12 +460,21 @@ export class SpecDslParser {
                 const nextLine = lines[i + 1]?.trim() ?? '';
                 const needsMatch = nextLine.match(/^needs(?:\s+(owner))?\s*(?:"([^"]*)")?$/);
                 if (needsMatch) {
-                    const member = cls.members.find(m => m.name === memberMatch.name);
-                    if (member) {
-                        member.needs = {
-                            isOwner: !!needsMatch[1],
-                            reason: needsMatch[2] ?? '',
-                        };
+                    const needs: MemberNeeds = {
+                        isOwner: !!needsMatch[1],
+                        reason: needsMatch[2] ?? '',
+                    };
+                    if (this.service) {
+                        // サービス経由でモデルを更新（notifyModelChanged → UI反映まで保証）
+                        this.service.applyUpdateMemberNeeds({
+                            className: cls.name,
+                            memberName: memberMatch.name,
+                            needs,
+                        });
+                    } else {
+                        // サービスなし（テスト等）: 従来通り直接セット
+                        const member = cls.members.find(m => m.name === memberMatch.name);
+                        if (member) member.needs = needs;
                     }
                 }
             }

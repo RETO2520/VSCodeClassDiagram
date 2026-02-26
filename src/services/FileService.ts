@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { Logger } from '../LoggerComponents/Logger';
 
 /**
  * Result of a file load operation
@@ -35,6 +36,12 @@ export interface WorkspaceDiagramResult {
 export class FileService {
     private static readonly DEFAULT_FILENAME = 'diagram.json';
     private static readonly JSON_FILTER = { 'JSON': ['json'] };
+    private readonly logger?: Logger;
+
+
+    constructor(logger?: Logger) {
+        this.logger = logger;
+    }
 
     /**
      * Get the default URI for file operations based on workspace
@@ -115,6 +122,7 @@ export class FileService {
         });
 
         if (!uris || uris.length === 0) {
+            this.logger?.info('No file selected');
             return null;
         }
 
@@ -148,6 +156,7 @@ export class FileService {
         });
 
         if (!uri) {
+            this.logger?.info('No file selected');
             return null;
         }
 
@@ -221,10 +230,12 @@ export class FileService {
 
 
         if (!defaultUri) {
+            this.logger?.info('No default URI found');
             return null;
         }
 
         if (!validationUri) {
+            this.logger?.info('No validation URI found');
             return null;
         }
 

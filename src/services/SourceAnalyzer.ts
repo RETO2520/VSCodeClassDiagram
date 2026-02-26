@@ -5,7 +5,7 @@ import { ClassInfo, AnalyzeOptions } from './sourceToDiagram/types';
 import { Logger } from '../LoggerComponents/Logger';
 import { DocumentSymbolConverter } from './sourceToDiagram/lsp/DocumentSymbolConverter';
 import { SemanticTokensExtractor } from './sourceToDiagram/lsp/SemanticTokensExtractor';
-
+import * as cdt from "../../view/lib/class-diagram-types";
 /**
  * ソースコード解析の統合エントリーポイント
  * LSPとAST解析を組み合わせてクラス情報を抽出する

@@ -945,9 +945,10 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
             postMessage({ command: 'log', level: 'error', text: 'Invalid command: ' + cmd });
             return;
         }
-        const result = command.isDryRun
-            ? command.execute(service.getModel())
-            : command.executeFromService(service);
+        const result = command.executeFromService(service);
+
+        postMessage({ command: 'log', level: 'debug', text: `Result: ${result.success}` });
+
 
         if (result.success) {
             // toDSL() にaliasMapを渡してalias宣言を再生成し、

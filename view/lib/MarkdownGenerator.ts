@@ -10,7 +10,7 @@
  *   import { generateMarkdownFromClasses } from '@/lib/MarkdownGenerator'
  */
 
-import type { ClassInfo, ClassMember, ClassOperation, Relationship, RelationshipType } from './class-diagram-types'
+import type { ClassInfo, ClassMember, ClassOperation, Relationship, RelationshipType, ParsedEndpoint } from './class-diagram-types'
 import { visibilitySymbol } from './class-diagram-types'
 
 // ============================================================
@@ -20,13 +20,15 @@ import { visibilitySymbol } from './class-diagram-types'
 export interface MarkdownInput {
     classes: ClassInfo[]
     relationships: Relationship[]
+    /** エンドポイント定義（API層） */
+    endpoints?: ParsedEndpoint[]
 }
 
 /**
  * ClassInfo 配列から Markdown 仕様書文字列を生成する。
  */
 export function generateMarkdownFromClasses(input: MarkdownInput): string {
-    const { classes, relationships } = input
+    const { classes, relationships, endpoints } = input
     const idToName = new Map(classes.map(c => [c.id, c.name]))
     const lines: string[] = []
 
@@ -47,7 +49,12 @@ export function generateMarkdownFromClasses(input: MarkdownInput): string {
     lines.push('1. [クラス一覧](#クラス一覧)')
     lines.push('2. [リレーションシップ一覧](#リレーションシップ一覧)')
     lines.push('3. [依存グラフ](#依存グラフ)')
-    lines.push('4. [クラス詳細](#クラス詳細)')
+    if (endpoints && endpoints.length > 0) {
+        lines.push('4. [エンドポイント一覧](#エンドポイント一覧)')
+        lines.push('5. [クラス詳細](#クラス詳細)')
+    } else {
+        lines.push('4. [クラス詳細](#クラス詳細)')
+    }
     lines.push('')
 
     // ---- クラス一覧 ----
@@ -85,6 +92,15 @@ export function generateMarkdownFromClasses(input: MarkdownInput): string {
     lines.push('')
     lines.push(...renderDependencyGraph(classes, relationships, idToName))
 
+    // ---- エンドポイント一覧 ----
+    if (endpoints && endpoints.length > 0) {
+        lines.push('## エンドポイント一覧')
+        lines.push('')
+        for (const ep of endpoints) {
+            lines.push(...renderEndpoint(ep))
+        }
+    }
+
     // ---- クラス詳細 ----
     lines.push('## クラス詳細')
     lines.push('')
@@ -93,6 +109,49 @@ export function generateMarkdownFromClasses(input: MarkdownInput): string {
     }
 
     return lines.join('\n')
+}
+
+// ============================================================
+// Endpoint Renderer
+// ============================================================
+
+function renderEndpoint(ep: ParsedEndpoint): string[] {
+    const lines: string[] = []
+
+    lines.push(`### \`${ep.method} ${ep.path}\``)
+    lines.push('')
+
+    if (ep.needs) {
+        lines.push(`**依存:** \`${ep.needs.target}\``)
+        if (ep.needs.reason) {
+            lines.push('')
+            lines.push(`> ${ep.needs.reason}`)
+        }
+        lines.push('')
+    }
+
+    for (const scenario of ep.scenarios) {
+        lines.push(`#### Scenario: ${scenario.name}`)
+        lines.push('')
+        lines.push('| キーワード | 内容 | 実装指針 (How) / 設計意図 (Why) |')
+        lines.push('| --- | --- | --- |')
+        for (const step of scenario.steps) {
+            if (step.keyword === 'How') {
+                const howSteps = step.howSteps ?? []
+                const howText = howSteps.map((s, i) => `${i + 1}. ${s}`).join('<br>')
+                lines.push(`| \`How\` | — | ${howText || '—'} |`)
+            } else if (step.keyword === 'Why') {
+                lines.push(`| \`Why\` | — | _${step.text}_ |`)
+            } else {
+                lines.push(`| \`${step.keyword}\` | ${step.text} | — |`)
+            }
+        }
+        lines.push('')
+    }
+
+    lines.push('---')
+    lines.push('')
+    return lines
 }
 
 // ============================================================
@@ -136,6 +195,18 @@ function renderClass(cls: ClassInfo, idToName: Map<string, string>): string[] {
             lines.push(renderMemberRow(m))
         }
         lines.push('')
+
+        // needs補足ブロック（needs宣言があるフィールドのみ展開）
+        const membersWithNeeds = cls.members.filter(m => m.needs)
+        if (membersWithNeeds.length > 0) {
+            lines.push('> **設計意図**')
+            for (const m of membersWithNeeds) {
+                const ownerBadge = m.needs!.isOwner ? ' 🔑 **生成責務**' : ''
+                const reason = m.needs!.reason ? ` — _${m.needs!.reason}_` : ''
+                lines.push(`> - \`${m.name}: ${m.type}\`${ownerBadge}${reason}`)
+            }
+            lines.push('')
+        }
     }
 
     if (cls.operations.length > 0) {
@@ -184,12 +255,32 @@ function renderOperation(op: ClassOperation): string[] {
         lines.push(`  - **戻り値:** \`${op.returnType}\``)
     }
 
-    // シナリオの振る舞いテーブル
     if (op.workflow && op.workflow.nodes.length > 0) {
         lines.push(...renderBehaviorTable(op.workflow))
     }
 
     return lines
+}
+
+// ============================================================
+// Behavior Table
+// ============================================================
+
+/** node.type → Gherkinキーワード。typeに含まれない場合はlabelから抽出 */
+function nodeKeyword(node: { type: string; label: string }): string {
+    const TYPE_TO_KW: Record<string, string> = {
+        given: 'Given', when: 'When', then: 'Then', how: 'How',
+    }
+    if (TYPE_TO_KW[node.type]) return TYPE_TO_KW[node.type]
+    const m = node.label.match(/^([A-Za-z\u3040-\u309f\u30a0-\u30ff]+):\s*/)
+    return m ? m[1] : node.type
+}
+
+/** ラベルからキーワードプレフィックスを除去 */
+function nodeBodyText(node: { label: string }): string {
+    return node.label.replace(
+        /^(Given|When|Then|How|And|But|前提|もし|ならば|かつ|しかし):\s*/i, ''
+    )
 }
 
 function renderBehaviorTable(workflow: NonNullable<ClassOperation['workflow']>): string[] {
@@ -199,30 +290,51 @@ function renderBehaviorTable(workflow: NonNullable<ClassOperation['workflow']>):
     lines.push('')
     lines.push('#### 振る舞い')
     lines.push('')
-    lines.push('| No | 内容 (Step) | 条件 / 分岐 | 次のステップ |')
-    lines.push('| --- | --- | --- | --- |')
+    lines.push('| No | キーワード | 内容 | 実装指針 (How) | 設計理由 (Why) | 次のステップ |')
+    lines.push('| --- | --- | --- | --- | --- | --- |')
 
     for (const node of workflow.nodes) {
+        if (node.type === 'start' || node.type === 'end') continue
+
         const currentNo = nodeNum.get(node.id)
         const outgoing = workflow.edges.filter(e => e.from === node.id)
+        const keyword = nodeKeyword(node)
+        const bodyText = nodeBodyText(node)
+
+        // How指針（番号付き、<br>区切り）
+        const howSteps = node.metadata?.howSteps ?? []
+        const howCell = howSteps.length > 0
+            ? howSteps.map((s, i) => `${i + 1}. ${s}`).join('<br>')
+            : '-'
+
+        // Why設計理由
+        const whyCell = node.metadata?.whyReason
+            ? `_${node.metadata.whyReason}_`
+            : '-'
 
         if (outgoing.length === 0) {
-            lines.push(`| ${currentNo} | **${node.label}** | - | (終了) |`)
+            lines.push(`| ${currentNo} | \`${keyword}\` | ${bodyText} | ${howCell} | ${whyCell} | (終了) |`)
         } else {
             outgoing.forEach((edge, idx) => {
                 const targetNo = nodeNum.get(edge.to) ?? '??'
-                let condition = (edge as any).condition ? `${(edge as any).condition}` : '-'
 
-                // src: アノテーションがあれば Markdown リンクを付与
-                const srcs = (edge as any).srcs as { label: string; url: string }[] | undefined
-                if ((edge as any).condition && srcs && srcs.length > 0) {
-                    const links = srcs.map(s => `[${s.label}](${s.url})`).join(' ')
-                    condition = `${(edge as any).condition} ${links}`
+                // Scenario境界エッジはラベル付きで表示
+                let nextLabel = String(targetNo)
+                if ((edge as any).condition != null) {
+                    const condStr = String((edge as any).condition)
+                    const srcs = (edge as any).srcs as { label: string; url: string }[] | undefined
+                    const linkStr = srcs && srcs.length > 0
+                        ? ' ' + srcs.map(s => `[${s.label}](${s.url})`).join(' ')
+                        : ''
+                    nextLabel = `Scenario: _${condStr}_ → No.${targetNo}${linkStr}`
                 }
 
-                const displayNo = idx === 0 ? currentNo : ''
-                const displayLabel = idx === 0 ? `**${node.label}**` : ' 〃 '
-                lines.push(`| ${displayNo} | ${displayLabel} | ${condition} | ${targetNo} |`)
+                const displayNo = idx === 0 ? String(currentNo) : ''
+                const displayKw = idx === 0 ? `\`${keyword}\`` : ''
+                const displayTxt = idx === 0 ? bodyText : '〃'
+                const displayHow = idx === 0 ? howCell : ''
+                const displayWhy = idx === 0 ? whyCell : ''
+                lines.push(`| ${displayNo} | ${displayKw} | ${displayTxt} | ${displayHow} | ${displayWhy} | ${nextLabel} |`)
             })
         }
     }
@@ -239,19 +351,19 @@ function renderDependencyGraph(
     relationships: Relationship[],
     idToName: Map<string, string>
 ): string[] {
-    const lines = new Map<string, { uses: Set<string>; usedBy: Set<string> }>()
-    for (const cls of classes) lines.set(cls.id, { uses: new Set(), usedBy: new Set() })
+    const graph = new Map<string, { uses: Set<string>; usedBy: Set<string> }>()
+    for (const cls of classes) graph.set(cls.id, { uses: new Set(), usedBy: new Set() })
 
     for (const rel of relationships) {
-        lines.get(rel.sourceId)?.uses.add(rel.targetId)
-        lines.get(rel.targetId)?.usedBy.add(rel.sourceId)
+        graph.get(rel.sourceId)?.uses.add(rel.targetId)
+        graph.get(rel.targetId)?.usedBy.add(rel.sourceId)
     }
 
     const out: string[] = []
     out.push('| クラス名 | 依存先（uses） | 被依存元（used by） |')
     out.push('|----------|----------------|---------------------|')
     for (const cls of classes) {
-        const entry = lines.get(cls.id)!
+        const entry = graph.get(cls.id)!
         const uses = [...entry.uses].map(id => idToName.get(id) ?? id).join(', ') || '-'
         const usedBy = [...entry.usedBy].map(id => idToName.get(id) ?? id).join(', ') || '-'
         out.push(`| \`${cls.name}\` | ${uses} | ${usedBy} |`)

@@ -25,7 +25,7 @@ export class ClassDiagramHandler {
         this.context = context;
         this.typeModel = typeModel;
         this.logger = logger;
-        this.fileService = new FileService();
+        this.fileService = new FileService(this.logger);
 
         // Initialize MessageRouter with handlers
         this.router = createClassDiagramRouter()
