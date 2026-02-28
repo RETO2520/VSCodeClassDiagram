@@ -1,14 +1,12 @@
 import * as vscode from 'vscode';
-import { ClassInfo } from '../../view/lib/class-diagram-types';
+import { ClassInfo } from '../../../../../view/lib/class-diagram-types';
 
 /**
- * ASTパーサーの統一インターフェース
- * 言語固有のAST解析ロジックを抽象化し、
- * 解析層からのアクセスを統一する
+ * Domain Model抽出用ASTパーサーの統一インターフェース
  */
-export interface IAstFactory {
+export interface IAstParser {
     /**
-     * 指定されたURIとコンテンツのソースコードをパースし、クラス情報を抽出する
+     * 指定されたURIとコンテンツのソースコードをパースし、Domain Model仕様のクラス情報を抽出する
      * @param uri ソースファイルのURI
      * @param content ソースコードの文字列
      * @returns 抽出されたクラス情報の配列
@@ -17,7 +15,7 @@ export interface IAstFactory {
 
     /**
      * 指定された言語IDをこのパーサーがサポートしているかどうかをチェックする
-     * @param languageId 言語ID（'typescript', 'javascript', 'csharp'等）
+     * @param languageId 言語ID（'csharp', 'java', 'rust', 'cpp'等）
      * @returns サポートしている場合はtrue
      */
     supports(languageId: string): boolean;

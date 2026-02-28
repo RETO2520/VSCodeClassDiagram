@@ -7,6 +7,7 @@ import { DocumentSymbolConverter } from './sourceToDiagram/lsp/DocumentSymbolCon
 import { SemanticTokensExtractor } from './sourceToDiagram/lsp/SemanticTokensExtractor';
 import * as cdt from "../../view/lib/class-diagram-types";
 import { DomainModel } from '../../view/lib/DomainModel';
+import { AstParserFactory as dslAstParserFactory } from './SourceToDSL/ast/AstParserFactory';
 
 /**
  * ソースコード解析の統合エントリーポイント
@@ -20,6 +21,7 @@ export class SourceAnalyzer {
         this.lspProvider = lspProvider;
         this.logger = logger;
         AstParserFactory.initialize(logger, extensionUri);
+        dslAstParserFactory.initialize(logger, extensionUri);
     }
 
     /**
@@ -215,5 +217,22 @@ export class SourceAnalyzer {
         });
 
         return DomainModel.from(domainClasses);
+    }
+
+    /**
+     * ソースコードから直接ドメインモデルを抽出する
+     */
+    public async analyzeDomainModel(uri: vscode.Uri): Promise<cdt.ClassInfo[]> {
+        const languageId = await this.getLanguageId(uri);
+        const parser = dslAstParserFactory.getParser(languageId);
+        if (parser) {
+            try {
+                const content = await this.readFileContent(uri);
+                return await parser.parse(uri, content);
+            } catch (error) {
+                this.logger.error(`Domain model extraction failed for ${uri.fsPath}: ${error}`);
+            }
+        }
+        return [];
     }
 }

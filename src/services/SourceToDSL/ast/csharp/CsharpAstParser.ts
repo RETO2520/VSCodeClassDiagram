@@ -2,15 +2,15 @@ import * as vscode from 'vscode';
 import * as Parser from 'web-tree-sitter';
 type Tree = Parser.Tree;
 type Node = Parser.Node;
-import { IAstFactory } from '../IAstFactory';
-import { ClassInfo, ClassKind, ClassMember, ClassOperation, OperationParameter, Visibility, createId } from '../../../view/lib/class-diagram-types';
-import { Logger } from '../../LoggerComponents/Logger';
+import { IAstParser } from '../IAstParser';
+import { ClassInfo, ClassKind, ClassMember, ClassOperation, OperationParameter, Visibility, createId } from '../../../../../view/lib/class-diagram-types';
+import { Logger } from '../../../../LoggerComponents/Logger';
 
 /**
- * C#用のASTファクトリー
+ * C#用のDomain Model ASTパーサー
  * web-tree-sitterを使用してASTを構築し、ドメインモデル仕様のクラス情報を抽出する
  */
-export class CsharpAstFactory implements IAstFactory {
+export class CsharpAstParser implements IAstParser {
     private readonly logger: Logger;
     private readonly extensionUri: vscode.Uri;
     private parser: any = null;
@@ -29,28 +29,41 @@ export class CsharpAstFactory implements IAstFactory {
 
         try {
             const ParserClass = (Parser as any).Parser;
+            const LanguageClass = (Parser as any).Language;
+
+            if (!this.extensionUri) {
+                throw new Error("extensionUri is undefined");
+            }
+
             const wasmBaseDir = vscode.Uri.joinPath(this.extensionUri, 'out');
 
             await ParserClass.init({
                 locateFile: (file: string) => {
                     if (file === 'web-tree-sitter.wasm') {
-                        const wasmUri = vscode.Uri.joinPath(wasmBaseDir, 'web-tree-sitter.wasm');
-                        return wasmUri.toString();
+                        return vscode.Uri.joinPath(wasmBaseDir, 'web-tree-sitter.wasm').fsPath;
                     }
                     return file;
                 }
             });
 
             const wasmUri = vscode.Uri.joinPath(wasmBaseDir, 'tree-sitter-c_sharp.wasm');
-            this.logger.info(`Loading wasm file from: ${wasmUri.fsPath}`);
+            const wasmPath = wasmUri.fsPath;
 
-            const language = await Parser.Language.load(wasmUri.fsPath);
+            this.logger.info(`Loading C# language wasm from: ${wasmPath}`);
+            if (!wasmPath) {
+                throw new Error("Resolved wasmPath is empty");
+            }
+
+            const language = await LanguageClass.load(wasmPath);
             this.parser = new ParserClass();
             this.parser.setLanguage(language);
             this.isInitialized = true;
             return true;
         } catch (error) {
             this.logger.error(`Failed to initialize web-tree-sitter for C#: ${error}`);
+            if (error instanceof Error && error.stack) {
+                this.logger.error(`Stack trace: ${error.stack}`);
+            }
             console.error(error);
             return false;
         }
@@ -79,7 +92,7 @@ export class CsharpAstFactory implements IAstFactory {
                 if (cls.baseClassId) {
                     cls.baseClassId = idMap.get(cls.baseClassId) || cls.baseClassId;
                 }
-                cls.interfaces = cls.interfaces.map(i => idMap.get(i) || i);
+                cls.interfaces = cls.interfaces.map((i: string) => idMap.get(i) || i);
             }
 
             return classes;
@@ -156,7 +169,7 @@ export class CsharpAstFactory implements IAstFactory {
         return {
             id: createId(),
             name: nameNode ? nameNode.text : 'AnonymousEnum',
-            kind: 'class', // Enums are not natively supported in ClassKind (only class, interface, struct). We will use 'class' 
+            kind: 'class',
             isAbstract: false,
             interfaces: [],
             baseClassId: null,
@@ -197,7 +210,7 @@ export class CsharpAstFactory implements IAstFactory {
         if (node.type === 'record_declaration') {
             const parameters = node.childForFieldName('parameters');
             if (parameters) {
-                for (let i = 0; i < parameters.childCount; i++) {
+                for (let i: number = 0; i < parameters.childCount; i++) {
                     const param = parameters.child(i)!;
                     if (param.type === 'parameter') {
                         const typeNode = param.childForFieldName('type');
@@ -207,7 +220,7 @@ export class CsharpAstFactory implements IAstFactory {
                                 id: createId(),
                                 name: nameNode.text,
                                 type: typeNode ? typeNode.text : 'object',
-                                visibility: 'public', // Record parameters are public by default
+                                visibility: 'public',
                                 isStatic: false,
                                 isAbstract: false,
                                 relationship: 'auto',
@@ -222,7 +235,7 @@ export class CsharpAstFactory implements IAstFactory {
 
         const body = node.childForFieldName('body');
         if (body) {
-            for (let i = 0; i < body.childCount; i++) {
+            for (let i: number = 0; i < body.childCount; i++) {
                 const member = body.child(i)!;
                 if (member.type === 'method_declaration') {
                     classInfo.operations.push(this.extractOperationInfo(member));
