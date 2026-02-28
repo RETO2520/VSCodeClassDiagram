@@ -17,6 +17,7 @@
 
 import React, { useRef, useState, useCallback, useEffect } from 'react'
 import Editor, { useMonaco, OnMount, OnChange } from '@monaco-editor/react'
+import DOMPurify from 'dompurify'
 import type * as Monaco from 'monaco-editor'
 import * as monaco from 'monaco-editor';
 import { loader } from '@monaco-editor/react';
@@ -360,7 +361,7 @@ function inlineHtml(text: string): string {
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
         .replace(/_\((.+?)\)_/g, '<em>($1)</em>')
         .replace(/`([^`]+)`/g, '<code>$1</code>')
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
 }
 
 /** テーブル行かどうか */
@@ -463,7 +464,9 @@ function mdToHtml(md: string): string {
     flushTable()
     flushList()
 
-    return output.join('\n')
+    const rawHtml = output.join('\n')
+    // DOMPurify でサニタイズ（ブラウザ環境または WebView 環境を想定）
+    return DOMPurify.sanitize(rawHtml)
 }
 
 function MarkdownViewer({ markdown }: { markdown: string }) {

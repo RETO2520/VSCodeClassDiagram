@@ -12,6 +12,7 @@
     "strict": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
     "allowJs": true,
     "moduleResolution": "node16"
   },
