@@ -1,18 +1,16 @@
-
-/**
- * Java用のASTパーサー
- * web-tree-sitterを使用してASTを構築し、クラス情報を抽出する
- */
 import * as vscode from 'vscode';
-import * as path from 'path';
 import * as Parser from 'web-tree-sitter';
-type Language = Parser.Language;
 type Tree = Parser.Tree;
 type Node = Parser.Node;
-import { IAstParser } from "../IAstParser";
-import { ClassInfo, OperationInfo, AttributeInfo, ParameterInfo } from '../../types';
-import { Logger } from '../../../../LoggerComponents/Logger';
-export class JavaAstParser implements IAstParser {
+import { IAstFactory } from '../IAstFactory';
+import { ClassInfo, ClassKind, ClassMember, ClassOperation, OperationParameter, Visibility, createId } from '../../../view/lib/class-diagram-types';
+import { Logger } from '../../LoggerComponents/Logger';
+
+/**
+ * C#用のASTファクトリー
+ * web-tree-sitterを使用してASTを構築し、ドメインモデル仕様のクラス情報を抽出する
+ */
+export class CsharpAstFactory implements IAstFactory {
     private readonly logger: Logger;
     private readonly extensionUri: vscode.Uri;
     private parser: any = null;
@@ -24,52 +22,44 @@ export class JavaAstParser implements IAstParser {
     }
 
     /**
-     * web-tree-sitterおよびJava言語モジュールを初期化する
+     * web-tree-sitterおよびC#言語モジュールを初期化する
      */
     private async initParser(): Promise<boolean> {
         if (this.isInitialized && this.parser) return true;
 
         try {
             const ParserClass = (Parser as any).Parser;
-            const LanguageClass = (Parser as any).Language;
-
-            if (!this.extensionUri) {
-                throw new Error("extensionUri is undefined");
-            }
-
             const wasmBaseDir = vscode.Uri.joinPath(this.extensionUri, 'out');
 
             await ParserClass.init({
                 locateFile: (file: string) => {
                     if (file === 'web-tree-sitter.wasm') {
-                        return vscode.Uri.joinPath(wasmBaseDir, 'web-tree-sitter.wasm').fsPath;
+                        const wasmUri = vscode.Uri.joinPath(wasmBaseDir, 'web-tree-sitter.wasm');
+                        return wasmUri.toString();
                     }
                     return file;
                 }
             });
 
-            const wasmUri = vscode.Uri.joinPath(wasmBaseDir, 'tree-sitter-java.wasm');
-            const wasmPath = wasmUri.fsPath;
+            const wasmUri = vscode.Uri.joinPath(wasmBaseDir, 'tree-sitter-c_sharp.wasm');
+            this.logger.info(`Loading wasm file from: ${wasmUri.fsPath}`);
 
-            this.logger.info(`Loading Java language wasm from: ${wasmPath}`);
-            if (!wasmPath) {
-                throw new Error("Resolved wasmPath is empty");
-            }
-
-            const language = await LanguageClass.load(wasmPath);
+            const language = await Parser.Language.load(wasmUri.fsPath);
             this.parser = new ParserClass();
             this.parser.setLanguage(language);
             this.isInitialized = true;
             return true;
         } catch (error) {
-            this.logger.error(`Failed to initialize web-tree-sitter for Java: ${error}`);
-            if (error instanceof Error && error.stack) {
-                this.logger.error(`Stack trace: ${error.stack}`);
-            }
+            this.logger.error(`Failed to initialize web-tree-sitter for C#: ${error}`);
             console.error(error);
             return false;
         }
     }
+
+    public supports(languageId: string): boolean {
+        return languageId === 'csharp';
+    }
+
     public async parse(uri: vscode.Uri, content: string): Promise<ClassInfo[]> {
         if (!(await this.initParser()) || !this.parser) return [];
 
@@ -77,120 +67,128 @@ export class JavaAstParser implements IAstParser {
             const tree = this.parser.parse(content);
             if (!tree) return [];
             const classes: ClassInfo[] = [];
-            this.visitNode(tree.rootNode, uri, classes);
+            this.visitNode(tree.rootNode, classes);
+
+            // 内部のID解決 (名前からIDへのマッピング)
+            const idMap = new Map<string, string>();
+            for (const cls of classes) {
+                idMap.set(cls.name, cls.id);
+            }
+
+            for (const cls of classes) {
+                if (cls.baseClassId) {
+                    cls.baseClassId = idMap.get(cls.baseClassId) || cls.baseClassId;
+                }
+                cls.interfaces = cls.interfaces.map(i => idMap.get(i) || i);
+            }
+
             return classes;
         } catch (error) {
-            this.logger.error(`Error parsing Java AST for ${uri.fsPath}: ${error}`);
+            this.logger.error(`Error parsing C# AST for ${uri.fsPath}: ${error}`);
             return [];
         }
     }
-    public supports(languageId: string): boolean {
-        return languageId === 'java';
-    }
-
 
     /**
      * ASTノードを再帰的に走査してクラス情報を抽出する
      */
-    private visitNode(node: Node, uri: vscode.Uri, classes: ClassInfo[]): void {
-
+    private visitNode(node: Node, classes: ClassInfo[]): void {
         if (node.type === 'class_declaration' || node.type === 'interface_declaration' || node.type === 'record_declaration') {
-            classes.push(this.extractClassInfo(node, uri));
+            classes.push(this.extractClassInfo(node));
         } else if (node.type === 'enum_declaration') {
-            classes.push(this.extractEnumInfo(node, uri));
+            classes.push(this.extractEnumInfo(node));
         } else if (node.type === 'struct_declaration') {
-            classes.push(this.extractStructInfo(node, uri));
+            classes.push(this.extractStructInfo(node));
         }
 
         for (let i = 0; i < node.childCount; i++) {
             const child = node.child(i);
             if (child) {
-                this.visitNode(child, uri, classes);
+                this.visitNode(child, classes);
             }
         }
     }
 
-    private extractClassInfo(node: Node, uri: vscode.Uri): ClassInfo {
+    private extractClassInfo(node: Node): ClassInfo {
         const nameNode = node.childForFieldName('name');
+        const kind = this.determineKind(node);
+        const isAbstract = this.extractModifiers(node).includes('abstract');
+
         const classInfo: ClassInfo = {
+            id: createId(),
             name: nameNode ? nameNode.text : 'Anonymous',
-            kind: this.determineKind(node),
+            kind: kind,
+            isAbstract: isAbstract,
             interfaces: [],
-            location: {
-                uri: uri,
-                range: this.convertRange(node)
-            },
-            attributes: [],
-            operations: []
+            baseClassId: null,
+            members: [],
+            operations: [],
+            x: 0,
+            y: 0
         };
 
         // 継承関係の抽出
-        const sc = node.childForFieldName('superclass');
-        if (sc) {
-            sc.descendantsOfType('type_identifier').forEach(t => {
-                classInfo.baseClass = t.text;
-            });
+        let baseList = node.childForFieldName('base_list');
+        if (!baseList) {
+            baseList = node.children.find(c => c.type === 'base_list') || null;
         }
 
-        // インターフェースの抽出
-        node.descendantsOfType('super_interfaces').forEach(superInterfaces => {
-            superInterfaces.descendantsOfType('type_list').forEach(typeList => {
-                typeList.descendantsOfType('type_identifier').forEach(typeIdentifier => {
-                    this.logger.info(`Interface: ${typeIdentifier.text}`);
-                    classInfo.interfaces.push(typeIdentifier.text);
-                });
-            });
-        });
-
+        if (baseList) {
+            const types = baseList.children.filter(c =>
+                c.type === 'identifier' ||
+                c.type === 'type_identifier' ||
+                c.type === 'qualified_name' ||
+                c.type === 'generic_name'
+            );
+            if (types.length > 0) {
+                classInfo.baseClassId = types[0].text;
+                classInfo.interfaces = types.slice(1).map(t => t.text);
+            }
+        }
 
         this.extractMembers(node, classInfo);
 
         return classInfo;
     }
 
-    private extractEnumInfo(node: Node, uri: vscode.Uri): ClassInfo {
+    private extractEnumInfo(node: Node): ClassInfo {
         const nameNode = node.childForFieldName('name');
         return {
+            id: createId(),
             name: nameNode ? nameNode.text : 'AnonymousEnum',
-            kind: 'enum',
+            kind: 'class', // Enums are not natively supported in ClassKind (only class, interface, struct). We will use 'class' 
+            isAbstract: false,
             interfaces: [],
-            location: {
-                uri: uri,
-                range: this.convertRange(node)
-            },
-            attributes: [],
-            operations: []
+            baseClassId: null,
+            members: [],
+            operations: [],
+            x: 0,
+            y: 0
         };
     }
 
-    private extractStructInfo(node: Node, uri: vscode.Uri): ClassInfo {
+    private extractStructInfo(node: Node): ClassInfo {
         const nameNode = node.childForFieldName('name');
         const classInfo: ClassInfo = {
+            id: createId(),
             name: nameNode ? nameNode.text : 'AnonymousStruct',
             kind: 'struct',
+            isAbstract: false,
             interfaces: [],
-            location: {
-                uri: uri,
-                range: this.convertRange(node)
-            },
-            attributes: [],
-            operations: []
+            baseClassId: null,
+            members: [],
+            operations: [],
+            x: 0,
+            y: 0
         };
 
         this.extractMembers(node, classInfo);
         return classInfo;
     }
 
-    private determineKind(node: Node): 'class' | 'abstract' | 'interface' | 'struct' | 'enum' {
+    private determineKind(node: Node): ClassKind {
         if (node.type === 'interface_declaration') return 'interface';
-        if (node.type === 'enum_declaration') return 'enum';
         if (node.type === 'struct_declaration') return 'struct';
-
-        const modifiers = node.children.find(c => c.type === 'modifier_list');
-        if (modifiers && modifiers.text.includes('abstract')) {
-            return 'abstract';
-        }
-
         return 'class';
     }
 
@@ -205,12 +203,16 @@ export class JavaAstParser implements IAstParser {
                         const typeNode = param.childForFieldName('type');
                         const nameNode = param.childForFieldName('name');
                         if (nameNode) {
-                            classInfo.attributes.push({
+                            classInfo.members.push({
+                                id: createId(),
                                 name: nameNode.text,
                                 type: typeNode ? typeNode.text : 'object',
                                 visibility: 'public', // Record parameters are public by default
-                                modifiers: ['readonly'],
-                                location: this.convertRange(param)
+                                isStatic: false,
+                                isAbstract: false,
+                                relationship: 'auto',
+                                sourceMultiplicity: '1',
+                                targetMultiplicity: '1'
                             });
                         }
                     }
@@ -225,96 +227,110 @@ export class JavaAstParser implements IAstParser {
                 if (member.type === 'method_declaration') {
                     classInfo.operations.push(this.extractOperationInfo(member));
                 } else if (member.type === 'field_declaration' || member.type === 'property_declaration') {
-                    classInfo.attributes.push(this.extractAttributeInfo(member));
+                    classInfo.members.push(this.extractAttributeInfo(member));
                 }
             }
         }
     }
 
-    private extractOperationInfo(node: Node): OperationInfo {
+    private extractOperationInfo(node: Node): ClassOperation {
         const nameNode = node.childForFieldName('name');
         const typeNode = node.childForFieldName('type');
         const paramsNode = node.childForFieldName('parameters');
+        const modifiers = this.extractModifiers(node);
 
         return {
+            id: createId(),
             name: nameNode ? nameNode.text : 'anonymous',
             returnType: typeNode ? typeNode.text : 'void',
             parameters: this.extractParameters(paramsNode),
             visibility: this.extractVisibility(node),
-            modifiers: this.extractModifiers(node),
-            location: this.convertRange(node)
+            isStatic: modifiers.includes('static'),
+            isAbstract: modifiers.includes('abstract')
         };
     }
 
-    private extractAttributeInfo(member: Node): AttributeInfo {
+    private extractAttributeInfo(member: Node): ClassMember {
         let typeNode = member.childForFieldName('type');
         let name = 'anonymous';
-        this.logger.info(`Extracting attribute info: ${member.type}`);
 
         if (member.type === 'field_declaration') {
-            const declarator = member.children.find(c => c.type === 'variable_declarator');
-            if (declarator) {
-                const nameNode = declarator.childForFieldName('name');
-                this.logger.info(`Name node: ${nameNode ? nameNode.text : 'null'}`);
-                if (nameNode) name = nameNode.text;
+            const variableDeclaration = member.children.find(c => c.type === 'variable_declaration');
+            if (variableDeclaration) {
+                if (!typeNode) {
+                    typeNode = variableDeclaration.childForFieldName('type');
+                }
+
+                const declarator = variableDeclaration.children.find(c => c.type === 'variable_declarator');
+                if (declarator) {
+                    const nameNode = declarator.childForFieldName('name');
+                    if (nameNode) name = nameNode.text;
+                }
             }
         } else if (member.type === 'property_declaration') {
             const nameNode = member.childForFieldName('name');
-            this.logger.info(`Name node: ${nameNode ? nameNode.text : 'null'}`);
             if (nameNode) name = nameNode.text;
         }
 
+        const modifiers = this.extractModifiers(member);
+
         return {
+            id: createId(),
             name: name,
             type: typeNode ? typeNode.text : 'var',
             visibility: this.extractVisibility(member),
-            modifiers: this.extractModifiers(member),
-            location: this.convertRange(member)
+            isStatic: modifiers.includes('static'),
+            isAbstract: modifiers.includes('abstract'),
+            relationship: 'auto',
+            sourceMultiplicity: '1',
+            targetMultiplicity: '1'
         };
     }
 
-    private extractParameters(node: Node | null): ParameterInfo[] {
+    private extractParameters(node: Node | null): OperationParameter[] {
         if (!node) return [];
-        const parameters: ParameterInfo[] = [];
+        const parameters: OperationParameter[] = [];
         for (let i = 0; i < node.childCount; i++) {
             const child = node.child(i)!;
             if (child.type === 'parameter') {
                 const nameNode = child.childForFieldName('name');
                 const typeNode = child.childForFieldName('type');
                 parameters.push({
+                    id: createId(),
                     name: nameNode ? nameNode.text : 'param',
-                    type: typeNode ? typeNode.text : 'object',
-                    isOptional: child.children.some(c => c.text === '=')
+                    type: typeNode ? typeNode.text : 'object'
                 });
             }
         }
         return parameters;
     }
 
-    private extractVisibility(node: Node): 'public' | 'protected' | 'private' | 'internal' {
-        // Try modifier_list first (backward compatibility)
+    private extractVisibility(node: Node): Visibility {
+        let vis = 'private'; // default
+
+        // Try modifier_list first
         const modifiersNode = node.children.find(c => c.type === 'modifier_list');
         if (modifiersNode) {
             const text = modifiersNode.text;
-            if (text.includes('public')) return 'public';
-            if (text.includes('protected')) return 'protected';
-            if (text.includes('internal')) return 'internal';
-            if (text.includes('private')) return 'private';
-        }
-
-        // Check direct children for 'modifier' nodes
-        for (let i = 0; i < node.childCount; i++) {
-            const child = node.child(i);
-            if (child && child.type === 'modifier') {
-                const text = child.text;
-                if (text === 'public') return 'public';
-                if (text === 'protected') return 'protected';
-                if (text === 'internal') return 'internal';
-                if (text === 'private') return 'private';
+            if (text.includes('public')) vis = 'public';
+            else if (text.includes('protected')) vis = 'protected';
+            else if (text.includes('internal')) vis = 'package';
+            else if (text.includes('private')) vis = 'private';
+        } else {
+            // Check direct children
+            for (let i = 0; i < node.childCount; i++) {
+                const child = node.child(i);
+                if (child && child.type === 'modifier') {
+                    const text = child.text;
+                    if (text === 'public') vis = 'public';
+                    else if (text === 'protected') vis = 'protected';
+                    else if (text === 'internal') vis = 'package';
+                    else if (text === 'private') vis = 'private';
+                }
             }
         }
 
-        return 'private';
+        return vis as Visibility;
     }
 
     private extractModifiers(node: Node): string[] {
@@ -344,14 +360,5 @@ export class JavaAstParser implements IAstParser {
         }
 
         return mods;
-    }
-
-    private convertRange(node: Node): vscode.Range {
-        return new vscode.Range(
-            node.startPosition.row,
-            node.startPosition.column,
-            node.endPosition.row,
-            node.endPosition.column
-        );
     }
 }

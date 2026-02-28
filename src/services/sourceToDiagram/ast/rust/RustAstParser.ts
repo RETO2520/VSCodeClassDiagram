@@ -36,6 +36,12 @@ export class RustAstParser implements IAstParser {
 
         try {
             const ParserClass = (Parser as any).Parser;
+            const LanguageClass = (Parser as any).Language;
+
+            if (!this.extensionUri) {
+                throw new Error("extensionUri is undefined");
+            }
+
             const wasmBaseDir = vscode.Uri.joinPath(this.extensionUri, 'out');
 
             await ParserClass.init({
@@ -47,16 +53,24 @@ export class RustAstParser implements IAstParser {
                 }
             });
 
-            const wasmPath = vscode.Uri.joinPath(wasmBaseDir, 'tree-sitter-rust.wasm').fsPath;
-            this.logger.info(`Loading wasm file from: ${wasmPath}`);
+            const wasmUri = vscode.Uri.joinPath(wasmBaseDir, 'tree-sitter-rust.wasm');
+            const wasmPath = wasmUri.fsPath;
 
-            const language = await Parser.Language.load(wasmPath);
+            this.logger.info(`Loading Rust language wasm from: ${wasmPath}`);
+            if (!wasmPath) {
+                throw new Error("Resolved wasmPath is empty");
+            }
+
+            const language = await LanguageClass.load(wasmPath);
             this.parser = new ParserClass();
             this.parser.setLanguage(language);
             this.isInitialized = true;
             return true;
         } catch (error) {
             this.logger.error(`Failed to initialize web-tree-sitter for Rust: ${error}`);
+            if (error instanceof Error && error.stack) {
+                this.logger.error(`Stack trace: ${error.stack}`);
+            }
             console.error(error);
             return false;
         }

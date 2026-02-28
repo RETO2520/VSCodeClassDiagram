@@ -6,6 +6,8 @@ import { Logger } from '../LoggerComponents/Logger';
 import { DocumentSymbolConverter } from './sourceToDiagram/lsp/DocumentSymbolConverter';
 import { SemanticTokensExtractor } from './sourceToDiagram/lsp/SemanticTokensExtractor';
 import * as cdt from "../../view/lib/class-diagram-types";
+import { DomainModel } from '../../view/lib/DomainModel';
+
 /**
  * ソースコード解析の統合エントリーポイント
  * LSPとAST解析を組み合わせてクラス情報を抽出する
@@ -32,21 +34,21 @@ export class SourceAnalyzer {
         this.logger.info(`Language ID: ${languageId}`);
 
         // 1. LSPプロバイダーを使用して情報を取得
-        if (this.lspProvider.isAvailable(languageId)) {
-            try {
-                const symbols = await this.lspProvider.getDocumentSymbols(uri);
-                if (symbols && symbols.length > 0) {
-                    lspClasses = DocumentSymbolConverter.convertSymbols(symbols, uri);
+        // if (this.lspProvider.isAvailable(languageId)) {
+        //     try {
+        //         const symbols = await this.lspProvider.getDocumentSymbols(uri);
+        //         if (symbols && symbols.length > 0) {
+        //             lspClasses = DocumentSymbolConverter.convertSymbols(symbols, uri);
 
-                    const tokens = await this.lspProvider.getSemanticTokens(uri);
-                    if (tokens) {
-                        SemanticTokensExtractor.extractAndApply(tokens, lspClasses);
-                    }
-                }
-            } catch (error) {
-                this.logger.error(`LSP analysis failed for ${uri.fsPath}: ${error}`);
-            }
-        }
+        //             const tokens = await this.lspProvider.getSemanticTokens(uri);
+        //             if (tokens) {
+        //                 SemanticTokensExtractor.extractAndApply(tokens, lspClasses);
+        //             }
+        //         }
+        //     } catch (error) {
+        //         this.logger.error(`LSP analysis failed for ${uri.fsPath}: ${error}`);
+        //     }
+        // }
 
         // 2. AST解析を実行（タスク8.3: 常にAST解析を行い、LSPの結果を補完する）
         let astClasses: ClassInfo[] = [];
@@ -159,5 +161,59 @@ export class SourceAnalyzer {
             }
             return lspClass;
         });
+    }
+
+    /**
+     * 抽出されたクラス情報をDomainModelに変換する
+     */
+    public toDomainModel(sourceClasses: ClassInfo[]): DomainModel {
+        const idMap = new Map<string, string>();
+        for (const sc of sourceClasses) {
+            idMap.set(sc.name, cdt.createId());
+        }
+
+        const domainClasses: cdt.ClassInfo[] = sourceClasses.map(sc => {
+            let kind: cdt.ClassKind = 'class';
+            if (sc.kind === 'interface') kind = 'interface';
+            if (sc.kind === 'struct') kind = 'struct';
+            if (sc.kind === 'enum') kind = 'class';
+
+            return {
+                id: idMap.get(sc.name) || cdt.createId(),
+                name: sc.name,
+                kind: kind,
+                isAbstract: sc.kind === 'abstract',
+                members: sc.attributes.map(a => ({
+                    id: cdt.createId(),
+                    name: a.name,
+                    type: a.type,
+                    visibility: (a.visibility === 'internal' ? 'package' : a.visibility) as any,
+                    isStatic: a.modifiers.includes('static'),
+                    isAbstract: !!a.isAbstract,
+                    relationship: 'auto',
+                    sourceMultiplicity: '1',
+                    targetMultiplicity: '1'
+                })),
+                operations: sc.operations.map(o => ({
+                    id: cdt.createId(),
+                    name: o.name,
+                    returnType: o.returnType,
+                    visibility: (o.visibility === 'internal' ? 'package' : o.visibility) as any,
+                    isStatic: o.modifiers.includes('static'),
+                    isAbstract: o.modifiers.includes('abstract'),
+                    parameters: o.parameters.map(p => ({
+                        id: cdt.createId(),
+                        name: p.name,
+                        type: p.type
+                    }))
+                })),
+                interfaces: sc.interfaces.map(i => idMap.get(i) || i),
+                baseClassId: sc.baseClass ? (idMap.get(sc.baseClass) || sc.baseClass) : null,
+                x: 0,
+                y: 0
+            };
+        });
+
+        return DomainModel.from(domainClasses);
     }
 }

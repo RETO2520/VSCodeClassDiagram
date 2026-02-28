@@ -32,6 +32,12 @@ export class CppAstParser implements IAstParser {
 
         try {
             const ParserClass = (Parser as any).Parser;
+            const LanguageClass = (Parser as any).Language;
+
+            if (!this.extensionUri) {
+                throw new Error("extensionUri is undefined");
+            }
+
             const wasmBaseDir = vscode.Uri.joinPath(this.extensionUri, 'out');
 
             await ParserClass.init({
@@ -43,16 +49,24 @@ export class CppAstParser implements IAstParser {
                 }
             });
 
-            const wasmPath = vscode.Uri.joinPath(wasmBaseDir, 'tree-sitter-cpp.wasm').fsPath;
-            this.logger.info(`Loading wasm file from: ${wasmPath}`);
+            const wasmUri = vscode.Uri.joinPath(wasmBaseDir, 'tree-sitter-cpp.wasm');
+            const wasmPath = wasmUri.fsPath;
 
-            const language = await Parser.Language.load(wasmPath);
+            this.logger.info(`Loading C++ language wasm from: ${wasmPath}`);
+            if (!wasmPath) {
+                throw new Error("Resolved wasmPath is empty");
+            }
+
+            const language = await LanguageClass.load(wasmPath);
             this.parser = new ParserClass();
             this.parser.setLanguage(language);
             this.isInitialized = true;
             return true;
         } catch (error) {
             this.logger.error(`Failed to initialize web-tree-sitter for C++: ${error}`);
+            if (error instanceof Error && error.stack) {
+                this.logger.error(`Stack trace: ${error.stack}`);
+            }
             console.error(error);
             return false;
         }

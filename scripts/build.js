@@ -15,6 +15,9 @@ async function run() {
         sourcemap: true,
         minify: !watch,
         target: 'node16', // Match with VS Code's node version
+        alias: {
+            'web-tree-sitter': path.resolve(__dirname, '../node_modules/web-tree-sitter/web-tree-sitter.cjs')
+        },
     });
 
     if (watch) {
