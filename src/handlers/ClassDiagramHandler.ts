@@ -45,6 +45,8 @@ export class ClassDiagramHandler {
             .register('saveDiagramFile', this.handleSaveDiagramFile.bind(this))
             .register('createDiagramFolder', this.handleCreateDiagramFolder.bind(this))
             .register('createDiagramFile', this.handleCreateDiagramFile.bind(this))
+            .register('ui.createFile', this.handleUiCreateFile.bind(this))
+            .register('ui.createFolder', this.handleUiCreateFolder.bind(this))
             ;
     }
 
@@ -361,6 +363,50 @@ export class ClassDiagramHandler {
             });
         } else {
             vscode.window.showErrorMessage(`Failed to create file ${relativePath}. It might already exist.`);
+        }
+    }
+
+    private async handleUiCreateFile(msg: any, ctx: MessageContext): Promise<void> {
+        const payload = msg.payload || {};
+        const parentPath = payload.relativeParentPath || '';
+
+        const name = await vscode.window.showInputBox({
+            prompt: 'Enter new file name (e.g. diagram.dsl)',
+            value: 'new_diagram.dsl',
+            placeHolder: 'filename.dsl'
+        });
+
+        if (!name) return;
+
+        const relativePath = parentPath ? `${parentPath}/${name}` : name;
+        const success = await this.fileService.createDiagramFile(relativePath);
+        if (success) {
+            vscode.window.showInformationMessage(`Created file ${relativePath}`);
+            await this.handleRequestDiagramFiles({}, ctx);
+        } else {
+            vscode.window.showErrorMessage(`Failed to create file ${relativePath}. It might already exist.`);
+        }
+    }
+
+    private async handleUiCreateFolder(msg: any, ctx: MessageContext): Promise<void> {
+        const payload = msg.payload || {};
+        const parentPath = payload.relativeParentPath || '';
+
+        const name = await vscode.window.showInputBox({
+            prompt: 'Enter new folder name',
+            value: 'new_folder',
+            placeHolder: 'folder_name'
+        });
+
+        if (!name) return;
+
+        const relativePath = parentPath ? `${parentPath}/${name}` : name;
+        const success = await this.fileService.createDiagramFolder(relativePath);
+        if (success) {
+            vscode.window.showInformationMessage(`Created folder ${relativePath}`);
+            await this.handleRequestDiagramFiles({}, ctx);
+        } else {
+            vscode.window.showErrorMessage(`Failed to create folder ${relativePath}`);
         }
     }
 

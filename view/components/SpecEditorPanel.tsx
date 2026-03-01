@@ -40,17 +40,6 @@ import { DiffViewer } from './DiffViewer';
 import { Command } from '@/lib/commands/Command';
 import { FolderTree } from './FolderTree';
 
-// VSCode WebView 環境では acquireVsCodeApi 経由で postMessage を使う。
-// ブラウザ環境ではフォールバックとして <a download> でファイル保存する。
-function sendToHost(msg: object) {
-    try {
-        // @ts-ignore
-        if (typeof acquireVsCodeApi !== 'undefined') {
-            // @ts-ignore
-            acquireVsCodeApi().postMessage(msg)
-        }
-    } catch { /* ブラウザ環境ではスルー */ }
-}
 
 // ============================================================
 // DSL 言語定義
@@ -1389,16 +1378,10 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
                         activeFilePath={activeFilePath}
                         onSelectFile={(path) => postMessage({ command: 'loadDiagramFile', payload: { relativePath: path } })}
                         onCreateFile={(path) => {
-                            const name = prompt('New file name (e.g. diagram.dsl):', 'diagram.dsl');
-                            if (name) {
-                                postMessage({ command: 'createDiagramFile', payload: { relativePath: path ? `${path}/${name}` : name } });
-                            }
+                            postMessage({ command: 'ui.createFile', payload: { relativeParentPath: path } });
                         }}
                         onCreateFolder={(path) => {
-                            const name = prompt('New folder name:', 'new_folder');
-                            if (name) {
-                                postMessage({ command: 'createDiagramFolder', payload: { relativePath: path ? `${path}/${name}` : name } });
-                            }
+                            postMessage({ command: 'ui.createFolder', payload: { relativeParentPath: path } });
                         }}
                         onRefresh={() => postMessage({ command: 'requestDiagramFiles' })}
                     />

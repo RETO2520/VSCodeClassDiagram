@@ -28,6 +28,8 @@ export type WebviewToHostMessage =
     | { command: 'saveDiagramFile'; payload: { relativePath: string; dsl: string } }
     | { command: 'createDiagramFolder'; payload: { relativePath: string } }
     | { command: 'createDiagramFile'; payload: { relativePath: string } }
+    | { command: 'ui.createFile'; payload: { relativeParentPath: string } }
+    | { command: 'ui.createFolder'; payload: { relativeParentPath: string } }
 
 /** Messages sent FROM the extension host TO the webview */
 export type HostToWebviewMessage =
