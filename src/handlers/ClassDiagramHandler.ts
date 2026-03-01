@@ -38,9 +38,13 @@ export class ClassDiagramHandler {
             .register('loadDsl', this.handleLoadDsl.bind(this))
             .register('generateCode', this.handleGenerateCode.bind(this))
             .register('exportMarkdown', this.handleExportMarkdown.bind(this))
-            .register('importSpecDsl', this.handleImportSpecDsl.bind(this))
             .register('exportSpecDsl', this.handleExportSpecDsl.bind(this))
             .register('log', this.handleLog.bind(this))
+            .register('requestDiagramFiles', this.handleRequestDiagramFiles.bind(this))
+            .register('loadDiagramFile', this.handleLoadDiagramFile.bind(this))
+            .register('saveDiagramFile', this.handleSaveDiagramFile.bind(this))
+            .register('createDiagramFolder', this.handleCreateDiagramFolder.bind(this))
+            .register('createDiagramFile', this.handleCreateDiagramFile.bind(this))
             ;
     }
 
@@ -283,8 +287,82 @@ export class ClassDiagramHandler {
         }
     }
 
+    private async handleRequestDiagramFiles(msg: any, ctx: MessageContext): Promise<void> {
+        const files = await this.fileService.getDiagramFiles();
+        ctx.panel.webview.postMessage({
+            command: 'diagramFilesLoaded',
+            payload: { files }
+        });
+    }
 
+    private async handleLoadDiagramFile(msg: any, ctx: MessageContext): Promise<void> {
+        const payload = msg.payload || {};
+        const relativePath = payload.relativePath;
+        if (!relativePath) return;
 
+        const dsl = await this.fileService.readDiagramFile(relativePath);
+        if (dsl !== null) {
+            ctx.panel.webview.postMessage({
+                command: 'diagramFileLoaded',
+                payload: { relativePath, dsl }
+            });
+            vscode.window.showInformationMessage(`Loaded ${relativePath}`);
+        } else {
+            vscode.window.showErrorMessage(`Failed to load ${relativePath}`);
+        }
+    }
+
+    private async handleSaveDiagramFile(msg: any, ctx: MessageContext): Promise<void> {
+        const payload = msg.payload || {};
+        const relativePath = payload.relativePath;
+        const dsl = payload.dsl;
+        if (!relativePath || typeof dsl !== 'string') return;
+
+        const success = await this.fileService.writeDiagramFile(relativePath, dsl);
+        if (success) {
+            vscode.window.showInformationMessage(`Saved ${relativePath}`);
+        } else {
+            vscode.window.showErrorMessage(`Failed to save ${relativePath}`);
+        }
+    }
+
+    private async handleCreateDiagramFolder(msg: any, ctx: MessageContext): Promise<void> {
+        const payload = msg.payload || {};
+        const relativePath = payload.relativePath;
+        if (!relativePath) return;
+
+        const success = await this.fileService.createDiagramFolder(relativePath);
+        if (success) {
+            vscode.window.showInformationMessage(`Created folder ${relativePath}`);
+            // Refresh files
+            const files = await this.fileService.getDiagramFiles();
+            ctx.panel.webview.postMessage({
+                command: 'diagramFilesLoaded',
+                payload: { files }
+            });
+        } else {
+            vscode.window.showErrorMessage(`Failed to create folder ${relativePath}`);
+        }
+    }
+
+    private async handleCreateDiagramFile(msg: any, ctx: MessageContext): Promise<void> {
+        const payload = msg.payload || {};
+        const relativePath = payload.relativePath;
+        if (!relativePath) return;
+
+        const success = await this.fileService.createDiagramFile(relativePath);
+        if (success) {
+            vscode.window.showInformationMessage(`Created file ${relativePath}`);
+            // Refresh files
+            const files = await this.fileService.getDiagramFiles();
+            ctx.panel.webview.postMessage({
+                command: 'diagramFilesLoaded',
+                payload: { files }
+            });
+        } else {
+            vscode.window.showErrorMessage(`Failed to create file ${relativePath}. It might already exist.`);
+        }
+    }
 
     private async handleGenerateCode(msg: any, ctx: MessageContext): Promise<void> {
         const payload = msg.payload || {};

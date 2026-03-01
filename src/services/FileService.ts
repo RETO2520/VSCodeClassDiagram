@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { Logger } from '../LoggerComponents/Logger';
 
 /**
@@ -286,5 +287,126 @@ export class FileService {
             uri,
             filePath: uri.fsPath
         };
+    }
+
+    /**
+     * Get all DSL files under the .diagram folder
+     */
+    public async getDiagramFiles(): Promise<string[]> {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            return [];
+        }
+
+        const diagramFolder = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram');
+
+        try {
+            await vscode.workspace.fs.stat(diagramFolder);
+        } catch {
+            try {
+                await vscode.workspace.fs.createDirectory(diagramFolder);
+            } catch (e) {
+                this.logger?.error(`Failed to create .diagram folder: ${e}`);
+                return [];
+            }
+        }
+
+        try {
+            const files = await vscode.workspace.findFiles(
+                new vscode.RelativePattern(diagramFolder, '**/*.{dsl,txt}')
+            );
+            return files.map(f => path.relative(diagramFolder.fsPath, f.fsPath).replace(/\\/g, '/'));
+        } catch (e) {
+            this.logger?.error(`Failed to get diagram files: ${e}`);
+            return [];
+        }
+    }
+
+    /**
+     * Create a new folder inside the .diagram directory
+     */
+    public async createDiagramFolder(relativePath: string): Promise<boolean> {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            return false;
+        }
+
+        const uri = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram', relativePath);
+        try {
+            await vscode.workspace.fs.createDirectory(uri);
+            return true;
+        } catch (e) {
+            this.logger?.error(`Failed to create diagram folder ${relativePath}: ${e}`);
+            return false;
+        }
+    }
+
+    /**
+     * Create a new DSL file inside the .diagram directory
+     */
+    public async createDiagramFile(relativePath: string): Promise<boolean> {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            return false;
+        }
+
+        const uri = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram', relativePath);
+        try {
+            // Check if file already exists
+            try {
+                await vscode.workspace.fs.stat(uri);
+                return false; // Already exists
+            } catch {
+                // Not exists, proceed
+            }
+
+            const encoder = new TextEncoder();
+            // Default content for new file
+            const content = `// ${path.basename(relativePath)}\n\nclass NewClass\n  + field: string\n`;
+            await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
+            return true;
+        } catch (e) {
+            this.logger?.error(`Failed to create diagram file ${relativePath}: ${e}`);
+            return false;
+        }
+    }
+
+    /**
+     * Read a specific DSL file from the .diagram folder
+     */
+    public async readDiagramFile(relativePath: string): Promise<string | null> {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            return null;
+        }
+
+        const uri = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram', relativePath);
+        try {
+            const bytes = await vscode.workspace.fs.readFile(uri);
+            return new TextDecoder('utf8').decode(bytes);
+        } catch (e) {
+            this.logger?.error(`Failed to read diagram file ${relativePath}: ${e}`);
+            return null;
+        }
+    }
+
+    /**
+     * Write a specific DSL file to the .diagram folder
+     */
+    public async writeDiagramFile(relativePath: string, content: string): Promise<boolean> {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            return false;
+        }
+
+        const uri = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram', relativePath);
+        try {
+            const encoder = new TextEncoder();
+            await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
+            return true;
+        } catch (e) {
+            this.logger?.error(`Failed to write diagram file ${relativePath}: ${e}`);
+            return false;
+        }
     }
 }

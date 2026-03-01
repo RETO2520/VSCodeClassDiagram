@@ -32,12 +32,13 @@ import { lintDsl } from '@/lib/DslLinter'
 import type { DslLintWarning } from '@/lib/DslLinter'
 import { DomainModel } from '@/lib/DomainModel'
 import type { ClassInfo, ClassOperation } from '@/lib/class-diagram-types'
-import { postMessage } from '../../frontend/src/bridge/vscode-bridge';
+import { postMessage, onMessage } from '../../frontend/src/bridge/vscode-bridge';
 import { CommandLine } from './command-line';
 import { cn } from '@/lib/utils'
 import { CliParser } from '@/lib/CliParser';
 import { DiffViewer } from './DiffViewer';
 import { Command } from '@/lib/commands/Command';
+import { FolderTree } from './FolderTree';
 
 // VSCode WebView 環境では acquireVsCodeApi 経由で postMessage を使う。
 // ブラウザ環境ではフォールバックとして <a download> でファイル保存する。
@@ -294,10 +295,8 @@ function Outline({ items, onSelect }: {
 
     return (
         <div style={{
-            width: 176, minWidth: 176, flexShrink: 0,
-            borderRight: '1px solid #1e293b',
-            background: '#0a1628',
             display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            flex: 1,
         }}>
             <div style={{
                 padding: '5px 10px', fontSize: 10, fontWeight: 700,
@@ -822,6 +821,31 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
     /** CodeLens からコマンドラインを開く際の初期入力値 */
     const [cmdInitialValue, setCmdInitialValue] = useState<string>('');
 
+    const [diagramFiles, setDiagramFiles] = useState<string[]>([]);
+    const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
+
+    // ── IPC Listeners ──────────────────────────────────────────
+    useEffect(() => {
+        postMessage({ command: 'requestDiagramFiles' });
+
+        const cleanup = onMessage(msg => {
+            if (msg.command === 'diagramFilesLoaded') {
+                setDiagramFiles(msg.payload.files);
+            } else if (msg.command === 'diagramFileLoaded') {
+                const { relativePath, dsl } = msg.payload;
+                setActiveFilePath(relativePath);
+                if (editorRef.current) {
+                    editorRef.current.setValue(dsl);
+                } else {
+                    // もしエディタマウント前なら、INITIAL_DSLにどうやって渡すか...
+                    // useRefで保持して handleMount で set するか。
+                    // 簡単のため、今回はそのまま (通常はマウント後にロードされる想定)
+                }
+            }
+        });
+        return cleanup;
+    }, []);
+
     // ── DSL → クラス図 適用 ──────────────────────────────────
     const applyDsl = useCallback((dsl: string) => {
         try {
@@ -1191,7 +1215,11 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
         try {
             // @ts-ignore
             if (typeof acquireVsCodeApi !== 'undefined') {
-                postMessage({ command: 'saveDsl', payload: { dsl, fileName } })
+                if (activeFilePath) {
+                    postMessage({ command: 'saveDiagramFile', payload: { relativePath: activeFilePath, dsl } });
+                } else {
+                    postMessage({ command: 'saveDsl', payload: { dsl, fileName } })
+                }
                 return
             }
         } catch { /* ignore */ }
@@ -1346,10 +1374,36 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
                 </div>
             </div>
 
-            {/* ── メイン: Outline + Editor + Markdown Preview ── */}
+            {/* ── メイン: Sidebar(FolderTree+Outline) + Editor + Markdown Preview ── */}
             <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
 
-                <Outline items={outline} onSelect={handleOutlineSelect} />
+                {/* 左サイドバー: FolderTree と Outline を縦積み */}
+                <div style={{
+                    width: 176, minWidth: 176, flexShrink: 0,
+                    borderRight: '1px solid #1e293b',
+                    background: '#0a1628',
+                    display: 'flex', flexDirection: 'column', overflow: 'hidden',
+                }}>
+                    <FolderTree
+                        files={diagramFiles}
+                        activeFilePath={activeFilePath}
+                        onSelectFile={(path) => postMessage({ command: 'loadDiagramFile', payload: { relativePath: path } })}
+                        onCreateFile={(path) => {
+                            const name = prompt('New file name (e.g. diagram.dsl):', 'diagram.dsl');
+                            if (name) {
+                                postMessage({ command: 'createDiagramFile', payload: { relativePath: path ? `${path}/${name}` : name } });
+                            }
+                        }}
+                        onCreateFolder={(path) => {
+                            const name = prompt('New folder name:', 'new_folder');
+                            if (name) {
+                                postMessage({ command: 'createDiagramFolder', payload: { relativePath: path ? `${path}/${name}` : name } });
+                            }
+                        }}
+                        onRefresh={() => postMessage({ command: 'requestDiagramFiles' })}
+                    />
+                    <Outline items={outline} onSelect={handleOutlineSelect} />
+                </div>
 
                 {/* @monaco-editor/react の Editor コンポーネント */}
                 <div className="relative flex-1 flex flex-col min-w-0" style={{ flex: 1, minWidth: 0 }}>

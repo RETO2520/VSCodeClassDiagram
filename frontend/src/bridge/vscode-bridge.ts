@@ -23,6 +23,11 @@ export type WebviewToHostMessage =
     | { command: 'exportSpecDsl'; payload: { dsl: string; fileName?: string } }
     | { command: 'showAlert'; text: string }
     | { command: 'log'; level: 'debug' | 'info' | 'warn' | 'error'; text: string }
+    | { command: 'requestDiagramFiles' }
+    | { command: 'loadDiagramFile'; payload: { relativePath: string } }
+    | { command: 'saveDiagramFile'; payload: { relativePath: string; dsl: string } }
+    | { command: 'createDiagramFolder'; payload: { relativePath: string } }
+    | { command: 'createDiagramFile'; payload: { relativePath: string } }
 
 /** Messages sent FROM the extension host TO the webview */
 export type HostToWebviewMessage =
@@ -30,6 +35,8 @@ export type HostToWebviewMessage =
     | { command: 'dslLoaded'; payload: unknown }
     | { command: 'specDslImported'; payload: unknown }
     | { command: 'changedPrimitiveTypes'; primitiveTypes: string[] }
+    | { command: 'diagramFilesLoaded'; payload: { files: string[] } }
+    | { command: 'diagramFileLoaded'; payload: { relativePath: string; dsl: string } }
 
 // ==============================
 // VSCode API singleton
