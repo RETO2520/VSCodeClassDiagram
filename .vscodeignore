@@ -17,6 +17,8 @@ pnpm-lock.yaml
 !out/*.js
 !out/*.js.map
 !out/*.wasm
-out/test/
+**/test/**
+**/*.test.js
+**/*.test.js.map
 media/**
 media.workflow/**
