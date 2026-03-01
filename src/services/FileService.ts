@@ -78,6 +78,18 @@ export class FileService {
     }
 
     /**
+     * Get the diagram root URI (.diagram folder)
+     * @returns Diagram root URI or undefined
+     */
+    public getDiagramRootUri(): vscode.Uri | undefined {
+        const root = this.getWorkspaceRoot();
+        if (root) {
+            return vscode.Uri.joinPath(root, '.diagram');
+        }
+        return undefined;
+    }
+
+    /**
      * Find and load diagram.json from the workspace
      * @returns Parsed diagram content or null if not found
      */
@@ -276,7 +288,8 @@ export class FileService {
         }
     ): Promise<SaveResult | null> {
         const defaultUri = options?.defaultUri ??
-            (options?.defaultFileName ? this.getDefaultUri(content.fileName) : this.getDefaultUri('spec.dsl'));
+            (options?.defaultFileName ? vscode.Uri.joinPath(this.getDiagramRootUri() ?? this.getWorkspaceRoot()!, options.defaultFileName) :
+                vscode.Uri.joinPath(this.getDiagramRootUri() ?? this.getWorkspaceRoot()!, content.fileName));
 
         const uri = await vscode.window.showSaveDialog({
             filters: { 'DSL': ['dsl'] },

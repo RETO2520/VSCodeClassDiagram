@@ -1226,7 +1226,7 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
         a.download = fileName
         a.click()
         URL.revokeObjectURL(url)
-    }, [])
+    }, [activeFilePath])
 
     // ── ペースト（クリップボード → エディタ）────────────────────
     const handlePaste = useCallback(async () => {
