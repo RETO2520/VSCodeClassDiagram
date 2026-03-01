@@ -434,4 +434,46 @@ export class FileService {
             return false;
         }
     }
+
+    /**
+     * Delete a specific file or folder from the .diagram folder
+     */
+    public async deleteDiagramEntry(relativePath: string): Promise<boolean> {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            return false;
+        }
+
+        const uri = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram', relativePath);
+        try {
+            await vscode.workspace.fs.delete(uri, { recursive: true, useTrash: true });
+            return true;
+        } catch (e) {
+            this.logger?.error(`Failed to delete diagram entry ${relativePath}: ${e}`);
+            return false;
+        }
+    }
+
+    /**
+     * Rename a specific file or folder in the .diagram folder
+     */
+    public async renameDiagramEntry(oldRelativePath: string, newName: string): Promise<boolean> {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            return false;
+        }
+
+        const oldUri = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram', oldRelativePath);
+        const parentDir = path.dirname(oldRelativePath);
+        const newRelativePath = (parentDir === '.' || parentDir === '') ? newName : `${parentDir}/${newName}`;
+        const newUri = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram', newRelativePath);
+
+        try {
+            await vscode.workspace.fs.rename(oldUri, newUri, { overwrite: false });
+            return true;
+        } catch (e) {
+            this.logger?.error(`Failed to rename diagram entry ${oldRelativePath} to ${newName}: ${e}`);
+            return false;
+        }
+    }
 }

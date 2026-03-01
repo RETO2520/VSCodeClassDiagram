@@ -1388,6 +1388,12 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
                         onCreateFolder={(path) => {
                             postMessage({ command: 'ui.createFolder', payload: { relativeParentPath: path } });
                         }}
+                        onDelete={(path) => {
+                            postMessage({ command: 'ui.deleteEntry', payload: { relativePath: path } });
+                        }}
+                        onRename={(oldPath, newName) => {
+                            postMessage({ command: 'ui.renameEntry', payload: { oldRelativePath: oldPath, newName } });
+                        }}
                         onRefresh={() => postMessage({ command: 'requestDiagramFiles' })}
                     />
                     <Outline items={outline} onSelect={handleOutlineSelect} />

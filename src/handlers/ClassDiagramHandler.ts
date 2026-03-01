@@ -47,6 +47,8 @@ export class ClassDiagramHandler {
             .register('createDiagramFile', this.handleCreateDiagramFile.bind(this))
             .register('ui.createFile', this.handleUiCreateFile.bind(this))
             .register('ui.createFolder', this.handleUiCreateFolder.bind(this))
+            .register('ui.deleteEntry', this.handleUiDeleteEntry.bind(this))
+            .register('ui.renameEntry', this.handleUiRenameEntry.bind(this))
             ;
     }
 
@@ -407,6 +409,43 @@ export class ClassDiagramHandler {
             await this.handleRequestDiagramFiles({}, ctx);
         } else {
             vscode.window.showErrorMessage(`Failed to create folder ${relativePath}`);
+        }
+    }
+
+    private async handleUiDeleteEntry(msg: any, ctx: MessageContext): Promise<void> {
+        const payload = msg.payload || {};
+        const relativePath = payload.relativePath;
+        if (!relativePath) return;
+
+        const confirm = await vscode.window.showWarningMessage(
+            `Are you sure you want to delete '${relativePath}'?`,
+            { modal: true },
+            'Delete'
+        );
+
+        if (confirm !== 'Delete') return;
+
+        const success = await this.fileService.deleteDiagramEntry(relativePath);
+        if (success) {
+            vscode.window.showInformationMessage(`Deleted ${relativePath}`);
+            await this.handleRequestDiagramFiles({}, ctx);
+        } else {
+            vscode.window.showErrorMessage(`Failed to delete ${relativePath}`);
+        }
+    }
+
+    private async handleUiRenameEntry(msg: any, ctx: MessageContext): Promise<void> {
+        const payload = msg.payload || {};
+        const oldRelativePath = payload.oldRelativePath;
+        const newName = payload.newName;
+        if (!oldRelativePath || !newName) return;
+
+        const success = await this.fileService.renameDiagramEntry(oldRelativePath, newName);
+        if (success) {
+            vscode.window.showInformationMessage(`Renamed to ${newName}`);
+            await this.handleRequestDiagramFiles({}, ctx);
+        } else {
+            vscode.window.showErrorMessage(`Failed to rename to ${newName}`);
         }
     }
 

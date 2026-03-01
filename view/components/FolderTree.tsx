@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 
 export interface FileEntry {
     path: string;
@@ -9,8 +9,10 @@ export interface FolderTreeProps {
     files: FileEntry[];
     activeFilePath: string | null;
     onSelectFile: (path: string) => void;
-    onCreateFile: (path: string) => void;
-    onCreateFolder: (path: string) => void;
+    onCreateFile: (path: string) => void; // path here is the parent folder
+    onCreateFolder: (path: string) => void; // path here is the parent folder
+    onDelete: (path: string) => void;
+    onRename: (oldPath: string, newName: string) => void;
     onRefresh: () => void;
 }
 
@@ -21,8 +23,29 @@ interface TreeNode {
     children: Record<string, TreeNode>;
 }
 
-export function FolderTree({ files, activeFilePath, onSelectFile, onCreateFile, onCreateFolder, onRefresh }: FolderTreeProps) {
+export function FolderTree({
+    files, activeFilePath, onSelectFile, onCreateFile, onCreateFolder, onDelete, onRename, onRefresh
+}: FolderTreeProps) {
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['']));
+    const [contextMenu, setContextMenu] = useState<{ x: number, y: number, path: string, isDirectory: boolean } | null>(null);
+    const [renamingPath, setRenamingPath] = useState<string | null>(null);
+    const [renamingValue, setRenamingValue] = useState('');
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    // Auto-focus input when renaming
+    useEffect(() => {
+        if (renamingPath && inputRef.current) {
+            inputRef.current.focus();
+            inputRef.current.select();
+        }
+    }, [renamingPath]);
+
+    // Close context menu on click elsewhere
+    useEffect(() => {
+        const handleClick = () => setContextMenu(null);
+        window.addEventListener('click', handleClick);
+        return () => window.removeEventListener('click', handleClick);
+    }, []);
 
     const toggleFolder = (path: string) => {
         setExpandedFolders(prev => {
@@ -39,7 +62,7 @@ export function FolderTree({ files, activeFilePath, onSelectFile, onCreateFile, 
     const tree = useMemo(() => {
         const root: TreeNode = { name: '', path: '', isDirectory: true, children: {} };
 
-        // Sort files to ensure parents are processed before children (though children check handles it too)
+        // Sort files to ensure parents are processed before children
         const sortedFiles = [...files].sort((a, b) => a.path.split('/').length - b.path.split('/').length);
 
         for (const file of sortedFiles) {
@@ -60,8 +83,6 @@ export function FolderTree({ files, activeFilePath, onSelectFile, onCreateFile, 
                         children: {}
                     };
                 } else if (isLastPart) {
-                    // Update if it was previously created as a parent directory but we now know it's a file
-                    // though for directories it's already true.
                     current.children[part].isDirectory = file.isDirectory;
                 }
                 current = current.children[part];
@@ -70,10 +91,35 @@ export function FolderTree({ files, activeFilePath, onSelectFile, onCreateFile, 
         return root;
     }, [files]);
 
+    const handleContextMenu = (e: React.MouseEvent, path: string, isDirectory: boolean) => {
+        e.preventDefault();
+        setContextMenu({
+            x: e.clientX,
+            y: e.clientY,
+            path,
+            isDirectory
+        });
+    };
+
+    const startRenaming = (path: string, currentName: string) => {
+        setRenamingPath(path);
+        setRenamingValue(currentName);
+        setContextMenu(null);
+    };
+
+    const commitRename = () => {
+        if (renamingPath && renamingValue && renamingValue.trim() !== '') {
+            const oldName = renamingPath.split('/').pop() || '';
+            if (renamingValue !== oldName) {
+                onRename(renamingPath, renamingValue.trim());
+            }
+        }
+        setRenamingPath(null);
+    };
+
     const renderNode = (node: TreeNode, depth: number = 0): React.ReactNode => {
         const isExpanded = expandedFolders.has(node.path) || node.path === '';
 
-        // Root node is just a container, don't render it directly
         if (node.path === '') {
             return Object.values(node.children)
                 .sort((a, b) => {
@@ -84,6 +130,7 @@ export function FolderTree({ files, activeFilePath, onSelectFile, onCreateFile, 
         }
 
         const isActive = activeFilePath === node.path;
+        const isRenaming = renamingPath === node.path;
 
         return (
             <div key={node.path} style={{ display: 'flex', flexDirection: 'column' }}>
@@ -92,6 +139,11 @@ export function FolderTree({ files, activeFilePath, onSelectFile, onCreateFile, 
                         if (node.isDirectory) toggleFolder(node.path);
                         else onSelectFile(node.path);
                     }}
+                    onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        startRenaming(node.path, node.name);
+                    }}
+                    onContextMenu={(e) => handleContextMenu(e, node.path, node.isDirectory)}
                     style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -121,11 +173,35 @@ export function FolderTree({ files, activeFilePath, onSelectFile, onCreateFile, 
                     }}>
                         {node.isDirectory ? (isExpanded ? '▾' : '▸') : '≡'}
                     </span>
-                    <span style={{
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
-                    }}>{node.name}</span>
+                    {isRenaming ? (
+                        <input
+                            ref={inputRef}
+                            value={renamingValue}
+                            onChange={(e) => setRenamingValue(e.target.value)}
+                            onBlur={commitRename}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') commitRename();
+                                if (e.key === 'Escape') setRenamingPath(null);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                                background: '#1e293b',
+                                border: '1px solid #3b82f6',
+                                color: '#e2e8f0',
+                                fontSize: 11,
+                                fontFamily: 'inherit',
+                                padding: '0 2px',
+                                width: '100%',
+                                outline: 'none'
+                            }}
+                        />
+                    ) : (
+                        <span style={{
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                        }}>{node.name}</span>
+                    )}
                 </div>
                 {node.isDirectory && isExpanded && (
                     <div>
@@ -144,7 +220,7 @@ export function FolderTree({ files, activeFilePath, onSelectFile, onCreateFile, 
     return (
         <div style={{
             display: 'flex', flexDirection: 'column', overflow: 'hidden',
-            flex: 1
+            flex: 1, position: 'relative'
         }}>
             <div style={{
                 padding: '5px 10px', fontSize: 10, fontWeight: 700,
@@ -193,6 +269,76 @@ export function FolderTree({ files, activeFilePath, onSelectFile, onCreateFile, 
                     renderNode(tree)
                 )}
             </div>
+
+            {/* Context Menu */}
+            {contextMenu && (
+                <div style={{
+                    position: 'fixed',
+                    top: contextMenu.y,
+                    left: contextMenu.x,
+                    background: '#1e293b',
+                    border: '1px solid #334155',
+                    borderRadius: 4,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                    zIndex: 1000,
+                    padding: '4px 0',
+                    minWidth: 120,
+                    fontFamily: 'system-ui, sans-serif'
+                }}>
+                    {contextMenu.isDirectory && (
+                        <>
+                            <ContextMenuItem
+                                onClick={() => onCreateFile(contextMenu.path)}
+                                label="New File"
+                                icon="⊞"
+                            />
+                            <ContextMenuItem
+                                onClick={() => onCreateFolder(contextMenu.path)}
+                                label="New Folder"
+                                icon="📁"
+                            />
+                            <div style={{ height: 1, background: '#334155', margin: '4px 0' }} />
+                        </>
+                    )}
+                    <ContextMenuItem
+                        onClick={() => startRenaming(contextMenu.path, contextMenu.path.split('/').pop() || '')}
+                        label="Rename"
+                        icon="✎"
+                    />
+                    <ContextMenuItem
+                        onClick={() => onDelete(contextMenu.path)}
+                        label="Delete"
+                        icon="×"
+                        color="#f87171"
+                    />
+                </div>
+            )}
+        </div>
+    );
+}
+
+function ContextMenuItem({ onClick, label, icon, color = '#cbd5e1' }: { onClick: () => void, label: string, icon: string, color?: string }) {
+    return (
+        <div
+            onClick={(e) => {
+                e.stopPropagation();
+                onClick();
+            }}
+            style={{
+                padding: '4px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: 'pointer',
+                fontSize: 11,
+                color: color,
+                transition: 'background 0.1s'
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = '#334155'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+        >
+            <span style={{ width: 14, textAlign: 'center', fontSize: 12 }}>{icon}</span>
+            <span>{label}</span>
         </div>
     );
 }

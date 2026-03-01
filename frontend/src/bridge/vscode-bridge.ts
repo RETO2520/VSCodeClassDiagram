@@ -30,6 +30,8 @@ export type WebviewToHostMessage =
     | { command: 'createDiagramFile'; payload: { relativePath: string } }
     | { command: 'ui.createFile'; payload: { relativeParentPath: string } }
     | { command: 'ui.createFolder'; payload: { relativeParentPath: string } }
+    | { command: 'ui.deleteEntry'; payload: { relativePath: string } }
+    | { command: 'ui.renameEntry'; payload: { oldRelativePath: string; newName: string } }
 
 /** Messages sent FROM the extension host TO the webview */
 export type HostToWebviewMessage =
