@@ -201,6 +201,11 @@ interface OutlineItem {
     line: number
 }
 
+export interface FileEntry {
+    path: string;
+    isDirectory: boolean;
+}
+
 // ============================================================
 // resolveContext
 //
@@ -810,7 +815,7 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
     /** CodeLens からコマンドラインを開く際の初期入力値 */
     const [cmdInitialValue, setCmdInitialValue] = useState<string>('');
 
-    const [diagramFiles, setDiagramFiles] = useState<string[]>([]);
+    const [diagramFiles, setDiagramFiles] = useState<FileEntry[]>([]);
     const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
 
     // ── IPC Listeners ──────────────────────────────────────────
@@ -819,7 +824,7 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
 
         const cleanup = onMessage(msg => {
             if (msg.command === 'diagramFilesLoaded') {
-                setDiagramFiles(msg.payload.files);
+                setDiagramFiles(msg.payload.files as unknown as FileEntry[]);
             } else if (msg.command === 'diagramFileLoaded') {
                 const { relativePath, dsl } = msg.payload;
                 setActiveFilePath(relativePath);

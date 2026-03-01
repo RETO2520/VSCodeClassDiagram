@@ -1,7 +1,12 @@
 import React, { useMemo, useState } from 'react';
 
+export interface FileEntry {
+    path: string;
+    isDirectory: boolean;
+}
+
 export interface FolderTreeProps {
-    files: string[];
+    files: FileEntry[];
     activeFilePath: string | null;
     onSelectFile: (path: string) => void;
     onCreateFile: (path: string) => void;
@@ -34,23 +39,30 @@ export function FolderTree({ files, activeFilePath, onSelectFile, onCreateFile, 
     const tree = useMemo(() => {
         const root: TreeNode = { name: '', path: '', isDirectory: true, children: {} };
 
-        for (const file of files) {
-            const parts = file.split('/');
+        // Sort files to ensure parents are processed before children (though children check handles it too)
+        const sortedFiles = [...files].sort((a, b) => a.path.split('/').length - b.path.split('/').length);
+
+        for (const file of sortedFiles) {
+            const parts = file.path.split('/');
             let current = root;
             let currentPath = '';
 
             for (let i = 0; i < parts.length; i++) {
                 const part = parts[i];
-                const isDir = i < parts.length - 1;
+                const isLastPart = i === parts.length - 1;
                 currentPath = currentPath ? `${currentPath}/${part}` : part;
 
                 if (!current.children[part]) {
                     current.children[part] = {
                         name: part,
                         path: currentPath,
-                        isDirectory: isDir,
+                        isDirectory: isLastPart ? file.isDirectory : true,
                         children: {}
                     };
+                } else if (isLastPart) {
+                    // Update if it was previously created as a parent directory but we now know it's a file
+                    // though for directories it's already true.
+                    current.children[part].isDirectory = file.isDirectory;
                 }
                 current = current.children[part];
             }

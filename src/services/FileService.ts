@@ -20,6 +20,14 @@ export interface SaveResult {
 }
 
 /**
+ * Entry in the diagram folder
+ */
+export interface FileEntry {
+    path: string;
+    isDirectory: boolean;
+}
+
+/**
  * Result of finding a workspace diagram
  */
 export interface WorkspaceDiagramResult {
@@ -290,9 +298,9 @@ export class FileService {
     }
 
     /**
-     * Get all DSL files under the .diagram folder
+     * Get all DSL files and folders under the .diagram folder
      */
-    public async getDiagramFiles(): Promise<string[]> {
+    public async getDiagramFiles(): Promise<FileEntry[]> {
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) {
             return [];
@@ -311,11 +319,28 @@ export class FileService {
             }
         }
 
+        const results: FileEntry[] = [];
+
+        const collect = async (currentUri: vscode.Uri, relativePath: string) => {
+            const entries = await vscode.workspace.fs.readDirectory(currentUri);
+            for (const [name, type] of entries) {
+                const entryRelativePath = relativePath ? `${relativePath}/${name}` : name;
+                const entryUri = vscode.Uri.joinPath(currentUri, name);
+
+                if (type === vscode.FileType.Directory) {
+                    results.push({ path: entryRelativePath, isDirectory: true });
+                    await collect(entryUri, entryRelativePath);
+                } else if (type === vscode.FileType.File) {
+                    if (name.endsWith('.dsl') || name.endsWith('.txt')) {
+                        results.push({ path: entryRelativePath, isDirectory: false });
+                    }
+                }
+            }
+        };
+
         try {
-            const files = await vscode.workspace.findFiles(
-                new vscode.RelativePattern(diagramFolder, '**/*.{dsl,txt}')
-            );
-            return files.map(f => path.relative(diagramFolder.fsPath, f.fsPath).replace(/\\/g, '/'));
+            await collect(diagramFolder, '');
+            return results;
         } catch (e) {
             this.logger?.error(`Failed to get diagram files: ${e}`);
             return [];
