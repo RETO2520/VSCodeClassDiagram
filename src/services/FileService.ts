@@ -311,6 +311,18 @@ export class FileService {
     }
 
     /**
+     * Get the enforced Application folder name based on workspace name
+     */
+    public getApplicationFolderName(): string {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (workspaceFolders && workspaceFolders.length > 0) {
+            const workspaceName = workspaceFolders[0].name;
+            return `${workspaceName}_Application`;
+        }
+        return 'Default_Application';
+    }
+
+    /**
      * Get all DSL files and folders under the .diagram folder
      */
     public async getDiagramFiles(): Promise<FileEntry[]> {
@@ -320,16 +332,20 @@ export class FileService {
         }
 
         const diagramFolder = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram');
+        const appFolderName = this.getApplicationFolderName();
+        const appFolderUri = vscode.Uri.joinPath(diagramFolder, appFolderName);
 
         try {
             await vscode.workspace.fs.stat(diagramFolder);
         } catch {
-            try {
-                await vscode.workspace.fs.createDirectory(diagramFolder);
-            } catch (e) {
-                this.logger?.error(`Failed to create .diagram folder: ${e}`);
-                return [];
-            }
+            await vscode.workspace.fs.createDirectory(diagramFolder);
+        }
+
+        // Ensure Application folder exists
+        try {
+            await vscode.workspace.fs.stat(appFolderUri);
+        } catch {
+            await vscode.workspace.fs.createDirectory(appFolderUri);
         }
 
         const results: FileEntry[] = [];
@@ -361,7 +377,7 @@ export class FileService {
     }
 
     /**
-     * Create a new folder inside the .diagram directory
+     * Create a new folder inside the .diagram directory with naming enforcement
      */
     public async createDiagramFolder(relativePath: string): Promise<boolean> {
         const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -369,22 +385,64 @@ export class FileService {
             return false;
         }
 
-        const uri = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram', relativePath);
+        const appFolderName = this.getApplicationFolderName();
+        const parts = relativePath.split(/[\\/]/);
+        let enforcedPath = relativePath;
+
+        // Enforcement logic
+        if (parts.length === 1) {
+            // Trying to create a folder directly under .diagram
+            if (parts[0] !== appFolderName) {
+                this.logger?.warn(`Direct children of .diagram must be ${appFolderName}. Blocking creation of ${parts[0]}`);
+                return false;
+            }
+        } else if (parts.length === 2) {
+            // Creating under Application folder -> Subsystem
+            if (parts[0] !== appFolderName) return false;
+            if (!parts[1].endsWith('_subsystem')) {
+                enforcedPath = `${parts[0]}/${parts[1]}_subsystem`;
+            }
+        } else if (parts.length === 3) {
+            // Creating under Subsystem folder -> Component
+            if (!parts[1].endsWith('_subsystem')) return false;
+            if (!parts[2].endsWith('_component')) {
+                enforcedPath = `${parts[0]}/${parts[1]}/${parts[2]}_component`;
+            }
+        } else {
+            // Deeper nesting not allowed for folders
+            this.logger?.warn(`Folder creation too deep: ${relativePath}`);
+            return false;
+        }
+
+        const uri = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram', enforcedPath);
         try {
             await vscode.workspace.fs.createDirectory(uri);
             return true;
         } catch (e) {
-            this.logger?.error(`Failed to create diagram folder ${relativePath}: ${e}`);
+            this.logger?.error(`Failed to create diagram folder ${enforcedPath}: ${e}`);
             return false;
         }
     }
 
     /**
-     * Create a new DSL file inside the .diagram directory
+     * Create a new DSL file inside the .diagram directory (only in component folders)
      */
     public async createDiagramFile(relativePath: string): Promise<boolean> {
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) {
+            return false;
+        }
+
+        const parts = relativePath.split(/[\\/]/);
+        // Enforcement: Must be inside a component folder (parts: App, Subsystem, Component, Filename)
+        if (parts.length < 4) {
+            this.logger?.warn(`Files can only be created within component folders. Path attempted: ${relativePath}`);
+            return false;
+        }
+
+        const componentFolder = parts[2];
+        if (!componentFolder.endsWith('_component')) {
+            this.logger?.warn(`Parent of file must be a component folder. Path attempted: ${relativePath}`);
             return false;
         }
 
@@ -399,7 +457,6 @@ export class FileService {
             }
 
             const encoder = new TextEncoder();
-            // Default content for new file
             const content = `// ${path.basename(relativePath)}\n\nclass NewClass\n  + field: string\n`;
             await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
             return true;
@@ -449,11 +506,16 @@ export class FileService {
     }
 
     /**
-     * Delete a specific file or folder from the .diagram folder
+     * Delete a specific file or folder from the .diagram folder (cannot delete Application folder)
      */
     public async deleteDiagramEntry(relativePath: string): Promise<boolean> {
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) {
+            return false;
+        }
+
+        if (relativePath === this.getApplicationFolderName()) {
+            this.logger?.warn(`Attempted to delete protected Application folder: ${relativePath}`);
             return false;
         }
 
@@ -468,7 +530,7 @@ export class FileService {
     }
 
     /**
-     * Rename a specific file or folder in the .diagram folder
+     * Rename a specific file or folder in the .diagram folder (cannot rename Application folder, enforce suffixes for others)
      */
     public async renameDiagramEntry(oldRelativePath: string, newName: string): Promise<boolean> {
         const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -476,16 +538,38 @@ export class FileService {
             return false;
         }
 
+        const appFolderName = this.getApplicationFolderName();
+        if (oldRelativePath === appFolderName) {
+            this.logger?.warn(`Attempted to rename protected Application folder: ${oldRelativePath}`);
+            return false;
+        }
+
+        const parts = oldRelativePath.split(/[\\/]/);
+        let enforcedNewName = newName;
+
+        // Enforce suffixes based on depth
+        if (parts.length === 2 && parts[0] === appFolderName) {
+            // Renaming a subsystem folder
+            if (!newName.endsWith('_subsystem')) {
+                enforcedNewName = `${newName}_subsystem`;
+            }
+        } else if (parts.length === 3 && parts[1].endsWith('_subsystem')) {
+            // Renaming a component folder
+            if (!newName.endsWith('_component')) {
+                enforcedNewName = `${newName}_component`;
+            }
+        }
+
         const oldUri = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram', oldRelativePath);
         const parentDir = path.dirname(oldRelativePath);
-        const newRelativePath = (parentDir === '.' || parentDir === '') ? newName : `${parentDir}/${newName}`;
+        const newRelativePath = (parentDir === '.' || parentDir === '') ? enforcedNewName : `${parentDir}/${enforcedNewName}`;
         const newUri = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram', newRelativePath);
 
         try {
             await vscode.workspace.fs.rename(oldUri, newUri, { overwrite: false });
             return true;
         } catch (e) {
-            this.logger?.error(`Failed to rename diagram entry ${oldRelativePath} to ${newName}: ${e}`);
+            this.logger?.error(`Failed to rename diagram entry ${oldRelativePath} to ${enforcedNewName}: ${e}`);
             return false;
         }
     }

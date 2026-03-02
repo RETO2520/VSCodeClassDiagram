@@ -193,6 +193,9 @@ export interface ClassInfo {
   /** キャンバス上の位置 */
   x: number
   y: number
+
+  componentIds: string[]
+
 }
 
 /** エンドポイント定義 */
@@ -296,6 +299,7 @@ export function createEmptyClass(existingClasses?: { x: number; y: number }[]): 
     baseClassId: null,
     x: pos.x,
     y: pos.y,
+    componentIds: [],
   }
 }
 

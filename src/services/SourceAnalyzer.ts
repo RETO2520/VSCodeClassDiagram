@@ -212,7 +212,8 @@ export class SourceAnalyzer {
                 interfaces: sc.interfaces.map(i => idMap.get(i) || i),
                 baseClassId: sc.baseClass ? (idMap.get(sc.baseClass) || sc.baseClass) : null,
                 x: 0,
-                y: 0
+                y: 0,
+                componentIds: [],
             };
         });
 

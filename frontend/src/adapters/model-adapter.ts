@@ -194,6 +194,7 @@ export function mediaClassToView(cls: MediaClassModel): ClassInfo {
         baseClassId: cls.baseClassId || null,
         x: cls.x,
         y: cls.y,
+        componentIds: [],
     }
 }
 

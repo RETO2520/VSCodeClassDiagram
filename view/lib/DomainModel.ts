@@ -620,6 +620,7 @@ export class DomainModel {
             baseClassId: null,
             x: pos.x,
             y: pos.y,
+            componentIds: [],
         }
 
         const newMap = new Map(this.classMap)

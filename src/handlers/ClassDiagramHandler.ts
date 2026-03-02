@@ -370,7 +370,12 @@ export class ClassDiagramHandler {
 
     private async handleUiCreateFile(msg: any, ctx: MessageContext): Promise<void> {
         const payload = msg.payload || {};
-        const parentPath = payload.relativeParentPath || '';
+        let parentPath = payload.relativeParentPath || '';
+
+        // Default to Application folder if root is selected
+        if (!parentPath) {
+            parentPath = this.fileService.getApplicationFolderName();
+        }
 
         const name = await vscode.window.showInputBox({
             prompt: 'Enter new file name (e.g. diagram.dsl)',
@@ -386,13 +391,18 @@ export class ClassDiagramHandler {
             vscode.window.showInformationMessage(`Created file ${relativePath}`);
             await this.handleRequestDiagramFiles({}, ctx);
         } else {
-            vscode.window.showErrorMessage(`Failed to create file ${relativePath}. It might already exist.`);
+            vscode.window.showErrorMessage(`Failed to create file ${relativePath}. Files can only be created within component folders.`);
         }
     }
 
     private async handleUiCreateFolder(msg: any, ctx: MessageContext): Promise<void> {
         const payload = msg.payload || {};
-        const parentPath = payload.relativeParentPath || '';
+        let parentPath = payload.relativeParentPath || '';
+
+        // Default to Application folder if root is selected
+        if (!parentPath) {
+            parentPath = this.fileService.getApplicationFolderName();
+        }
 
         const name = await vscode.window.showInputBox({
             prompt: 'Enter new folder name',
@@ -408,7 +418,7 @@ export class ClassDiagramHandler {
             vscode.window.showInformationMessage(`Created folder ${relativePath}`);
             await this.handleRequestDiagramFiles({}, ctx);
         } else {
-            vscode.window.showErrorMessage(`Failed to create folder ${relativePath}`);
+            vscode.window.showErrorMessage(`Failed to create folder ${relativePath}. Check hierarchy rules.`);
         }
     }
 

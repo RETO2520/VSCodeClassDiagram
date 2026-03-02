@@ -141,6 +141,7 @@ export function FolderTree({
                     }}
                     onDoubleClick={(e) => {
                         e.stopPropagation();
+                        if (node.path.endsWith('_Application')) return;
                         startRenaming(node.path, node.name);
                     }}
                     onContextMenu={(e) => handleContextMenu(e, node.path, node.isDirectory)}
@@ -300,17 +301,21 @@ export function FolderTree({
                             <div style={{ height: 1, background: '#334155', margin: '4px 0' }} />
                         </>
                     )}
-                    <ContextMenuItem
-                        onClick={() => startRenaming(contextMenu.path, contextMenu.path.split('/').pop() || '')}
-                        label="Rename"
-                        icon="✎"
-                    />
-                    <ContextMenuItem
-                        onClick={() => onDelete(contextMenu.path)}
-                        label="Delete"
-                        icon="×"
-                        color="#f87171"
-                    />
+                    {!contextMenu.path.endsWith('_Application') && (
+                        <>
+                            <ContextMenuItem
+                                onClick={() => startRenaming(contextMenu.path, contextMenu.path.split('/').pop() || '')}
+                                label="Rename"
+                                icon="✎"
+                            />
+                            <ContextMenuItem
+                                onClick={() => onDelete(contextMenu.path)}
+                                label="Delete"
+                                icon="×"
+                                color="#f87171"
+                            />
+                        </>
+                    )}
                 </div>
             )}
         </div>

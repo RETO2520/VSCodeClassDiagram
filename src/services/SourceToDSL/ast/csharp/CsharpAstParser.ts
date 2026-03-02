@@ -137,7 +137,8 @@ export class CsharpAstParser implements IAstParser {
             members: [],
             operations: [],
             x: 0,
-            y: 0
+            y: 0,
+            componentIds: [],
         };
 
         // 継承関係の抽出
@@ -176,7 +177,8 @@ export class CsharpAstParser implements IAstParser {
             members: [],
             operations: [],
             x: 0,
-            y: 0
+            y: 0,
+            componentIds: [],
         };
     }
 
@@ -192,7 +194,8 @@ export class CsharpAstParser implements IAstParser {
             members: [],
             operations: [],
             x: 0,
-            y: 0
+            y: 0,
+            componentIds: [],
         };
 
         this.extractMembers(node, classInfo);
