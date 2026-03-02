@@ -23,8 +23,10 @@ import { ComponentEditorContainer } from '@/components/ComponentEditorContainer'
 
 
 import { DiagramCanvas } from '@/components/diagram-canvas'
+import { ComponentDiagramCanvas } from '@/components/component-diagram-canvas'
 import { detectRelationships } from '@/lib/detect-relationships'
 import type { ClassInfo } from '@/lib/class-diagram-types'
+import type { ComponentInfo, ComponentRelationship } from '@/lib/component-diagram-types'
 import { Undo2, Redo2, ChevronDown, ChevronUp } from 'lucide-react'
 import { useVSCodeState } from './bridge/use-vscode'
 import { CommandLine } from '@/components/command-line'
@@ -182,6 +184,11 @@ export function App({ service, componentService }: { service: ClassDiagramServic
     // ── ワークフロー ──
     const [activeOpRef, setActiveOpRef] = useState<WFOpRef | null>(null)
 
+    // ── Component Diagram ──
+    const [componentNodes, setComponentNodes] = useState<ComponentInfo[]>([])
+    const [componentRels, setComponentRels] = useState<ComponentRelationship[]>([])
+    const [componentRefreshToken, setComponentRefreshToken] = useState(0)
+
     // ── Spec DSL 下部ペイン ──
     const [specPaneOpen, setSpecPaneOpen] = useState(true)
     const [specPaneHeight, setSpecPaneHeight] = useState(SPEC_PANE_DEFAULT_HEIGHT)
@@ -288,6 +295,32 @@ export function App({ service, componentService }: { service: ClassDiagramServic
         })
     }, [setClasses, service])
 
+    const handleMoveComponent = useCallback((id: string, x: number, y: number) => {
+        setComponentNodes(prev => {
+            const next = prev.map(c => c.id === id ? { ...c, x, y } : c)
+            try {
+                const nextDomain = (componentService as any).componentDomain.updateComponentPosition(id, x, y)
+                ; (componentService as any).componentDomain = nextDomain
+            } catch { }
+            return next
+        })
+    }, [componentService])
+
+    const handleResizeComponent = useCallback((id: string, width: number, height: number) => {
+        setComponentNodes(prev => {
+            const next = prev.map(c => c.id === id ? { ...c, width, height } : c)
+            try {
+                const nextDomain = (componentService as any).componentDomain.updateComponentSize(id, width, height)
+                ; (componentService as any).componentDomain = nextDomain
+            } catch { }
+            return next
+        })
+    }, [componentService])
+
+    const commitComponentChanges = useCallback(() => {
+        setComponentRefreshToken(t => t + 1)
+    }, [])
+
     const handleLanguageChange = useCallback((lang: string) => {
         setLanguage(lang); changePrimitiveTypes(lang)
     }, [changePrimitiveTypes])
@@ -358,9 +391,20 @@ export function App({ service, componentService }: { service: ClassDiagramServic
                                 service={componentService}
                                 selectedId={selectedId}
                                 onSelectComponent={setSelectedId}
+                                setGlobalComponents={setComponentNodes}
+                                setGlobalRelationships={setComponentRels}
+                                refreshToken={componentRefreshToken}
                             />
-                            <div className="flex-1 min-w-0 flex items-center justify-center bg-muted/10">
-                                <p className="text-muted-foreground">Component Diagram Canvas (TBD)</p>
+                            <div className="flex-1 min-w-0">
+                                <ComponentDiagramCanvas
+                                    components={componentNodes}
+                                    relationships={componentRels}
+                                    selectedId={selectedId}
+                                    onSelectComponent={setSelectedId}
+                                    onMoveComponent={handleMoveComponent}
+                                    onResizeComponent={handleResizeComponent}
+                                    onCommit={commitComponentChanges}
+                                />
                             </div>
                         </>
                     ) : (

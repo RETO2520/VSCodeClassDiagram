@@ -2,7 +2,7 @@
 "use client"
 
 import React, { useEffect, useState, useCallback } from "react";
-import type { ComponentInfo, ComponentKind } from "@/lib/component-diagram-types";
+import type { ComponentInfo, ComponentKind, ComponentRelationship } from "@/lib/component-diagram-types";
 import type { ClassInfo } from "@/lib/class-diagram-types";
 import { ComponentEditorPanel } from "./component-editor";
 import { ComponentService } from "../lib/application/ComponentService";
@@ -17,16 +17,27 @@ import { postMessage } from "../../frontend/src/bridge/vscode-bridge";
 
 export function ComponentEditorContainer({
     service,
+    setGlobalComponents,
+    setGlobalRelationships,
+    refreshToken,
     selectedId: externalSelectedId,
     onSelectComponent: externalOnSelectComponent,
 }: {
     service: ComponentService
+    setGlobalComponents?: (components: ComponentInfo[]) => void
+    setGlobalRelationships?: (relationships: ComponentRelationship[]) => void
+    /**
+     * 外部（Canvasなど）から service の状態を直接更新した後に、
+     * このコンテナのスナップショットを取り直すためのトークン。
+     */
+    refreshToken?: number
     selectedId?: string | null
     onSelectComponent?: (id: string | null) => void
 }) {
     // 状態管理
     const [components, setComponents] = useState<ComponentInfo[]>(() => service['componentDomain'].getComponents());
     const [classes, setClasses] = useState<ClassInfo[]>(() => service['classDomain'].getClasses());
+    const [relationships, setRelationships] = useState<ComponentRelationship[]>(() => service['componentDomain'].getRelationships());
     const [internalSelectedId, setInternalSelectedId] = useState<string | null>(() => {
         const comps = service['componentDomain'].getComponents();
         return comps.length > 0 ? comps[0].id : null;
@@ -48,9 +59,14 @@ export function ComponentEditorContainer({
         try {
             const allComps = service['componentDomain'].getComponents();
             const allCls = service['classDomain'].getClasses();
+            const allRels = service['componentDomain'].getRelationships();
 
             setComponents([...allComps]);
             setClasses([...allCls]);
+            setRelationships([...allRels]);
+
+            if (setGlobalComponents) setGlobalComponents([...allComps]);
+            if (setGlobalRelationships) setGlobalRelationships([...allRels]);
 
             if (selectedId && !allComps.find((c) => c.id === selectedId)) {
                 setSelectedId(allComps.length ? allComps[0].id : null);
@@ -58,7 +74,7 @@ export function ComponentEditorContainer({
         } catch (err) {
             console.error("refreshFromService error:", err);
         }
-    }, [service, selectedId, setSelectedId]);
+    }, [service, selectedId, setSelectedId, setGlobalComponents, setGlobalRelationships]);
 
     // リスナー設定 (もし DomainModel が変更イベントを出すなら)
     // 注意: ComponentService 自身には onModelChanged がないので、
@@ -71,7 +87,7 @@ export function ComponentEditorContainer({
         // ClassDiagramService のようなイベントバスがないため、
         // 開発の進展に合わせてイベント通知の仕組みを追加するのが望ましい。
         refreshFromService();
-    }, [refreshFromService]);
+    }, [refreshFromService, refreshToken]);
 
     //Handlers
     const handleUpdateComponent = async (id: string, updated: ComponentInfo) => {
