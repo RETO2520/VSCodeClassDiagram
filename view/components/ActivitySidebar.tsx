@@ -5,9 +5,11 @@
  */
 
 import React from 'react'
-import { LayoutGrid, GitBranch } from 'lucide-react'
+import { LayoutGrid, GitBranch, Library } from 'lucide-react'
 
-export type EditorMode = 'class-diagram' | 'workflow'
+
+export type EditorMode = 'class-diagram' | 'workflow' | 'component-diagram'
+
 
 interface ActivitySidebarProps {
     mode: EditorMode
@@ -27,7 +29,13 @@ const ITEMS: { mode: EditorMode; icon: React.ReactNode; label: string }[] = [
         icon: <GitBranch className="h-5 w-5" />,
         label: 'Workflow Editor',
     },
+    {
+        mode: 'component-diagram',
+        icon: <Library className="h-5 w-5" />,
+        label: 'Component Diagram',
+    },
 ]
+
 
 export function ActivitySidebar({
     mode,

@@ -19,6 +19,9 @@ import React, {
 } from 'react'
 import { ClassEditorContainer } from '@/components/ClassEditorContainer'
 import { ClassDiagramService } from '@/lib/application/ClassDiagramService'
+import { ComponentEditorContainer } from '@/components/ComponentEditorContainer'
+
+
 import { DiagramCanvas } from '@/components/diagram-canvas'
 import { detectRelationships } from '@/lib/detect-relationships'
 import type { ClassInfo } from '@/lib/class-diagram-types'
@@ -31,6 +34,7 @@ import { useCommandHistory } from '@/hooks/use-command-history'
 import { ActivitySidebar, EditorMode } from '@/components/ActivitySidebar'
 import { WorkflowEditorPanel, WFOpRef } from '@/components/WorkflowEditorPanel'
 import { SpecEditorPanel } from '@/components/SpecEditorPanel'
+import { ComponentService } from '@/lib/application/ComponentService'
 
 // ==============================
 // 定数
@@ -167,7 +171,7 @@ function ResizeHandle({ onDrag }: { onDrag: (dy: number) => void }) {
 // Main App
 // ==============================
 
-export function App({ service }: { service: ClassDiagramService }) {
+export function App({ service, componentService }: { service: ClassDiagramService, componentService: ComponentService }) {
     const vsCodeState = useVSCodeState(service)
     const [language, setLanguage] = useState('csharp')
     const commandHistory = useCommandHistory(vsCodeState.classes)
@@ -346,6 +350,17 @@ export function App({ service }: { service: ClassDiagramService }) {
                                     selectedId={selectedId} onSelectClass={setSelectedId}
                                     onMoveClass={handleMoveClass} onOperationClick={handleOperationClick}
                                 />
+                            </div>
+                        </>
+                    ) : editorMode === 'component-diagram' ? (
+                        <>
+                            <ComponentEditorContainer
+                                service={componentService}
+                                selectedId={selectedId}
+                                onSelectComponent={setSelectedId}
+                            />
+                            <div className="flex-1 min-w-0 flex items-center justify-center bg-muted/10">
+                                <p className="text-muted-foreground">Component Diagram Canvas (TBD)</p>
                             </div>
                         </>
                     ) : (
