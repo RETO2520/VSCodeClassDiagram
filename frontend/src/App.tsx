@@ -8,6 +8,28 @@
  *   ──── リサイズハンドル ────
  *   [SpecEditorPanel (下部ペイン, 高さ可変)]
  *   [CommandLine]
+ *
+ * ============================================================
+ * 🔄 双方向同期アーキテクチャ
+ * ============================================================
+ *
+ * 同期方向:
+ *
+ * 1. SpecEditorPanel → Canvas (クラス図)
+ *    - SpecEditorPanel の applyDsl() が DSL をパースして ClassInfo[] を生成
+ *    - service.setModel(domain) で service の状態を更新
+ *    - service.onModelChanged() が emitted されて classes state を同期
+ *    - DiagramCanvas に classes が反映される
+ *
+ * 2. Canvas → SpecEditorPanel
+ *    - handleMoveClass / handleMoveClass で classes を更新
+ *    - service.replaceClassesFromArray() で service の状態を同期
+ *    - SpecEditorPanel の classes prop が更新される
+ *
+ * 3. .diagram フォルダとの同期（リアルタイムではなく手動）
+ *    - Refresh ボタン: .diagram フォルダを読み込んで SpecEditorPanel に反映
+ *    - Save ボタン: 現在の DSL をファイルに保存
+ *    - ファイル削除時: dslファイル有無で警告判定
  */
 
 import React, {
@@ -37,6 +59,7 @@ import { ActivitySidebar, EditorMode } from '@/components/ActivitySidebar'
 import { WorkflowEditorPanel, WFOpRef } from '@/components/WorkflowEditorPanel'
 import { SpecEditorPanel } from '@/components/SpecEditorPanel'
 import { ComponentService } from '@/lib/application/ComponentService'
+import { postMessage } from './bridge/vscode-bridge'
 
 // ==============================
 // 定数
@@ -199,6 +222,11 @@ export function App({ service, componentService }: { service: ClassDiagramServic
         )
     }, [])
 
+    // ── Component 変更通知のdebounce ──
+    // FolderTree や SpecEditorPanel から onComponentsChanged が複数回呼ばれるのを防ぐ
+    const componentUpdateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const pendingComponentUpdateRef = useRef(false)
+
     // workflowDiagram（WorkflowEditorPanel向け・読み取り専用）
     const workflowDiagram = useMemo<{ classes: any[] }>(() => ({
         classes: commandHistory.classes.map(cls => ({
@@ -300,7 +328,7 @@ export function App({ service, componentService }: { service: ClassDiagramServic
             const next = prev.map(c => c.id === id ? { ...c, x, y } : c)
             try {
                 const nextDomain = (componentService as any).componentDomain.updateComponentPosition(id, x, y)
-                ; (componentService as any).componentDomain = nextDomain
+                    ; (componentService as any).componentDomain = nextDomain
             } catch { }
             return next
         })
@@ -311,13 +339,65 @@ export function App({ service, componentService }: { service: ClassDiagramServic
             const next = prev.map(c => c.id === id ? { ...c, width, height } : c)
             try {
                 const nextDomain = (componentService as any).componentDomain.updateComponentSize(id, width, height)
-                ; (componentService as any).componentDomain = nextDomain
+                    ; (componentService as any).componentDomain = nextDomain
             } catch { }
             return next
         })
     }, [componentService])
 
+    // ── classes が変更されたときに componentNodes を同期する ──
+    // SpecEditorPanel や Canvas からの class 変更を検出して、
+    // componentNodes 内のクラスIDがまだ有効かチェック
+    useEffect(() => {
+        console.debug('[App] classes changed, syncing componentNodes:', {
+            classCount: classes.length,
+            componentNodesCount: componentNodes.length,
+            classNames: classes.map(c => c.name)
+        })
+
+        // TODO: かなりの頻度で実行されるので、パフォーマンスを考慮する必要がある
+        setComponentNodes(prev => {
+            // classes から削除されたクラスを特定
+            const currentClassIds = new Set(classes.map(c => c.id))
+            const prevClassIds = new Set(prev.flatMap(comp => comp.classIds))
+
+            // 削除されたクラスを含むコンポーネントをチェック
+            const deletedClassIds = Array.from(prevClassIds).filter(id => !currentClassIds.has(id))
+
+            if (deletedClassIds.length === 0) {
+
+                postMessage({ command: 'log', level: 'debug', text: '[App] No deleted classes detected' });
+                return prev
+            }
+
+
+            postMessage({ command: 'log', level: 'debug', text: '[App] Detected deleted classes: ' + deletedClassIds.join(', ') });
+            // 削除されたクラスをコンポーネントから除去
+            const next = prev.map(comp => ({
+                ...comp,
+                classIds: comp.classIds.filter(id => currentClassIds.has(id))
+            })).filter(comp => {
+                // classIds が空になった component を削除するかは要件次第
+                // ここでは保持する
+                return comp.kind !== 'component' || comp.classIds.length > 0 || comp.childComponentIds.length > 0
+            })
+
+            postMessage({ command: 'log', level: 'debug', text: '[App] Updated componentNodes next: ' + JSON.stringify(next) });
+            postMessage({ command: 'log', level: 'debug', text: '[App] Updated componentNodes prev: ' + JSON.stringify(prev) });
+
+            return next
+        })
+    }, [classes])
+
     const commitComponentChanges = useCallback(() => {
+        // ── コンポーネント変更を .diagram フォルダに反映 ──
+        // componentNodes と componentRels の状態を保存する必要がある場合、
+        // ここで postMessage を送信して拡張機能に通知する。
+        // 例：
+        // postMessage({
+        //   command: 'syncComponentModel',
+        //   payload: { components: componentNodes, relationships: componentRels }
+        // })
         setComponentRefreshToken(t => t + 1)
     }, [])
 
@@ -399,6 +479,7 @@ export function App({ service, componentService }: { service: ClassDiagramServic
                                 <ComponentDiagramCanvas
                                     components={componentNodes}
                                     relationships={componentRels}
+                                    classes={classes}
                                     selectedId={selectedId}
                                     onSelectComponent={setSelectedId}
                                     onMoveComponent={handleMoveComponent}
@@ -426,6 +507,32 @@ export function App({ service, componentService }: { service: ClassDiagramServic
                             service={service}
                             classes={classes}
                             visible={specPaneOpen}
+                            componentService={componentService}
+                            onComponentsChanged={() => {
+                                console.debug('[App] onComponentsChanged called, debouncing component update');
+                                // Pending フラグを立てて、前のdebounce をクリア
+                                pendingComponentUpdateRef.current = true
+                                if (componentUpdateDebounceRef.current) {
+                                    clearTimeout(componentUpdateDebounceRef.current)
+                                }
+                                // 300ms 待機してから実行
+                                componentUpdateDebounceRef.current = setTimeout(() => {
+                                    if (pendingComponentUpdateRef.current) {
+                                        pendingComponentUpdateRef.current = false
+                                        console.debug('[App] Executing debounced component update from componentService');
+                                        try {
+                                            const components = (componentService as any).componentDomain.getComponents?.()
+                                            if (components) {
+                                                setComponentNodes(components)
+                                                // ComponentEditorContainer の リスト更新トリガー
+                                                setComponentRefreshToken(prev => prev + 1)
+                                            }
+                                        } catch (e) {
+                                            console.error('[App] Error syncing componentNodes:', e)
+                                        }
+                                    }
+                                }, 300)
+                            }}
                             onCursorContext={ctx => {
                                 if (!ctx.className) return
                                 const model = service.getModel()

@@ -1,6 +1,6 @@
 // hooks/use-command-history.ts
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { ClassInfo } from '@/lib/class-diagram-types';
 import { Command } from '@/lib/commands/Command';
 import { executeAction } from '@/lib/command-executor';
@@ -161,8 +161,12 @@ export function useCommandHistory(
         });
     }, []);
 
+    // Memoize the classes array so its reference is stable across renders
+    // (unless the model actually changes)
+    const memoizedClasses = useMemo(() => model.getClasses(), [model]);
+
     return {
-        classes: model.getClasses(),
+        classes: memoizedClasses,
         history,
         redoStack,
         executeCommand,

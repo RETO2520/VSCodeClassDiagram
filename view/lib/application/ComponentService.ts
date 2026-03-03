@@ -57,6 +57,119 @@ export class ComponentService {
         private readonly componentDomain: ComponentDomainModel
     ) { }
 
+    // ------------------------------------------------------------------
+    // Folder-based synchronization
+    // ------------------------------------------------------------------
+
+    /**
+     * Update internal componentDomain so that it mirrors the given set of
+     * directory entries from the `.diagram` folder.  The folder hierarchy is
+     * treated as the single source of truth for component/subsystem/application
+     * structure – any existing components inside the domain model are discarded
+     * and replaced with a fresh set derived from `files`.
+     *
+     * The expected naming conventions are enforced by the FileService, but this
+     * method is tolerant: it looks at suffixes `_Application`, `_Subsystem`,
+     * `_Component` on the last segment of each path in order to decide the
+     * `ComponentKind`.  When no suffix is present the depth of the path is used
+     * to infer kind (depth 1 → application, 2 → subsystem, >=3 → component).
+     *
+     * Structure is constructed in parent‑before‑child order so that
+     * `addChildComponent` can be invoked safely.
+     *
+     * **Note:** because we throw away the previous domain state, things like
+     * positions or class assignments will be lost when this method is executed.
+     * Synchronization should therefore be driven only when the workspace
+     * directory structure changes and the user understands that components are
+     * re‑generated from scratch.
+     *
+     * @param files Array of file entries representing the contents of `.diagram`
+     */
+    syncFromDiagramFiles(files: Array<{ path: string; isDirectory: boolean }>): void {
+        const newDomain = ComponentService.buildFromDiagramFiles(files);
+        // mutate underlying domain (the rest of codebase currently relies on
+        // imperatively poking componentDomain).  Keeping the same object
+        // reference allows previously held references to continue working.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this as any).componentDomain = newDomain;
+    }
+
+    /**
+     * Helper that constructs a ComponentDomainModel from a list of directory
+     * paths.  Public for testing.
+     */
+    static buildFromDiagramFiles(files: Array<{ path: string; isDirectory: boolean }>): ComponentDomainModel {
+        // only directories are relevant for component hierarchy
+        const dirs = files.filter(f => f.isDirectory).map(f => f.path);
+
+        // sort by depth so parents are created before children
+        dirs.sort((a, b) => a.split('/').length - b.split('/').length);
+
+        let model = ComponentDomainModel.createEmpty();
+        const pathToId = new Map<string, string>();
+
+        const appSuffix = '_Application';
+        const subsSuffix = '_Subsystem';
+        const compSuffix = '_Component';
+
+        type Item = { path: string; kind: ComponentKind; name: string; parentPath: string };
+        const items: Item[] = [];
+
+        for (const dir of dirs) {
+            const parts = dir.split('/');
+            const last = parts[parts.length - 1];
+            let kind: ComponentKind;
+            let name = last;
+
+            if (last.endsWith(appSuffix)) {
+                kind = 'application';
+                name = last.slice(0, -appSuffix.length);
+            } else if (last.endsWith(subsSuffix)) {
+                kind = 'subsystem';
+                name = last.slice(0, -subsSuffix.length);
+            } else if (last.endsWith(compSuffix)) {
+                kind = 'component';
+                name = last.slice(0, -compSuffix.length);
+            } else {
+                // fall back to depth heuristics
+                if (parts.length === 1) kind = 'application';
+                else if (parts.length === 2) kind = 'subsystem';
+                else kind = 'component';
+            }
+
+            const parentPath = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
+            items.push({ path: dir, kind, name, parentPath });
+        }
+
+        // create components
+        for (const item of items) {
+            model = model.addComponent(item.kind);
+            // newly added component will be the last one in the list
+            const comps = model.getComponents();
+            const added = comps[comps.length - 1];
+            model = model.updateComponent({ ...added, name: item.name });
+            pathToId.set(item.path, added.id);
+        }
+
+        // build hierarchy
+        for (const item of items) {
+            if (!item.parentPath) continue;
+            const parentId = pathToId.get(item.parentPath);
+            const childId = pathToId.get(item.path);
+            if (parentId && childId) {
+                try {
+                    model = model.addChildComponent(parentId, childId);
+                } catch {
+                    // ignore invalid parent/child combinations; folder names may
+                    // not exactly match expected rules and will simply be
+                    // treated as a flat list.
+                }
+            }
+        }
+
+        return model;
+    }
+
     /** 現在の状態からサービスインスタンスを生成 */
     static create(
         classDomain: DomainModel,

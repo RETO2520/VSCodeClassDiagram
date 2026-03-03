@@ -573,4 +573,102 @@ export class FileService {
             return false;
         }
     }
+
+    /**
+     * Check if a folder has any DSL files
+     * @param folderRelativePath Path relative to .diagram folder
+     * @returns true if folder contains .dsl files
+     */
+    public async hasDslFiles(folderRelativePath: string): Promise<boolean> {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) return false;
+
+        const folderUri = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram', folderRelativePath);
+        try {
+            const entries = await vscode.workspace.fs.readDirectory(folderUri);
+            return entries.some(([name]) => name.endsWith('.dsl'));
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Get all DSL files recursively under a folder
+     * @param folderRelativePath Path relative to .diagram folder
+     * @returns Array of DSL file paths relative to .diagram
+     */
+    public async getDslFilesInFolder(folderRelativePath: string): Promise<string[]> {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) return [];
+
+        const results: string[] = [];
+        const folderUri = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram', folderRelativePath);
+
+        const traverse = async (currentUri: vscode.Uri, currentPath: string) => {
+            try {
+                const entries = await vscode.workspace.fs.readDirectory(currentUri);
+                for (const [name, type] of entries) {
+                    const entryPath = currentPath ? `${currentPath}/${name}` : name;
+                    if (type === vscode.FileType.File && name.endsWith('.dsl')) {
+                        results.push(entryPath);
+                    } else if (type === vscode.FileType.Directory) {
+                        const childUri = vscode.Uri.joinPath(currentUri, name);
+                        await traverse(childUri, entryPath);
+                    }
+                }
+            } catch { }
+        };
+
+        try {
+            await traverse(folderUri, folderRelativePath);
+        } catch { }
+
+        return results;
+    }
+
+    /**
+     * Check if a folder is empty (no files or subdirectories)
+     * @param folderRelativePath Path relative to .diagram folder
+     * @returns true if folder is empty
+     */
+    public async isFolderEmpty(folderRelativePath: string): Promise<boolean> {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) return true;
+
+        const folderUri = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram', folderRelativePath);
+        try {
+            const entries = await vscode.workspace.fs.readDirectory(folderUri);
+            return entries.length === 0;
+        } catch {
+            return true;
+        }
+    }
+
+    /**
+     * Delete a folder recursively after checking for DSL files
+     * @param folderRelativePath Path relative to .diagram folder
+     * @returns object with success status and warning message if any
+     */
+    public async deleteFolderWithWarning(folderRelativePath: string): Promise<{ success: boolean; warning?: string }> {
+        const hasDsl = await this.hasDslFiles(folderRelativePath);
+        if (hasDsl) {
+            const dslFiles = await this.getDslFilesInFolder(folderRelativePath);
+            return {
+                success: false,
+                warning: `フォルダ内に DSL ファイルが存在します: ${dslFiles.join(', ')}`
+            };
+        }
+
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) return { success: false };
+
+        const uri = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram', folderRelativePath);
+        try {
+            await vscode.workspace.fs.delete(uri, { recursive: true });
+            return { success: true };
+        } catch (e) {
+            this.logger?.error(`Failed to delete folder ${folderRelativePath}: ${e}`);
+            return { success: false };
+        }
+    }
 }

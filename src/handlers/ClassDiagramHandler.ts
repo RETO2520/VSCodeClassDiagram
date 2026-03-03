@@ -49,6 +49,7 @@ export class ClassDiagramHandler {
             .register('ui.createFolder', this.handleUiCreateFolder.bind(this))
             .register('ui.deleteEntry', this.handleUiDeleteEntry.bind(this))
             .register('ui.renameEntry', this.handleUiRenameEntry.bind(this))
+            .register('deleteWithWarning', this.handleDeleteWithWarning.bind(this))
             ;
     }
 
@@ -514,5 +515,47 @@ export class ClassDiagramHandler {
         }
 
         await generator.generate(outFolder);
+    }
+
+    // ── フォルダ削除時の警告ハンドラ ──────────────────────────────────
+    private async handleDeleteWithWarning(msg: any, ctx: MessageContext): Promise<void> {
+        const payload = msg.payload || {};
+        const relativePath = payload.relativePath;
+        if (!relativePath) return;
+
+        // DSL ファイルがあるかどうかチェック
+        const result = await this.fileService.deleteFolderWithWarning(relativePath);
+
+        if (!result.success && result.warning) {
+            // 警告メッセージを表示して確認
+            const confirm = await vscode.window.showWarningMessage(
+                result.warning,
+                { modal: true },
+                'Delete Anyway'
+            );
+
+            if (confirm === 'Delete Anyway') {
+                // フォルダを強制削除
+                const workspaceFolders = vscode.workspace.workspaceFolders;
+                if (workspaceFolders && workspaceFolders.length > 0) {
+                    const uri = vscode.Uri.joinPath(workspaceFolders[0].uri, '.diagram', relativePath);
+                    try {
+                        await vscode.workspace.fs.delete(uri, { recursive: true });
+                        ctx.panel.webview.postMessage({
+                            command: 'diagramEntryDeleted',
+                            payload: { relativePath, success: true }
+                        });
+                    } catch (e) {
+                        this.logger.error(`Failed to force delete ${relativePath}: ${e}`);
+                    }
+                }
+            }
+        } else if (result.success) {
+            // 削除成功
+            ctx.panel.webview.postMessage({
+                command: 'diagramEntryDeleted',
+                payload: { relativePath, success: true }
+            });
+        }
     }
 }

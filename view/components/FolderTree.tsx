@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { ComponentService } from '@/lib/application/ComponentService';
 
 export interface FileEntry {
     path: string;
@@ -14,6 +15,15 @@ export interface FolderTreeProps {
     onDelete: (path: string) => void;
     onRename: (oldPath: string, newName: string) => void;
     onRefresh: () => void;
+    /** ComponentService: ディレクトリ構造からコンポーネント階層を更新 */
+    // when provided, FolderTree will invoke
+    // `componentService.syncFromDiagramFiles(files)` whenever the file
+    // structure changes (debounced).  This keeps the service in sync with
+    // the UI and allows the parent to simply react to
+    // `onComponentsUpdated` without caring about the details.
+    componentService?: ComponentService;
+    /** onComponentsUpdated: コンポーネント更新時のコールバック */
+    onComponentsUpdated?: () => void;
 }
 
 interface TreeNode {
@@ -24,7 +34,8 @@ interface TreeNode {
 }
 
 export function FolderTree({
-    files, activeFilePath, onSelectFile, onCreateFile, onCreateFolder, onDelete, onRename, onRefresh
+    files, activeFilePath, onSelectFile, onCreateFile, onCreateFolder, onDelete, onRename, onRefresh,
+    componentService, onComponentsUpdated
 }: FolderTreeProps) {
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['']));
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, path: string, isDirectory: boolean } | null>(null);
@@ -101,6 +112,25 @@ export function FolderTree({
         });
     };
 
+    // ── フォルダ操作時のdebounced コンポーネント更新 ──
+    // 連続した操作による無限ループを防ぐため、debounce する
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const notifyComponentsUpdated = useCallback(() => {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+            console.debug('[FolderTree] Notifying components updated after folder operation');
+            // keep service in sync if provided
+            if (componentService) {
+                try {
+                    componentService.syncFromDiagramFiles(files);
+                } catch (e) {
+                    console.error('[FolderTree] componentService.syncFromDiagramFiles failed', e);
+                }
+            }
+            onComponentsUpdated?.();
+        }, 300);
+    }, [onComponentsUpdated, componentService, files]);
+
     const startRenaming = (path: string, currentName: string) => {
         setRenamingPath(path);
         setRenamingValue(currentName);
@@ -112,6 +142,8 @@ export function FolderTree({
             const oldName = renamingPath.split('/').pop() || '';
             if (renamingValue !== oldName) {
                 onRename(renamingPath, renamingValue.trim());
+                // Rename 完了後にコンポーネント情報を同期
+                notifyComponentsUpdated();
             }
         }
         setRenamingPath(null);
@@ -233,7 +265,10 @@ export function FolderTree({
                 <span>.DIAGRAM</span>
                 <div style={{ display: 'flex', gap: '2px' }}>
                     <button
-                        onClick={() => onCreateFile('')}
+                        onClick={() => {
+                            onCreateFile('');
+                            notifyComponentsUpdated();
+                        }}
                         title="New File"
                         style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '0 2px', fontSize: 13 }}
                         onMouseEnter={e => e.currentTarget.style.color = '#e2e8f0'}
@@ -242,7 +277,10 @@ export function FolderTree({
                         ⊞
                     </button>
                     <button
-                        onClick={() => onCreateFolder('')}
+                        onClick={() => {
+                            onCreateFolder('');
+                            notifyComponentsUpdated();
+                        }}
                         title="New Folder"
                         style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '0 2px', fontSize: 13 }}
                         onMouseEnter={e => e.currentTarget.style.color = '#e2e8f0'}
@@ -289,12 +327,18 @@ export function FolderTree({
                     {contextMenu.isDirectory && (
                         <>
                             <ContextMenuItem
-                                onClick={() => onCreateFile(contextMenu.path)}
+                                onClick={() => {
+                                    onCreateFile(contextMenu.path);
+                                    notifyComponentsUpdated();
+                                }}
                                 label="New File"
                                 icon="⊞"
                             />
                             <ContextMenuItem
-                                onClick={() => onCreateFolder(contextMenu.path)}
+                                onClick={() => {
+                                    onCreateFolder(contextMenu.path);
+                                    notifyComponentsUpdated();
+                                }}
                                 label="New Folder"
                                 icon="📁"
                             />
@@ -304,12 +348,18 @@ export function FolderTree({
                     {!contextMenu.path.endsWith('_Application') && (
                         <>
                             <ContextMenuItem
-                                onClick={() => startRenaming(contextMenu.path, contextMenu.path.split('/').pop() || '')}
+                                onClick={() => {
+                                    startRenaming(contextMenu.path, contextMenu.path.split('/').pop() || '');
+                                    // Rename 完了後に呼び出されるため、ここではスキップ
+                                }}
                                 label="Rename"
                                 icon="✎"
                             />
                             <ContextMenuItem
-                                onClick={() => onDelete(contextMenu.path)}
+                                onClick={() => {
+                                    onDelete(contextMenu.path);
+                                    notifyComponentsUpdated();
+                                }}
                                 label="Delete"
                                 icon="×"
                                 color="#f87171"

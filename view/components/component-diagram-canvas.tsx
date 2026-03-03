@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { ZoomIn, ZoomOut, Maximize2, Maximize } from "lucide-react"
 import type { ComponentInfo, ComponentKind, ComponentRelationship } from "@/lib/component-diagram-types"
+import type { ClassInfo } from "@/lib/class-diagram-types"
 
 // ==============================
 // Constants
@@ -82,6 +83,8 @@ function drawComponentBox(
   ctx: CanvasRenderingContext2D,
   comp: ComponentInfo,
   isSelected: boolean,
+  allComponents: ComponentInfo[],
+  classes: ClassInfo[],
 ) {
   const { x, y, width: w, height: h } = comp
   const colors = kindColors(comp.kind)
@@ -121,21 +124,68 @@ function drawComponentBox(
   ctx.font = `bold ${FONT_SIZE}px ${MONO_FONT}`
   ctx.fillText(comp.name, x + HEADER_PADDING, y + 38)
 
-  // body text
+  // body text (summary)
   ctx.fillStyle = colors.bodyText
   ctx.font = `${SMALL_FONT_SIZE}px ${MONO_FONT}`
   const stats =
     comp.kind === "component"
       ? `Classes: ${comp.classIds.length}`
       : `Children: ${comp.childComponentIds.length}`
-  ctx.fillText(stats, x + BODY_PADDING, y + headerH + BODY_PADDING + 12)
+  let textY = y + headerH + BODY_PADDING + 12
+  ctx.fillText(stats, x + BODY_PADDING, textY)
 
   // description (single line, clipped)
   if (comp.description) {
     const maxW = Math.max(0, w - BODY_PADDING * 2)
     const desc = clipText(ctx, comp.description, maxW)
     ctx.fillStyle = "#475569"
-    ctx.fillText(desc, x + BODY_PADDING, y + headerH + BODY_PADDING + 12 + LINE_HEIGHT)
+    textY += LINE_HEIGHT
+    ctx.fillText(desc, x + BODY_PADDING, textY)
+  }
+
+  // child list (FolderTree と対応する階層情報)
+  const maxY = y + h - BODY_PADDING - 8
+  const maxW = Math.max(0, w - BODY_PADDING * 2)
+
+  // 1 行分空ける
+  textY += LINE_HEIGHT
+  if (textY > maxY) return
+
+  let title = ""
+  let items: string[] = []
+
+  if (comp.kind === "application") {
+    title = "Subsystems"
+    const subsystems = allComponents.filter(
+      (c) => c.kind === "subsystem" && comp.childComponentIds.includes(c.id),
+    )
+    items = subsystems.map((c) => c.name)
+  } else if (comp.kind === "subsystem") {
+    title = "Components"
+    const comps = allComponents.filter(
+      (c) => c.kind === "component" && comp.childComponentIds.includes(c.id),
+    )
+    items = comps.map((c) => c.name)
+  } else {
+    title = "Classes"
+    items = comp.classIds
+      .map((cid) => classes.find((cls) => cls.id === cid)?.name ?? cid)
+  }
+
+  if (items.length > 0) {
+    ctx.fillStyle = colors.bodyText
+    ctx.font = `bold ${SMALL_FONT_SIZE}px ${MONO_FONT}`
+    const titleText = `${title}:`
+    ctx.fillText(titleText, x + BODY_PADDING, textY)
+
+    ctx.font = `${SMALL_FONT_SIZE}px ${MONO_FONT}`
+    textY += LINE_HEIGHT
+    for (const name of items) {
+      if (textY > maxY) break
+      const line = `- ${clipText(ctx, name, maxW - 16)}`
+      ctx.fillText(line, x + BODY_PADDING + 8, textY)
+      textY += LINE_HEIGHT
+    }
   }
 
   // resize handle (bottom-right)
@@ -399,6 +449,7 @@ function drawLegend(ctx: CanvasRenderingContext2D, canvasWidth: number) {
 interface ComponentDiagramCanvasProps {
   components: ComponentInfo[]
   relationships: ComponentRelationship[]
+  classes: ClassInfo[]
   selectedId: string | null
   onSelectComponent: (id: string | null) => void
   onMoveComponent: (id: string, x: number, y: number) => void
@@ -410,6 +461,7 @@ interface ComponentDiagramCanvasProps {
 export function ComponentDiagramCanvas({
   components,
   relationships,
+  classes,
   selectedId,
   onSelectComponent,
   onMoveComponent,
@@ -481,14 +533,14 @@ export function ComponentDiagramCanvas({
       drawComponentRelationship(ctx, rel, components)
     }
     for (const comp of components) {
-      drawComponentBox(ctx, comp, comp.id === selectedId)
+      drawComponentBox(ctx, comp, comp.id === selectedId, components, classes)
     }
 
     ctx.restore()
 
     drawLegend(ctx, rect.width)
     drawZoomIndicator(ctx, zoom)
-  }, [components, relationships, selectedId, zoom, panOffset])
+  }, [components, relationships, classes, selectedId, zoom, panOffset])
 
   useEffect(() => {
     draw()

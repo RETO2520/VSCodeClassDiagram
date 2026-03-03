@@ -16,6 +16,7 @@
  */
 
 import React, { useRef, useState, useCallback, useEffect } from 'react'
+import { ComponentService } from '../lib/application/ComponentService';
 import Editor, { useMonaco, OnMount, OnChange } from '@monaco-editor/react'
 import DOMPurify from 'dompurify'
 import type * as Monaco from 'monaco-editor'
@@ -270,6 +271,22 @@ export interface SpecEditorPanelProps {
      * 親はこれを受けてクラス図 / ワークフロー図を切り替える。
      */
     onCursorContext?: (ctx: CursorContext) => void
+    /**
+     * ComponentService インスタンス。
+     *
+     * SpecEditorPanel はフォルダツリーの状態を保持しているため、
+     * .diagram フォルダから読み込んだファイルリストをこのサービスに渡し、
+     * 内部の ComponentDomainModel を再構築します。
+     * FolderTree からも同様の同期呼び出しが行われるため、
+     * 本パラメータは双方向の同期を支援するためのものです。
+     *
+     * 更新が完了すると onComponentsChanged が発火するため、
+     * 親コンポーネントはそのタイミングでサービスの状態を
+     * 読み取って UI をリフレッシュしてください。
+     */
+    componentService?: ComponentService
+    /** onComponentsChanged: コンポーネント構造が変更されたときのコールバック */
+    onComponentsChanged?: () => void
 }
 
 // ============================================================
@@ -787,7 +804,7 @@ abstract class Entity
 Order *> OrderItem :items 1 *
 `
 
-export function SpecEditorPanel({ service, classes, visible, onCursorContext }: SpecEditorPanelProps) {
+export function SpecEditorPanel({ service, classes, visible, onCursorContext, componentService, onComponentsChanged }: SpecEditorPanelProps) {
     // @monaco-editor/react が用意する monaco インスタンス
     const monaco = useMonaco()
 
@@ -819,26 +836,7 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
     const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
 
     // ── IPC Listeners ──────────────────────────────────────────
-    useEffect(() => {
-        postMessage({ command: 'requestDiagramFiles' });
 
-        const cleanup = onMessage(msg => {
-            if (msg.command === 'diagramFilesLoaded') {
-                setDiagramFiles(msg.payload.files as unknown as FileEntry[]);
-            } else if (msg.command === 'diagramFileLoaded') {
-                const { relativePath, dsl } = msg.payload;
-                setActiveFilePath(relativePath);
-                if (editorRef.current) {
-                    editorRef.current.setValue(dsl);
-                } else {
-                    // もしエディタマウント前なら、INITIAL_DSLにどうやって渡すか...
-                    // useRefで保持して handleMount で set するか。
-                    // 簡単のため、今回はそのまま (通常はマウント後にロードされる想定)
-                }
-            }
-        });
-        return cleanup;
-    }, []);
 
     // ── DSL → クラス図 適用 ──────────────────────────────────
     const applyDsl = useCallback((dsl: string) => {
@@ -933,6 +931,13 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
             const mdClasses = service.getModel().getClasses()
             const mdRelationships = service.getModel().detectRelationships()
             setMarkdownText(generateMarkdownFromClasses({ classes: mdClasses, relationships: mdRelationships }))
+
+            // [DEBUG] DSL 適用後の class 数をログ
+            console.debug('[SpecEditorPanel] applyDsl completed:', {
+                classCount: service.getModel().getClasses().length,
+                classesProp: classes.length,
+                classNames: service.getModel().getClasses().map(c => c.name)
+            })
         } catch (err: any) {
             const msg = err?.message ?? String(err)
 
@@ -949,6 +954,55 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
             setStatus({ state: 'error', errors: [msg], warnings: [], dslWarnings: [], classCount: 0, lastApplied: null, cliSuggestions: [] })
         }
     }, [classes, service, monaco])
+
+    const depsRef = useRef({ onComponentsChanged, componentService, applyDsl });
+    // 最新のコールバックを常に保持する（クロージャの古い値を参照しないため）
+    useEffect(() => {
+        depsRef.current = { onComponentsChanged, componentService, applyDsl };
+    }, [onComponentsChanged, componentService, applyDsl]);
+
+    useEffect(() => {
+        postMessage({ command: 'requestDiagramFiles' });
+
+        const cleanup = onMessage(msg => {
+            if (msg.command === 'diagramFilesLoaded') {
+                const newFiles = msg.payload.files as unknown as FileEntry[];
+                setDiagramFiles(newFiles);
+                // synchronize component service when the file list is first
+                // received (or after a manual refresh).  This ensures the
+                // component list is populated without requiring the user to
+                // create/rename anything.
+                const currentDeps = depsRef.current;
+                if (currentDeps.componentService) {
+                    try {
+                        currentDeps.componentService.syncFromDiagramFiles(newFiles);
+                    } catch (e) {
+                        console.error('[SpecEditorPanel] syncFromDiagramFiles failed', e);
+                    }
+                }
+                // notify parent that components may have changed
+                currentDeps.onComponentsChanged?.();
+            } else if (msg.command === 'diagramFileLoaded') {
+                const { relativePath, dsl } = msg.payload;
+                console.debug('[SpecEditorPanel] File loaded:', { relativePath, dslLength: dsl?.length });
+                setActiveFilePath(relativePath);
+                if (editorRef.current) {
+                    editorRef.current.setValue(dsl);
+                    // setValue は onChange イベントを発火しないため、手動で applyDsl を呼ぶ
+                    // setTimeout で次フレーム実行（Monaco が編集を確定させてから実行するように遅延）
+                    setTimeout(() => {
+                        if (debounceRef.current) clearTimeout(debounceRef.current);
+                        depsRef.current.applyDsl(dsl);
+                    }, 50);
+                } else {
+                    // もしエディタマウント前なら、INITIAL_DSLにどうやって渡すか...
+                    // useRefで保持して handleMount で set するか。
+                    // 簡単のため、今回はそのまま (通常はマウント後にロードされる想定)
+                }
+            }
+        });
+        return cleanup;
+    }, []); // マウント時のみ実行し、依存配列による再登録ループを防ぐ
 
     // コマンドラインを閉じるときは、逆にエディタにフォーカスを戻すと親切です
     const handleClose = useCallback(() => {
@@ -1228,6 +1282,11 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
         URL.revokeObjectURL(url)
     }, [activeFilePath])
 
+    // ── Refresh: .diagram フォルダをスキャンして状態に反映 ──────────
+    const handleRefresh = useCallback(() => {
+        postMessage({ command: 'requestDiagramFiles' })
+    }, [])
+
     // ── ペースト（クリップボード → エディタ）────────────────────
     const handlePaste = useCallback(async () => {
         try {
@@ -1314,6 +1373,10 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
                     💾 Save
                 </ToolbarBtn>
 
+                <ToolbarBtn onClick={handleRefresh} title=".diagram フォルダをリフレッシュ" accent="#f59e0b">
+                    🔄 Refresh
+                </ToolbarBtn>
+
                 <div style={{ width: 1, height: 14, background: '#1e293b' }} />
 
                 <ToolbarBtn onClick={handleCopy} title="DSLをクリップボードにコピー">
@@ -1395,6 +1458,8 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
                             postMessage({ command: 'ui.renameEntry', payload: { oldRelativePath: oldPath, newName } });
                         }}
                         onRefresh={() => postMessage({ command: 'requestDiagramFiles' })}
+                        componentService={componentService}
+                        onComponentsUpdated={onComponentsChanged}
                     />
                     <Outline items={outline} onSelect={handleOutlineSelect} />
                 </div>
