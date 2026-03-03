@@ -49,6 +49,7 @@ import { ComponentDiagramCanvas } from '@/components/component-diagram-canvas'
 import { detectRelationships } from '@/lib/detect-relationships'
 import type { ClassInfo } from '@/lib/class-diagram-types'
 import type { ComponentInfo, ComponentRelationship } from '@/lib/component-diagram-types'
+import { ComponentDomainModel } from '@/lib/ComponentDomainModel'
 import { Undo2, Redo2, ChevronDown, ChevronUp } from 'lucide-react'
 import { useVSCodeState } from './bridge/use-vscode'
 import { CommandLine } from '@/components/command-line'
@@ -59,7 +60,7 @@ import { ActivitySidebar, EditorMode } from '@/components/ActivitySidebar'
 import { WorkflowEditorPanel, WFOpRef } from '@/components/WorkflowEditorPanel'
 import { SpecEditorPanel } from '@/components/SpecEditorPanel'
 import { ComponentService } from '@/lib/application/ComponentService'
-import { postMessage } from './bridge/vscode-bridge'
+import { postMessage, onMessage } from './bridge/vscode-bridge'
 
 // ==============================
 // 定数
@@ -211,6 +212,23 @@ export function App({ service, componentService }: { service: ClassDiagramServic
     const [componentNodes, setComponentNodes] = useState<ComponentInfo[]>([])
     const [componentRels, setComponentRels] = useState<ComponentRelationship[]>([])
     const [componentRefreshToken, setComponentRefreshToken] = useState(0)
+
+    const saveComponentListJson = useCallback((silent: boolean) => {
+        try {
+            const snapshotComponents = (componentService as any).componentDomain.getComponents?.() ?? componentNodes
+            const snapshotRelationships = (componentService as any).componentDomain.getRelationships?.() ?? componentRels
+            postMessage({
+                command: 'saveComponentListJson',
+                payload: {
+                    components: snapshotComponents,
+                    relationships: snapshotRelationships,
+                    silent,
+                },
+            })
+        } catch (err) {
+            console.error('[App] saveComponentListJson error:', err)
+        }
+    }, [componentService, componentNodes, componentRels])
 
     // ── Spec DSL 下部ペイン ──
     const [specPaneOpen, setSpecPaneOpen] = useState(true)
@@ -428,6 +446,40 @@ export function App({ service, componentService }: { service: ClassDiagramServic
         window.addEventListener('keydown', h)
         return () => window.removeEventListener('keydown', h)
     }, [handleUndo, handleRedo])
+
+    useEffect(() => {
+        const cleanup = onMessage((msg) => {
+            if (msg.command !== 'componentListJsonLoaded') return
+
+            const rawComponents = Array.isArray(msg.payload?.components) ? msg.payload.components : []
+            const rawRelationships = Array.isArray(msg.payload?.relationships) ? msg.payload.relationships : []
+            const components = rawComponents as ComponentInfo[]
+            const relationships = rawRelationships as ComponentRelationship[]
+
+            try {
+                const restoredDomain = ComponentDomainModel.from(components, relationships)
+                ; (componentService as any).componentDomain = restoredDomain
+                setComponentNodes(restoredDomain.getComponents())
+                setComponentRels(restoredDomain.getRelationships())
+                setComponentRefreshToken((prev) => prev + 1)
+            } catch (err) {
+                console.error('[App] Failed to restore component-list.json:', err)
+            }
+        })
+
+        return cleanup
+    }, [componentService])
+
+    useEffect(() => {
+        const saveOnClose = () => saveComponentListJson(true)
+        window.addEventListener('beforeunload', saveOnClose)
+        window.addEventListener('pagehide', saveOnClose)
+        return () => {
+            saveOnClose()
+            window.removeEventListener('beforeunload', saveOnClose)
+            window.removeEventListener('pagehide', saveOnClose)
+        }
+    }, [saveComponentListJson])
 
     return (
         <div className="flex flex-col h-screen w-screen overflow-hidden">

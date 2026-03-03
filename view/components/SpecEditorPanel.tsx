@@ -956,6 +956,7 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext, co
     }, [classes, service, monaco])
 
     const depsRef = useRef({ onComponentsChanged, componentService, applyDsl });
+    const hasHandledInitialDiagramFilesRef = useRef(false);
     // 最新のコールバックを常に保持する（クロージャの古い値を参照しないため）
     useEffect(() => {
         depsRef.current = { onComponentsChanged, componentService, applyDsl };
@@ -968,20 +969,33 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext, co
             if (msg.command === 'diagramFilesLoaded') {
                 const newFiles = msg.payload.files as unknown as FileEntry[];
                 setDiagramFiles(newFiles);
-                // synchronize component service when the file list is first
-                // received (or after a manual refresh).  This ensures the
-                // component list is populated without requiring the user to
-                // create/rename anything.
+
                 const currentDeps = depsRef.current;
+                const isInitialDiagramFilesEvent = !hasHandledInitialDiagramFilesRef.current;
+                hasHandledInitialDiagramFilesRef.current = true;
+                let didSyncFromFolders = false;
+
                 if (currentDeps.componentService) {
+                    const existingComponents = (currentDeps.componentService as any).componentDomain?.getComponents?.() ?? [];
+                    const hasRestoredComponents = Array.isArray(existingComponents) && existingComponents.length > 0;
+                    const shouldSkipInitialFolderSync = isInitialDiagramFilesEvent && hasRestoredComponents;
+
                     try {
-                        currentDeps.componentService.syncFromDiagramFiles(newFiles);
+                        if (shouldSkipInitialFolderSync) {
+                            console.debug('[SpecEditorPanel] Skipped initial syncFromDiagramFiles because restored component model already exists');
+                        } else {
+                            currentDeps.componentService.syncFromDiagramFiles(newFiles);
+                            didSyncFromFolders = true;
+                        }
                     } catch (e) {
                         console.error('[SpecEditorPanel] syncFromDiagramFiles failed', e);
                     }
                 }
-                // notify parent that components may have changed
-                currentDeps.onComponentsChanged?.();
+
+                if (didSyncFromFolders) {
+                    // notify parent only when sync actually updated service state
+                    currentDeps.onComponentsChanged?.();
+                }
             } else if (msg.command === 'diagramFileLoaded') {
                 const { relativePath, dsl } = msg.payload;
                 console.debug('[SpecEditorPanel] File loaded:', { relativePath, dslLength: dsl?.length });

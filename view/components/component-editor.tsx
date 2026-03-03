@@ -19,6 +19,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import {
     Plus,
     Trash2,
+    Save,
     Box,
     Layers,
     LayoutDashboard,
@@ -257,6 +258,7 @@ interface ComponentEditorPanelProps {
     onUnassignClass?: (compId: string, classId: string) => void
     onAddChildComponent?: (parentId: string, childId: string) => void
     onRemoveChildComponent?: (parentId: string, childId: string) => void
+    onSaveContentListJson?: () => void
 }
 
 const MIN_LIST_WIDTH = 120
@@ -278,6 +280,7 @@ export function ComponentEditorPanel({
     onUnassignClass,
     onAddChildComponent,
     onRemoveChildComponent,
+    onSaveContentListJson,
 }: ComponentEditorPanelProps) {
     const selectedComponent = components.find((c) => c.id === selectedId)
     const [listWidth, setListWidth] = useState(DEFAULT_LIST_WIDTH)
@@ -482,16 +485,27 @@ export function ComponentEditorPanel({
                 >
                     <div className="flex items-center justify-between border-b border-border px-3 py-3">
                         <h2 className="text-xs font-semibold text-card-foreground">{"Components"}</h2>
-                        <Select onValueChange={(v) => onAddComponent(v as ComponentKind)} value="">
-                            <SelectTrigger className="h-6 w-12 text-[10px] bg-transparent border-none p-0 focus:ring-0">
-                                <Plus className="h-4 w-4" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="component">New Component</SelectItem>
-                                <SelectItem value="subsystem">New Subsystem</SelectItem>
-                                <SelectItem value="application">New Application</SelectItem>
-                            </SelectContent>
-                        </Select>
+                        <div className="flex items-center gap-1">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={onSaveContentListJson}
+                                className="h-6 w-6 text-muted-foreground"
+                                title="Save content list as JSON"
+                            >
+                                <Save className="h-3.5 w-3.5" />
+                            </Button>
+                            <Select onValueChange={(v) => onAddComponent(v as ComponentKind)} value="">
+                                <SelectTrigger className="h-6 w-12 text-[10px] bg-transparent border-none p-0 focus:ring-0">
+                                    <Plus className="h-4 w-4" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="component">New Component</SelectItem>
+                                    <SelectItem value="subsystem">New Subsystem</SelectItem>
+                                    <SelectItem value="application">New Application</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
                     <ScrollArea className="flex-1">
                         <div className="flex flex-col">

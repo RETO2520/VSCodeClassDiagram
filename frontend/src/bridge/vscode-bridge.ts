@@ -32,6 +32,13 @@ export type WebviewToHostMessage =
     | { command: 'ui.createFolder'; payload: { relativeParentPath: string } }
     | { command: 'ui.deleteEntry'; payload: { relativePath: string } }
     | { command: 'ui.renameEntry'; payload: { oldRelativePath: string; newName: string } }
+    | {
+        command: 'saveComponentListJson'; payload: {
+            components: unknown[];
+            relationships?: unknown[];
+            silent?: boolean;
+        }
+    }
 
 /** Messages sent FROM the extension host TO the webview */
 export type HostToWebviewMessage =
@@ -41,6 +48,12 @@ export type HostToWebviewMessage =
     | { command: 'changedPrimitiveTypes'; primitiveTypes: string[] }
     | { command: 'diagramFilesLoaded'; payload: { files: string[] } }
     | { command: 'diagramFileLoaded'; payload: { relativePath: string; dsl: string } }
+    | {
+        command: 'componentListJsonLoaded'; payload: {
+            components: unknown[];
+            relationships?: unknown[];
+        }
+    }
 
 // ==============================
 // VSCode API singleton

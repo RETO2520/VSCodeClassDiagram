@@ -49,6 +49,7 @@ export class ClassDiagramHandler {
             .register('ui.createFolder', this.handleUiCreateFolder.bind(this))
             .register('ui.deleteEntry', this.handleUiDeleteEntry.bind(this))
             .register('ui.renameEntry', this.handleUiRenameEntry.bind(this))
+            .register('saveComponentListJson', this.handleSaveComponentListJson.bind(this))
             .register('deleteWithWarning', this.handleDeleteWithWarning.bind(this))
             ;
     }
@@ -96,6 +97,7 @@ export class ClassDiagramHandler {
 
         // Initial setup
         this.sendPrimitiveTypes();
+        this.sendInitialComponentListJson();
     }
 
     private getHtmlForWebview(webview: vscode.Webview): string {
@@ -187,6 +189,61 @@ export class ClassDiagramHandler {
         const result = await this.fileService.saveJson(msg.payload);
         if (result) {
             vscode.window.showInformationMessage('Saved diagram JSON');
+        }
+    }
+
+    private async handleSaveComponentListJson(msg: any, _ctx: MessageContext): Promise<void> {
+        const payload = msg.payload || {};
+        const components = Array.isArray(payload.components) ? payload.components : [];
+        const relationships = Array.isArray(payload.relationships) ? payload.relationships : [];
+        const silent = !!payload.silent;
+
+        const diagramRoot = this.fileService.getDiagramRootUri();
+        if (!diagramRoot) {
+            if (!silent) {
+                vscode.window.showErrorMessage('Workspace is not open. Failed to save component list JSON.');
+            }
+            return;
+        }
+
+        try {
+            await vscode.workspace.fs.createDirectory(diagramRoot);
+            const targetUri = vscode.Uri.joinPath(diagramRoot, 'component-list.json');
+            await this.fileService.writeFile(targetUri, {
+                components,
+                relationships,
+                savedAt: new Date().toISOString(),
+            });
+            if (!silent) {
+                vscode.window.showInformationMessage('Saved component list JSON (.diagram/component-list.json)');
+            }
+        } catch (e: any) {
+            this.logger.error(`Failed to save component list JSON: ${e?.message || e}`);
+            if (!silent) {
+                vscode.window.showErrorMessage('Failed to save component list JSON.');
+            }
+        }
+    }
+
+    private async sendInitialComponentListJson(): Promise<void> {
+        if (!this.panel) return;
+
+        const diagramRoot = this.fileService.getDiagramRootUri();
+        if (!diagramRoot) return;
+
+        const targetUri = vscode.Uri.joinPath(diagramRoot, 'component-list.json');
+        try {
+            const loaded = await this.fileService.readFile(targetUri);
+            const parsed: any = loaded.parsed ?? {};
+            const components = Array.isArray(parsed.components) ? parsed.components : [];
+            const relationships = Array.isArray(parsed.relationships) ? parsed.relationships : [];
+
+            this.panel.webview.postMessage({
+                command: 'componentListJsonLoaded',
+                payload: { components, relationships }
+            });
+        } catch {
+            // component-list.json does not exist yet or invalid; skip restore silently
         }
     }
 

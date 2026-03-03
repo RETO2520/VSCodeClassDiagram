@@ -54,6 +54,23 @@ export function ComponentEditorContainer({
 
     const [busy, setBusy] = useState(false);
 
+    const saveContentListJson = useCallback((options?: { silent?: boolean }) => {
+        try {
+            const snapshotComponents = service['componentDomain'].getComponents();
+            const snapshotRelationships = service['componentDomain'].getRelationships();
+            postMessage({
+                command: 'saveComponentListJson',
+                payload: {
+                    components: snapshotComponents,
+                    relationships: snapshotRelationships,
+                    silent: options?.silent ?? false,
+                },
+            });
+        } catch (err) {
+            console.error("saveContentListJson error:", err);
+        }
+    }, [service]);
+
     // 同期処理
     const refreshFromService = useCallback(() => {
         try {
@@ -199,6 +216,7 @@ export function ComponentEditorContainer({
                 onUnassignClass={handleUnassignClass}
                 onAddChildComponent={handleAddChildComponent}
                 onRemoveChildComponent={handleRemoveChildComponent}
+                onSaveContentListJson={() => saveContentListJson({ silent: false })}
             />
             {busy && <div className="sr-only">Processing...</div>}
         </div>
