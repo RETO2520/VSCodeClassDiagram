@@ -804,7 +804,7 @@ abstract class Entity
 Order *> OrderItem :items 1 *
 `
 
-export function SpecEditorPanel({ service, classes, visible, onCursorContext, componentService, onComponentsChanged }: SpecEditorPanelProps) {
+export function SpecEditorPanel({ service, classes, visible, onCursorContext }: SpecEditorPanelProps) {
     // @monaco-editor/react が用意する monaco インスタンス
     const monaco = useMonaco()
 
@@ -955,12 +955,11 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext, co
         }
     }, [classes, service, monaco])
 
-    const depsRef = useRef({ onComponentsChanged, componentService, applyDsl });
-    const hasHandledInitialDiagramFilesRef = useRef(false);
+    const depsRef = useRef({ applyDsl });
     // 最新のコールバックを常に保持する（クロージャの古い値を参照しないため）
     useEffect(() => {
-        depsRef.current = { onComponentsChanged, componentService, applyDsl };
-    }, [onComponentsChanged, componentService, applyDsl]);
+        depsRef.current = { applyDsl };
+    }, [applyDsl]);
 
     useEffect(() => {
         postMessage({ command: 'requestDiagramFiles' });
@@ -970,32 +969,6 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext, co
                 const newFiles = msg.payload.files as unknown as FileEntry[];
                 setDiagramFiles(newFiles);
 
-                const currentDeps = depsRef.current;
-                const isInitialDiagramFilesEvent = !hasHandledInitialDiagramFilesRef.current;
-                hasHandledInitialDiagramFilesRef.current = true;
-                let didSyncFromFolders = false;
-
-                if (currentDeps.componentService) {
-                    const existingComponents = (currentDeps.componentService as any).componentDomain?.getComponents?.() ?? [];
-                    const hasRestoredComponents = Array.isArray(existingComponents) && existingComponents.length > 0;
-                    const shouldSkipInitialFolderSync = isInitialDiagramFilesEvent && hasRestoredComponents;
-
-                    try {
-                        if (shouldSkipInitialFolderSync) {
-                            console.debug('[SpecEditorPanel] Skipped initial syncFromDiagramFiles because restored component model already exists');
-                        } else {
-                            currentDeps.componentService.syncFromDiagramFiles(newFiles);
-                            didSyncFromFolders = true;
-                        }
-                    } catch (e) {
-                        console.error('[SpecEditorPanel] syncFromDiagramFiles failed', e);
-                    }
-                }
-
-                if (didSyncFromFolders) {
-                    // notify parent only when sync actually updated service state
-                    currentDeps.onComponentsChanged?.();
-                }
             } else if (msg.command === 'diagramFileLoaded') {
                 const { relativePath, dsl } = msg.payload;
                 console.debug('[SpecEditorPanel] File loaded:', { relativePath, dslLength: dsl?.length });
@@ -1472,8 +1445,6 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext, co
                             postMessage({ command: 'ui.renameEntry', payload: { oldRelativePath: oldPath, newName } });
                         }}
                         onRefresh={() => postMessage({ command: 'requestDiagramFiles' })}
-                        componentService={componentService}
-                        onComponentsUpdated={onComponentsChanged}
                     />
                     <Outline items={outline} onSelect={handleOutlineSelect} />
                 </div>
