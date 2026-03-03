@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useMemo, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -23,8 +23,9 @@ import {
     Layers,
     LayoutDashboard,
     GripVertical,
-    Library,
     Settings2,
+    ChevronDown,
+    ChevronRight,
 } from "lucide-react"
 import type { ComponentInfo, ComponentKind } from "@/lib/component-diagram-types"
 import type { ClassInfo } from "@/lib/class-diagram-types"
@@ -283,6 +284,73 @@ export function ComponentEditorPanel({
     const [detailWidth, setDetailWidth] = useState(DEFAULT_DETAIL_WIDTH)
     const [isListCollapsed, setIsListCollapsed] = useState(false)
     const [isDetailCollapsed, setIsDetailCollapsed] = useState(false)
+    const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set())
+
+    const componentById = useMemo(() => {
+        return new Map(components.map((component) => [component.id, component]))
+    }, [components])
+
+    const childIdsByParent = useMemo(() => {
+        const children = new Map<string, string[]>()
+        for (const component of components) {
+            const validChildren = component.childComponentIds.filter((childId) => componentById.has(childId))
+            if (validChildren.length > 0) {
+                children.set(component.id, validChildren)
+            }
+        }
+        return children
+    }, [components, componentById])
+
+    const parentByChild = useMemo(() => {
+        const parentMap = new Map<string, string>()
+        for (const component of components) {
+            for (const childId of component.childComponentIds) {
+                if (!componentById.has(childId)) continue
+                if (!parentMap.has(childId)) {
+                    parentMap.set(childId, component.id)
+                }
+            }
+        }
+        return parentMap
+    }, [components, componentById])
+
+    const sortedComponents = useMemo(() => {
+        const kindOrder: Record<ComponentKind, number> = {
+            application: 0,
+            subsystem: 1,
+            component: 2,
+        }
+        return [...components].sort((a, b) => {
+            if (kindOrder[a.kind] !== kindOrder[b.kind]) {
+                return kindOrder[a.kind] - kindOrder[b.kind]
+            }
+            return a.name.localeCompare(b.name, "en", { sensitivity: "base" })
+        })
+    }, [components])
+
+    const rootIds = useMemo(() => {
+        return sortedComponents
+            .filter((component) => !parentByChild.has(component.id))
+            .map((component) => component.id)
+    }, [sortedComponents, parentByChild])
+
+    const displayRootIds = rootIds.length > 0 ? rootIds : sortedComponents.map((component) => component.id)
+
+    useEffect(() => {
+        setExpandedNodeIds((prev) => {
+            const existingIds = new Set(components.map((c) => c.id))
+            const next = new Set<string>()
+            for (const id of prev) {
+                if (existingIds.has(id)) {
+                    next.add(id)
+                }
+            }
+            for (const rootId of rootIds) {
+                next.add(rootId)
+            }
+            return next
+        })
+    }, [components, rootIds])
 
     const handleListResize = useCallback((deltaX: number) => {
         setListWidth((prev) => {
@@ -297,6 +365,90 @@ export function ComponentEditorPanel({
             return Math.max(MIN_DETAIL_WIDTH, Math.min(MAX_DETAIL_WIDTH, next))
         })
     }, [])
+
+    const toggleNode = useCallback((id: string) => {
+        setExpandedNodeIds((prev) => {
+            const next = new Set(prev)
+            if (next.has(id)) {
+                next.delete(id)
+            } else {
+                next.add(id)
+            }
+            return next
+        })
+    }, [])
+
+    const renderTreeNode = useCallback((componentId: string, depth: number, path: Set<string> = new Set()): React.ReactNode => {
+        const component = componentById.get(componentId)
+        if (!component || path.has(componentId)) return null
+
+        const childIds = childIdsByParent.get(componentId) ?? []
+        const hasChildren = childIds.length > 0
+        const isExpanded = expandedNodeIds.has(componentId)
+        const isSelected = component.id === selectedId
+        const nextPath = new Set(path)
+        nextPath.add(componentId)
+
+        return (
+            <div key={component.id}>
+                <div
+                    className={`group flex items-center gap-1 pr-1 transition-colors ${isSelected
+                        ? "bg-accent text-accent-foreground"
+                        : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                        }`}
+                >
+                    <button
+                        type="button"
+                        onClick={() => onSelectComponent(component.id)}
+                        className="flex flex-1 items-center gap-1 overflow-hidden py-2 text-left text-xs"
+                        style={{ paddingLeft: `${8 + depth * 12}px`, paddingRight: "4px" }}
+                    >
+                        <span
+                            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm ${hasChildren ? "hover:bg-muted/60" : ""}`}
+                            onClick={(e) => {
+                                if (!hasChildren) return
+                                e.preventDefault()
+                                e.stopPropagation()
+                                toggleNode(component.id)
+                            }}
+                        >
+                            {hasChildren ? (
+                                isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />
+                            ) : (
+                                <span className="h-3 w-3" />
+                            )}
+                        </span>
+                        {kindIcons[component.kind]}
+                        <span className="truncate flex-1">{component.name}</span>
+                    </button>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => {
+                            e.stopPropagation()
+                            onDeleteComponent(component.id)
+                        }}
+                        className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                    >
+                        <Trash2 className="h-3 w-3" />
+                    </Button>
+                </div>
+                {hasChildren && isExpanded && (
+                    <div>
+                        {childIds.map((childId) => renderTreeNode(childId, depth + 1, nextPath))}
+                    </div>
+                )}
+            </div>
+        )
+    }, [
+        childIdsByParent,
+        componentById,
+        expandedNodeIds,
+        onDeleteComponent,
+        onSelectComponent,
+        selectedId,
+        toggleNode,
+    ])
 
     return (
         <div className="flex h-full border-r border-border bg-card">
@@ -343,35 +495,7 @@ export function ComponentEditorPanel({
                     </div>
                     <ScrollArea className="flex-1">
                         <div className="flex flex-col">
-                            {components.map((c) => (
-                                <div
-                                    key={c.id}
-                                    className={`group flex items-center gap-1 pr-1 transition-colors ${c.id === selectedId
-                                        ? "bg-accent text-accent-foreground"
-                                        : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                                        }`}
-                                >
-                                    <button
-                                        type="button"
-                                        onClick={() => onSelectComponent(c.id)}
-                                        className="flex flex-1 items-center gap-2 overflow-hidden px-3 py-2 text-left text-xs"
-                                    >
-                                        {kindIcons[c.kind]}
-                                        <span className="truncate flex-1">{c.name}</span>
-                                    </button>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={(e) => {
-                                            e.stopPropagation()
-                                            onDeleteComponent(c.id)
-                                        }}
-                                        className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
-                                    >
-                                        <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                </div>
-                            ))}
+                            {displayRootIds.map((rootId) => renderTreeNode(rootId, 0))}
                         </div>
                     </ScrollArea>
                 </div>
