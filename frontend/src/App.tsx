@@ -212,6 +212,8 @@ export function App({ service, componentService }: { service: ClassDiagramServic
     const [componentNodes, setComponentNodes] = useState<ComponentInfo[]>([])
     const [componentRels, setComponentRels] = useState<ComponentRelationship[]>([])
     const [componentRefreshToken, setComponentRefreshToken] = useState(0)
+    const [componentDslFiles, setComponentDslFiles] = useState<string[]>([])
+    const [dslContentByPath, setDslContentByPath] = useState<Record<string, string>>({})
 
     const saveComponentListJson = useCallback((silent: boolean) => {
         try {
@@ -449,26 +451,76 @@ export function App({ service, componentService }: { service: ClassDiagramServic
 
     useEffect(() => {
         const cleanup = onMessage((msg) => {
-            if (msg.command !== 'componentListJsonLoaded') return
+            if (msg.command === 'componentListJsonLoaded') {
+                const rawComponents = Array.isArray(msg.payload?.components) ? msg.payload.components : []
+                const rawRelationships = Array.isArray(msg.payload?.relationships) ? msg.payload.relationships : []
+                const components = rawComponents as ComponentInfo[]
+                const relationships = rawRelationships as ComponentRelationship[]
 
-            const rawComponents = Array.isArray(msg.payload?.components) ? msg.payload.components : []
-            const rawRelationships = Array.isArray(msg.payload?.relationships) ? msg.payload.relationships : []
-            const components = rawComponents as ComponentInfo[]
-            const relationships = rawRelationships as ComponentRelationship[]
+                try {
+                    const restoredDomain = ComponentDomainModel.from(components, relationships)
+                    ; (componentService as any).componentDomain = restoredDomain
+                    setComponentNodes(restoredDomain.getComponents())
+                    setComponentRels(restoredDomain.getRelationships())
+                    setComponentRefreshToken((prev) => prev + 1)
+                } catch (err) {
+                    console.error('[App] Failed to restore component-list.json:', err)
+                }
+                return
+            }
 
-            try {
-                const restoredDomain = ComponentDomainModel.from(components, relationships)
-                ; (componentService as any).componentDomain = restoredDomain
-                setComponentNodes(restoredDomain.getComponents())
-                setComponentRels(restoredDomain.getRelationships())
-                setComponentRefreshToken((prev) => prev + 1)
-            } catch (err) {
-                console.error('[App] Failed to restore component-list.json:', err)
+            if (msg.command === 'diagramFilesLoaded') {
+                const files = Array.isArray(msg.payload?.files) ? msg.payload.files : []
+                const dslFiles = files
+                    .filter((f: unknown): f is { path: string; isDirectory: boolean } => {
+                        return !!f
+                            && typeof (f as any).path === 'string'
+                            && typeof (f as any).isDirectory === 'boolean'
+                    })
+                    .filter((f) => !f.isDirectory)
+                    .map((f) => f.path)
+                    .filter((p) => p.toLowerCase().endsWith('.dsl') || p.toLowerCase().endsWith('.txt'))
+                    .sort((a, b) => a.localeCompare(b, 'en'))
+                setComponentDslFiles(dslFiles)
+                return
+            }
+
+            if (msg.command === 'diagramFilesBulkLoaded') {
+                const files = Array.isArray(msg.payload?.files) ? msg.payload.files : []
+                setDslContentByPath((prev) => {
+                    const next = { ...prev }
+                    for (const file of files) {
+                        const relativePath = (file as any)?.relativePath
+                        const dsl = (file as any)?.dsl
+                        if (typeof relativePath === 'string' && typeof dsl === 'string') {
+                            next[relativePath] = dsl
+                        }
+                    }
+                    return next
+                })
             }
         })
 
         return cleanup
     }, [componentService])
+
+    useEffect(() => {
+        postMessage({ command: 'requestDiagramFiles' })
+    }, [])
+
+    useEffect(() => {
+        const neededPaths = Array.from(new Set(
+            componentNodes
+                .filter((c) => c.kind === 'component' && typeof c.dslPath === 'string' && c.dslPath.length > 0)
+                .map((c) => c.dslPath as string)
+        ))
+
+        if (neededPaths.length === 0) return
+        const missing = neededPaths.filter((p) => !dslContentByPath[p])
+        if (missing.length === 0) return
+
+        postMessage({ command: 'loadDiagramFilesBulk', payload: { relativePaths: missing } })
+    }, [componentNodes, dslContentByPath])
 
     useEffect(() => {
         const saveOnClose = () => saveComponentListJson(true)
@@ -521,6 +573,7 @@ export function App({ service, componentService }: { service: ClassDiagramServic
                         <>
                             <ComponentEditorContainer
                                 service={componentService}
+                                availableDslFiles={componentDslFiles}
                                 selectedId={selectedId}
                                 onSelectComponent={setSelectedId}
                                 setGlobalComponents={setComponentNodes}
@@ -532,6 +585,7 @@ export function App({ service, componentService }: { service: ClassDiagramServic
                                     components={componentNodes}
                                     relationships={componentRels}
                                     classes={classes}
+                                    dslContentByPath={dslContentByPath}
                                     selectedId={selectedId}
                                     onSelectComponent={setSelectedId}
                                     onMoveComponent={handleMoveComponent}

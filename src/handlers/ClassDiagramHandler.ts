@@ -42,6 +42,7 @@ export class ClassDiagramHandler {
             .register('log', this.handleLog.bind(this))
             .register('requestDiagramFiles', this.handleRequestDiagramFiles.bind(this))
             .register('loadDiagramFile', this.handleLoadDiagramFile.bind(this))
+            .register('loadDiagramFilesBulk', this.handleLoadDiagramFilesBulk.bind(this))
             .register('saveDiagramFile', this.handleSaveDiagramFile.bind(this))
             .register('createDiagramFolder', this.handleCreateDiagramFolder.bind(this))
             .register('createDiagramFile', this.handleCreateDiagramFile.bind(this))
@@ -372,6 +373,35 @@ export class ClassDiagramHandler {
         } else {
             vscode.window.showErrorMessage(`Failed to load ${relativePath}`);
         }
+    }
+
+    private async handleLoadDiagramFilesBulk(msg: any, ctx: MessageContext): Promise<void> {
+        const payload = msg.payload || {};
+        const relativePaths: unknown[] = Array.isArray(payload.relativePaths) ? payload.relativePaths : [];
+        if (relativePaths.length === 0) {
+            ctx.panel.webview.postMessage({
+                command: 'diagramFilesBulkLoaded',
+                payload: { files: [] }
+            });
+            return;
+        }
+
+        const uniquePaths: string[] = Array.from(
+            new Set(relativePaths.filter((p): p is string => typeof p === 'string' && p.length > 0))
+        );
+        const files: Array<{ relativePath: string; dsl: string }> = [];
+
+        for (const relativePath of uniquePaths) {
+            const dsl = await this.fileService.readDiagramFile(relativePath);
+            if (dsl !== null) {
+                files.push({ relativePath, dsl });
+            }
+        }
+
+        ctx.panel.webview.postMessage({
+            command: 'diagramFilesBulkLoaded',
+            payload: { files }
+        });
     }
 
     private async handleSaveDiagramFile(msg: any, ctx: MessageContext): Promise<void> {

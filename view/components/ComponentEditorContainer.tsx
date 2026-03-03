@@ -17,6 +17,7 @@ import { postMessage } from "../../frontend/src/bridge/vscode-bridge";
 
 export function ComponentEditorContainer({
     service,
+    availableDslFiles,
     setGlobalComponents,
     setGlobalRelationships,
     refreshToken,
@@ -24,6 +25,7 @@ export function ComponentEditorContainer({
     onSelectComponent: externalOnSelectComponent,
 }: {
     service: ComponentService
+    availableDslFiles?: string[]
     setGlobalComponents?: (components: ComponentInfo[]) => void
     setGlobalRelationships?: (relationships: ComponentRelationship[]) => void
     /**
@@ -207,6 +209,7 @@ export function ComponentEditorContainer({
             <ComponentEditorPanel
                 components={components}
                 classes={classes}
+                availableDslFiles={availableDslFiles}
                 selectedId={selectedId}
                 onSelectComponent={setSelectedId}
                 onUpdateComponent={handleUpdateComponent}

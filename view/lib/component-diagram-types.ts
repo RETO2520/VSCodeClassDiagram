@@ -53,6 +53,7 @@ export interface ComponentInfo {
     height: number
     /** 設計メモ・補足説明 */
     description?: string
+    dslPath?: string
 }
 
 // ==============================

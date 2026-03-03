@@ -25,6 +25,7 @@ export type WebviewToHostMessage =
     | { command: 'log'; level: 'debug' | 'info' | 'warn' | 'error'; text: string }
     | { command: 'requestDiagramFiles' }
     | { command: 'loadDiagramFile'; payload: { relativePath: string } }
+    | { command: 'loadDiagramFilesBulk'; payload: { relativePaths: string[] } }
     | { command: 'saveDiagramFile'; payload: { relativePath: string; dsl: string } }
     | { command: 'createDiagramFolder'; payload: { relativePath: string } }
     | { command: 'createDiagramFile'; payload: { relativePath: string } }
@@ -46,8 +47,9 @@ export type HostToWebviewMessage =
     | { command: 'dslLoaded'; payload: unknown }
     | { command: 'specDslImported'; payload: unknown }
     | { command: 'changedPrimitiveTypes'; primitiveTypes: string[] }
-    | { command: 'diagramFilesLoaded'; payload: { files: string[] } }
+    | { command: 'diagramFilesLoaded'; payload: { files: Array<{ path: string; isDirectory: boolean }> } }
     | { command: 'diagramFileLoaded'; payload: { relativePath: string; dsl: string } }
+    | { command: 'diagramFilesBulkLoaded'; payload: { files: Array<{ relativePath: string; dsl: string }> } }
     | {
         command: 'componentListJsonLoaded'; payload: {
             components: unknown[];

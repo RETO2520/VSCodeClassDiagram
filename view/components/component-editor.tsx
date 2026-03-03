@@ -39,6 +39,7 @@ interface ComponentEditorProps {
     componentInfo: ComponentInfo
     allComponents: ComponentInfo[]
     allClasses: ClassInfo[]
+    availableDslFiles?: string[]
     onChange: (updated: ComponentInfo) => void
     onDelete: () => void
     onAssignClass?: (classId: string) => void
@@ -65,6 +66,7 @@ export function ComponentEditor({
     componentInfo,
     allComponents,
     allClasses,
+    availableDslFiles = [],
     onChange,
     onDelete,
     onAssignClass,
@@ -158,6 +160,26 @@ export function ComponentEditor({
                 {componentInfo.kind === "component" && (
                     <>
                         <Separator />
+                        <div className="flex flex-col gap-1.5">
+                            <Label className="text-xs font-medium text-muted-foreground">{"DSL File"}</Label>
+                            <Select
+                                value={componentInfo.dslPath && componentInfo.dslPath.length > 0 ? componentInfo.dslPath : "__none__"}
+                                onValueChange={(v) => updateField("dslPath", v === "__none__" ? undefined : v)}
+                            >
+                                <SelectTrigger className="h-8 text-sm">
+                                    <SelectValue placeholder="Select DSL file..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="__none__">(None)</SelectItem>
+                                    {availableDslFiles.map((path) => (
+                                        <SelectItem key={path} value={path}>
+                                            {path}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
                         <div className="flex flex-col gap-2">
                             <Label className="text-xs font-medium text-muted-foreground">{"Classes"}</Label>
                             <div className="flex flex-wrap gap-1.5">
@@ -249,6 +271,7 @@ export function ComponentEditor({
 interface ComponentEditorPanelProps {
     components: ComponentInfo[]
     classes: ClassInfo[]
+    availableDslFiles?: string[]
     selectedId: string | null
     onSelectComponent: (id: string) => void
     onUpdateComponent: (id: string, updated: ComponentInfo) => void
@@ -271,6 +294,7 @@ const DEFAULT_DETAIL_WIDTH = 380
 export function ComponentEditorPanel({
     components,
     classes,
+    availableDslFiles = [],
     selectedId,
     onSelectComponent,
     onUpdateComponent,
@@ -532,6 +556,7 @@ export function ComponentEditorPanel({
                                 componentInfo={selectedComponent}
                                 allComponents={components}
                                 allClasses={classes}
+                                availableDslFiles={availableDslFiles}
                                 onChange={(updated) => onUpdateComponent(selectedComponent.id, updated)}
                                 onDelete={() => onDeleteComponent(selectedComponent.id)}
                                 onAssignClass={(classId) => onAssignClass?.(selectedComponent.id, classId)}

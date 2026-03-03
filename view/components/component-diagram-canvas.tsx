@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { ZoomIn, ZoomOut, Maximize2, Maximize } from "lucide-react"
 import type { ComponentInfo, ComponentKind, ComponentRelationship } from "@/lib/component-diagram-types"
@@ -85,6 +85,7 @@ function drawComponentBox(
   isSelected: boolean,
   allComponents: ComponentInfo[],
   classes: ClassInfo[],
+  dslSummaryByPath: Record<string, DslSummary>,
 ) {
   const { x, y, width: w, height: h } = comp
   const colors = kindColors(comp.kind)
@@ -129,7 +130,13 @@ function drawComponentBox(
   ctx.font = `${SMALL_FONT_SIZE}px ${MONO_FONT}`
   const stats =
     comp.kind === "component"
-      ? `Classes: ${comp.classIds.length}`
+      ? (() => {
+        const dslPath = comp.dslPath ?? ""
+        const summary = dslPath ? dslSummaryByPath[dslPath] : undefined
+        if (summary) return `DSL Classes: ${summary.classes.length}`
+        if (dslPath) return `DSL: ${dslPath}`
+        return `Classes: ${comp.classIds.length}`
+      })()
       : `Children: ${comp.childComponentIds.length}`
   let textY = y + headerH + BODY_PADDING + 12
   ctx.fillText(stats, x + BODY_PADDING, textY)
@@ -167,9 +174,16 @@ function drawComponentBox(
     )
     items = comps.map((c) => c.name)
   } else {
-    title = "Classes"
-    items = comp.classIds
-      .map((cid) => classes.find((cls) => cls.id === cid)?.name ?? cid)
+    const dslPath = comp.dslPath ?? ""
+    const summary = dslPath ? dslSummaryByPath[dslPath] : undefined
+    if (summary) {
+      title = `DSL (${dslPath})`
+      items = summary.classes.map((c) => `${c.name} [F:${c.memberCount} M:${c.operationCount}]`)
+    } else {
+      title = "Classes"
+      items = comp.classIds
+        .map((cid) => classes.find((cls) => cls.id === cid)?.name ?? cid)
+    }
   }
 
   if (items.length > 0) {
@@ -216,6 +230,45 @@ function clipText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
     else hi = mid - 1
   }
   return text.slice(0, lo) + ell
+}
+
+interface DslClassSummary {
+  name: string
+  memberCount: number
+  operationCount: number
+}
+
+interface DslSummary {
+  classes: DslClassSummary[]
+}
+
+function parseDslSummary(dsl: string): DslSummary {
+  const lines = dsl.split(/\r?\n/)
+  const classes: DslClassSummary[] = []
+  let current: DslClassSummary | null = null
+
+  for (const raw of lines) {
+    const line = raw.trim()
+    if (!line || line.startsWith("//") || line.startsWith("#")) continue
+
+    const classMatch = line.match(/^(?:abstract\s+)?(?:class|interface|struct)\s+(\w+)/i)
+    if (classMatch) {
+      if (current) classes.push(current)
+      current = { name: classMatch[1], memberCount: 0, operationCount: 0 }
+      continue
+    }
+
+    if (!current) continue
+    if (!/^[+\-#~]/.test(line)) continue
+    if (line.includes("(")) {
+      current.operationCount += 1
+    } else {
+      current.memberCount += 1
+    }
+  }
+
+  if (current) classes.push(current)
+  return { classes }
 }
 
 function getEdgePoint(
@@ -450,6 +503,7 @@ interface ComponentDiagramCanvasProps {
   components: ComponentInfo[]
   relationships: ComponentRelationship[]
   classes: ClassInfo[]
+  dslContentByPath?: Record<string, string>
   selectedId: string | null
   onSelectComponent: (id: string | null) => void
   onMoveComponent: (id: string, x: number, y: number) => void
@@ -462,6 +516,7 @@ export function ComponentDiagramCanvas({
   components,
   relationships,
   classes,
+  dslContentByPath = {},
   selectedId,
   onSelectComponent,
   onMoveComponent,
@@ -510,6 +565,16 @@ export function ComponentDiagramCanvas({
     [zoom, panOffset],
   )
 
+  const dslSummaryByPath = useMemo<Record<string, DslSummary>>(() => {
+    const entries = Object.entries(dslContentByPath)
+    const result: Record<string, DslSummary> = {}
+    for (const [path, dsl] of entries) {
+      if (!dsl) continue
+      result[path] = parseDslSummary(dsl)
+    }
+    return result
+  }, [dslContentByPath])
+
   const draw = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -533,14 +598,14 @@ export function ComponentDiagramCanvas({
       drawComponentRelationship(ctx, rel, components)
     }
     for (const comp of components) {
-      drawComponentBox(ctx, comp, comp.id === selectedId, components, classes)
+      drawComponentBox(ctx, comp, comp.id === selectedId, components, classes, dslSummaryByPath)
     }
 
     ctx.restore()
 
     drawLegend(ctx, rect.width)
     drawZoomIndicator(ctx, zoom)
-  }, [components, relationships, classes, selectedId, zoom, panOffset])
+  }, [components, relationships, classes, selectedId, zoom, panOffset, dslSummaryByPath])
 
   useEffect(() => {
     draw()
@@ -882,4 +947,3 @@ export function ComponentDiagramCanvas({
     </div>
   )
 }
-
