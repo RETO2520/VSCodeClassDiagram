@@ -17,6 +17,8 @@ const BODY_PADDING = 10
 const LINE_HEIGHT = 18
 const CORNER_RADIUS = 8
 const RESIZE_HANDLE_SIZE = 12
+const HEATMAP_PANEL_WIDTH = 96
+const HEATMAP_CELL_SIZE = 8
 
 const MIN_ZOOM = 0.2
 const MAX_ZOOM = 3
@@ -86,10 +88,16 @@ function drawComponentBox(
   allComponents: ComponentInfo[],
   classes: ClassInfo[],
   dslSummaryByPath: Record<string, DslSummary>,
+  heatMetricsByComponentId: Record<string, ComponentHeatMetrics>,
+  showComponentHeatmap: boolean,
+  showClassHeatmap: boolean,
 ) {
   const { x, y, width: w, height: h } = comp
   const colors = kindColors(comp.kind)
   const headerH = 48
+  const heat = heatMetricsByComponentId[comp.id]
+  const showHeatPanel = Boolean(heat) && (showComponentHeatmap || showClassHeatmap)
+  const reservedRightWidth = showHeatPanel ? HEATMAP_PANEL_WIDTH + 8 : 0
 
   // shadow
   ctx.save()
@@ -143,7 +151,7 @@ function drawComponentBox(
 
   // description (single line, clipped)
   if (comp.description) {
-    const maxW = Math.max(0, w - BODY_PADDING * 2)
+    const maxW = Math.max(0, w - BODY_PADDING * 2 - reservedRightWidth)
     const desc = clipText(ctx, comp.description, maxW)
     ctx.fillStyle = "#475569"
     textY += LINE_HEIGHT
@@ -152,7 +160,7 @@ function drawComponentBox(
 
   // child list (FolderTree と対応する階層情報)
   const maxY = y + h - BODY_PADDING - 8
-  const maxW = Math.max(0, w - BODY_PADDING * 2)
+  const maxW = Math.max(0, w - BODY_PADDING * 2 - reservedRightWidth)
 
   // 1 行分空ける
   textY += LINE_HEIGHT
@@ -202,6 +210,29 @@ function drawComponentBox(
     }
   }
 
+  if (showHeatPanel && heat) {
+    const { panelX, panelY, panelH } = getHeatPanelLayout(comp, showComponentHeatmap, showClassHeatmap)
+
+    ctx.save()
+    ctx.fillStyle = "rgba(255,255,255,0.92)"
+    ctx.beginPath()
+    ctx.roundRect(panelX, panelY, HEATMAP_PANEL_WIDTH, panelH, 6)
+    ctx.fill()
+    ctx.strokeStyle = "#e2e8f0"
+    ctx.lineWidth = 1
+    ctx.stroke()
+    ctx.restore()
+
+    let rowY = panelY + 6
+    if (showComponentHeatmap) {
+      drawHeatRatioRow(ctx, panelX + 6, rowY, "Cmp", heat.componentCells, HEATMAP_PANEL_WIDTH - 12)
+      rowY += 16
+    }
+    if (showClassHeatmap) {
+      drawHeatRatioRow(ctx, panelX + 6, rowY, "Cls", heat.classCells, HEATMAP_PANEL_WIDTH - 12)
+    }
+  }
+
   // resize handle (bottom-right)
   if (isSelected) {
     ctx.save()
@@ -242,6 +273,25 @@ interface DslSummary {
   classes: DslClassSummary[]
 }
 
+interface ComponentHeatMetrics {
+  componentCells: number[]
+  classCells: number[]
+  componentRaw: {
+    incoming: number
+    outgoing: number
+    children: number
+    classLoad: number
+  }
+  classRaw: number[]
+}
+
+interface HeatTooltipState {
+  screenX: number
+  screenY: number
+  title: string
+  lines: string[]
+}
+
 function parseDslSummary(dsl: string): DslSummary {
   const lines = dsl.split(/\r?\n/)
   const classes: DslClassSummary[] = []
@@ -269,6 +319,84 @@ function parseDslSummary(dsl: string): DslSummary {
 
   if (current) classes.push(current)
   return { classes }
+}
+
+function normalizeCells(values: number[]) {
+  if (values.length === 0) return []
+  const max = Math.max(...values, 1)
+  return values.map((v) => Math.max(0, Math.min(1, v / max)))
+}
+
+function heatColor(v: number) {
+  const clamped = Math.max(0, Math.min(1, v))
+  const hue = 215 - clamped * 210
+  const sat = 88
+  const light = 56 - clamped * 14
+  return `hsl(${hue} ${sat}% ${light}%)`
+}
+
+function drawHeatRatioRow(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  label: string,
+  cells: number[],
+  panelWidth: number,
+) {
+  ctx.save()
+  ctx.font = `bold 9px ${MONO_FONT}`
+  ctx.fillStyle = "#475569"
+  ctx.textAlign = "left"
+  ctx.fillText(label, x, y + 7)
+
+  const barX = x + 18
+  const countText = `${cells.length}`
+  const countW = Math.ceil(ctx.measureText(countText).width)
+  const barW = Math.max(24, panelWidth - 18 - countW - 8)
+
+  if (cells.length === 0) {
+    ctx.fillStyle = "#cbd5e1"
+    ctx.fillRect(barX, y, barW, HEATMAP_CELL_SIZE)
+  } else {
+    const bins = [0, 0, 0, 0]
+    for (const v of cells) {
+      const idx = Math.min(3, Math.floor(v * 4))
+      bins[idx] += 1
+    }
+
+    let accX = barX
+    const total = Math.max(1, cells.length)
+    for (let i = 0; i < bins.length; i++) {
+      const segW = i === bins.length - 1
+        ? barX + barW - accX
+        : Math.round((bins[i] / total) * barW)
+      if (segW <= 0) continue
+      ctx.fillStyle = heatColor((i + 0.5) / bins.length)
+      ctx.fillRect(accX, y, segW, HEATMAP_CELL_SIZE)
+      accX += segW
+    }
+    ctx.strokeStyle = "rgba(15,23,42,0.2)"
+    ctx.lineWidth = 0.8
+    ctx.strokeRect(barX, y, barW, HEATMAP_CELL_SIZE)
+  }
+
+  ctx.fillStyle = "#64748b"
+  ctx.textAlign = "left"
+  ctx.fillText(countText, barX + barW + 3, y + 7)
+  ctx.restore()
+}
+
+function getHeatPanelLayout(
+  comp: ComponentInfo,
+  showComponentHeatmap: boolean,
+  showClassHeatmap: boolean,
+) {
+  const headerH = 48
+  const panelX = comp.x + comp.width - BODY_PADDING - HEATMAP_PANEL_WIDTH
+  const panelY = comp.y + headerH + BODY_PADDING - 2
+  const rowCount = [showComponentHeatmap, showClassHeatmap].filter(Boolean).length
+  const panelH = rowCount * 16 + 10
+  return { panelX, panelY, panelH }
 }
 
 function getEdgePoint(
@@ -528,6 +656,9 @@ export function ComponentDiagramCanvas({
 
   const [zoom, setZoom] = useState(1)
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
+  const [showComponentHeatmap, setShowComponentHeatmap] = useState(true)
+  const [showClassHeatmap, setShowClassHeatmap] = useState(true)
+  const [heatTooltip, setHeatTooltip] = useState<HeatTooltipState | null>(null)
 
   const interactionRef = useRef<{
     mode: "none" | "dragging-component" | "resizing-component" | "panning"
@@ -575,6 +706,70 @@ export function ComponentDiagramCanvas({
     return result
   }, [dslContentByPath])
 
+  const heatMetricsByComponentId = useMemo<Record<string, ComponentHeatMetrics>>(() => {
+    const incoming = new Map<string, number>()
+    const outgoing = new Map<string, number>()
+    for (const rel of relationships) {
+      outgoing.set(rel.sourceComponentId, (outgoing.get(rel.sourceComponentId) ?? 0) + 1)
+      incoming.set(rel.targetComponentId, (incoming.get(rel.targetComponentId) ?? 0) + 1)
+    }
+
+    const componentById = new Map(components.map((c) => [c.id, c]))
+    const classById = new Map(classes.map((c) => [c.id, c]))
+
+    const classLoadOfComponent = (component: ComponentInfo) => {
+      const dslPath = component.dslPath ?? ""
+      const summary = dslPath ? dslSummaryByPath[dslPath] : undefined
+      if (summary) return summary.classes.length
+      return component.classIds.length
+    }
+
+    const result: Record<string, ComponentHeatMetrics> = {}
+    for (const comp of components) {
+      const incomingCount = incoming.get(comp.id) ?? 0
+      const outgoingCount = outgoing.get(comp.id) ?? 0
+      const childCount = comp.childComponentIds.length
+      const ownClassLoad = classLoadOfComponent(comp)
+
+      const componentCells = normalizeCells([incomingCount, outgoingCount, childCount, ownClassLoad])
+
+      let classRawCells: number[] = []
+      if (comp.kind === "component") {
+        const dslPath = comp.dslPath ?? ""
+        const summary = dslPath ? dslSummaryByPath[dslPath] : undefined
+        if (summary) {
+          classRawCells = summary.classes.map((c) => c.memberCount + c.operationCount)
+        } else {
+          classRawCells = comp.classIds.map((classId) => {
+            const cls = classById.get(classId)
+            if (!cls) return 0
+            return cls.members.length + cls.operations.length
+          })
+        }
+      } else {
+        classRawCells = comp.childComponentIds.map((childId) => {
+          const child = componentById.get(childId)
+          if (!child) return 0
+          return classLoadOfComponent(child)
+        })
+      }
+
+      result[comp.id] = {
+        componentCells,
+        classCells: normalizeCells(classRawCells),
+        componentRaw: {
+          incoming: incomingCount,
+          outgoing: outgoingCount,
+          children: childCount,
+          classLoad: ownClassLoad,
+        },
+        classRaw: classRawCells,
+      }
+    }
+
+    return result
+  }, [components, relationships, classes, dslSummaryByPath])
+
   const draw = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -598,14 +793,35 @@ export function ComponentDiagramCanvas({
       drawComponentRelationship(ctx, rel, components)
     }
     for (const comp of components) {
-      drawComponentBox(ctx, comp, comp.id === selectedId, components, classes, dslSummaryByPath)
+      drawComponentBox(
+        ctx,
+        comp,
+        comp.id === selectedId,
+        components,
+        classes,
+        dslSummaryByPath,
+        heatMetricsByComponentId,
+        showComponentHeatmap,
+        showClassHeatmap,
+      )
     }
 
     ctx.restore()
 
     drawLegend(ctx, rect.width)
     drawZoomIndicator(ctx, zoom)
-  }, [components, relationships, classes, selectedId, zoom, panOffset, dslSummaryByPath])
+  }, [
+    components,
+    relationships,
+    classes,
+    selectedId,
+    zoom,
+    panOffset,
+    dslSummaryByPath,
+    heatMetricsByComponentId,
+    showComponentHeatmap,
+    showClassHeatmap,
+  ])
 
   useEffect(() => {
     draw()
@@ -628,6 +844,85 @@ export function ComponentDiagramCanvas({
     const hx = comp.x + comp.width - RESIZE_HANDLE_SIZE
     const hy = comp.y + comp.height - RESIZE_HANDLE_SIZE
     return worldX >= hx && worldX <= hx + RESIZE_HANDLE_SIZE && worldY >= hy && worldY <= hy + RESIZE_HANDLE_SIZE
+  }
+
+  function buildComponentHeatTooltip(comp: ComponentInfo, heat: ComponentHeatMetrics): { title: string; lines: string[] } {
+    const r = heat.componentRaw
+    const totalFlow = r.incoming + r.outgoing
+    return {
+      title: `${comp.name} / Component Stats`,
+      lines: [
+        `Incoming links: ${r.incoming}`,
+        `Outgoing links: ${r.outgoing}`,
+        `Children: ${r.children}`,
+        `Class load: ${r.classLoad}`,
+        `Total flow: ${totalFlow}`,
+      ],
+    }
+  }
+
+  function buildClassHeatTooltip(comp: ComponentInfo, heat: ComponentHeatMetrics): { title: string; lines: string[] } {
+    const values = heat.classRaw.filter((v) => Number.isFinite(v))
+    const count = values.length
+    if (count === 0) {
+      return {
+        title: `${comp.name} / Class Stats`,
+        lines: ["No class metrics available"],
+      }
+    }
+
+    const sorted = [...values].sort((a, b) => a - b)
+    const sum = sorted.reduce((acc, n) => acc + n, 0)
+    const avg = sum / count
+    const min = sorted[0]
+    const max = sorted[count - 1]
+    const median = sorted[Math.floor((count - 1) / 2)]
+    const p90 = sorted[Math.floor((count - 1) * 0.9)]
+
+    const bins = [0, 0, 0, 0]
+    const normalized = heat.classCells
+    for (const v of normalized) {
+      const idx = Math.min(3, Math.floor(v * 4))
+      bins[idx] += 1
+    }
+
+    return {
+      title: `${comp.name} / Class Stats`,
+      lines: [
+        `Classes: ${count}`,
+        `Min / Avg / Max: ${min} / ${avg.toFixed(1)} / ${max}`,
+        `Median / P90: ${median} / ${p90}`,
+        `Density bins (L1-L4): ${bins.join(" / ")}`,
+      ],
+    }
+  }
+
+  function hitTestHeatRow(worldX: number, worldY: number): { component: ComponentInfo; row: "component" | "class" } | null {
+    if (!showComponentHeatmap && !showClassHeatmap) return null
+    for (let i = components.length - 1; i >= 0; i--) {
+      const comp = components[i]
+      const heat = heatMetricsByComponentId[comp.id]
+      if (!heat) continue
+
+      const { panelX, panelY, panelH } = getHeatPanelLayout(comp, showComponentHeatmap, showClassHeatmap)
+      if (worldX < panelX || worldX > panelX + HEATMAP_PANEL_WIDTH) continue
+      if (worldY < panelY || worldY > panelY + panelH) continue
+
+      let rowY = panelY + 6
+      const rowH = 12
+      if (showComponentHeatmap) {
+        if (worldY >= rowY && worldY <= rowY + rowH) {
+          return { component: comp, row: "component" }
+        }
+        rowY += 16
+      }
+      if (showClassHeatmap) {
+        if (worldY >= rowY && worldY <= rowY + rowH) {
+          return { component: comp, row: "class" }
+        }
+      }
+    }
+    return null
   }
 
   function handleMouseDown(e: React.MouseEvent) {
@@ -707,11 +1002,13 @@ export function ComponentDiagramCanvas({
     const world = screenToWorld(screenX, screenY)
 
     if (interaction.mode === "dragging-component" && interaction.componentId) {
+      setHeatTooltip(null)
       onMoveComponent(interaction.componentId, world.x - interaction.offsetX, world.y - interaction.offsetY)
       return
     }
 
     if (interaction.mode === "resizing-component" && interaction.componentId && onResizeComponent) {
+      setHeatTooltip(null)
       const comp = components.find((c) => c.id === interaction.componentId)
       if (!comp) return
       const dw = world.x - interaction.startWorldX
@@ -723,10 +1020,36 @@ export function ComponentDiagramCanvas({
     }
 
     if (interaction.mode === "panning") {
+      setHeatTooltip(null)
       const dx = screenX - interaction.startPanX
       const dy = screenY - interaction.startPanY
       setPanOffset({ x: interaction.startOffsetX + dx, y: interaction.startOffsetY + dy })
+      return
     }
+
+    const heatHit = hitTestHeatRow(world.x, world.y)
+    if (!heatHit) {
+      setHeatTooltip(null)
+      return
+    }
+
+    const heat = heatMetricsByComponentId[heatHit.component.id]
+    if (!heat) {
+      setHeatTooltip(null)
+      return
+    }
+
+    const payload =
+      heatHit.row === "component"
+        ? buildComponentHeatTooltip(heatHit.component, heat)
+        : buildClassHeatTooltip(heatHit.component, heat)
+
+    setHeatTooltip({
+      screenX: screenX + 14,
+      screenY: screenY + 14,
+      title: payload.title,
+      lines: payload.lines,
+    })
   }
 
   function handleMouseUp() {
@@ -902,10 +1225,50 @@ export function ComponentDiagramCanvas({
         onMouseLeave={() => {
           handleMouseUp()
           setCanvasCursor("grab")
+          setHeatTooltip(null)
         }}
       />
 
+      {heatTooltip && (
+        <div
+          className="absolute z-20 max-w-[320px] rounded border border-slate-200 bg-white/95 px-2 py-1.5 shadow-md"
+          style={{
+            left: heatTooltip.screenX,
+            top: heatTooltip.screenY,
+            pointerEvents: "none",
+          }}
+        >
+          <div className="text-[11px] font-semibold text-slate-800">{heatTooltip.title}</div>
+          {heatTooltip.lines.map((line, idx) => (
+            <div key={idx} className="text-[10px] leading-4 text-slate-600">
+              {line}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Controls */}
+      <div className="absolute left-4 top-4 flex gap-2">
+        <Button
+          variant={showComponentHeatmap ? "default" : "outline"}
+          size="sm"
+          onClick={() => setShowComponentHeatmap((v) => !v)}
+          className="h-7 px-2 text-[11px] shadow-sm"
+          title="Toggle component-level mini heatmap"
+        >
+          Cmp Heat
+        </Button>
+        <Button
+          variant={showClassHeatmap ? "default" : "outline"}
+          size="sm"
+          onClick={() => setShowClassHeatmap((v) => !v)}
+          className="h-7 px-2 text-[11px] shadow-sm"
+          title="Toggle class-level mini heatmap"
+        >
+          Cls Heat
+        </Button>
+      </div>
+
       <div className="absolute bottom-4 right-4 flex flex-col gap-1.5">
         <Button
           variant="outline"
