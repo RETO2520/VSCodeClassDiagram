@@ -226,11 +226,27 @@ function drawComponentBox(
 
     let rowY = panelY + 6
     if (showComponentHeatmap) {
-      drawHeatRatioRow(ctx, panelX + 6, rowY, "Cmp", heat.componentCells, HEATMAP_PANEL_WIDTH - 12)
+      drawHeatRatioRow(
+        ctx,
+        panelX + 6,
+        rowY,
+        "Cmp",
+        heat.componentCells,
+        HEATMAP_PANEL_WIDTH - 12,
+        dominantLevelLabel(heat.componentCells),
+      )
       rowY += 16
     }
     if (showClassHeatmap) {
-      drawHeatRatioRow(ctx, panelX + 6, rowY, "Cls", heat.classCells, HEATMAP_PANEL_WIDTH - 12)
+      drawHeatRatioRow(
+        ctx,
+        panelX + 6,
+        rowY,
+        "Cls",
+        heat.classCells,
+        HEATMAP_PANEL_WIDTH - 12,
+        dominantLevelLabel(heat.classCells),
+      )
     }
   }
 
@@ -344,6 +360,7 @@ function drawHeatRatioRow(
   label: string,
   cells: number[],
   panelWidth: number,
+  badgeText?: string,
 ) {
   ctx.save()
   ctx.font = `bold 9px ${MONO_FONT}`
@@ -352,7 +369,7 @@ function drawHeatRatioRow(
   ctx.fillText(label, x, y + 7)
 
   const barX = x + 18
-  const countText = `${cells.length}`
+  const countText = badgeText ?? `${cells.length}`
   const countW = Math.ceil(ctx.measureText(countText).width)
   const barW = Math.max(24, panelWidth - 18 - countW - 8)
 
@@ -377,6 +394,16 @@ function drawHeatRatioRow(
       ctx.fillRect(accX, y, segW, HEATMAP_CELL_SIZE)
       accX += segW
     }
+    // Explicitly show L1-L4 boundaries for faster balance reading.
+    ctx.strokeStyle = "rgba(15,23,42,0.16)"
+    ctx.lineWidth = 0.8
+    for (let i = 1; i < 4; i++) {
+      const boundaryX = barX + (barW * i) / 4
+      ctx.beginPath()
+      ctx.moveTo(boundaryX, y)
+      ctx.lineTo(boundaryX, y + HEATMAP_CELL_SIZE)
+      ctx.stroke()
+    }
     ctx.strokeStyle = "rgba(15,23,42,0.2)"
     ctx.lineWidth = 0.8
     ctx.strokeRect(barX, y, barW, HEATMAP_CELL_SIZE)
@@ -386,6 +413,25 @@ function drawHeatRatioRow(
   ctx.textAlign = "left"
   ctx.fillText(countText, barX + barW + 3, y + 7)
   ctx.restore()
+}
+
+function buildHeatBins(cells: number[]) {
+  const bins = [0, 0, 0, 0]
+  for (const v of cells) {
+    const idx = Math.min(3, Math.floor(v * 4))
+    bins[idx] += 1
+  }
+  return bins
+}
+
+function dominantLevelLabel(cells: number[]) {
+  if (cells.length === 0) return "L0"
+  const bins = buildHeatBins(cells)
+  let bestIdx = 0
+  for (let i = 1; i < bins.length; i++) {
+    if (bins[i] > bins[bestIdx]) bestIdx = i
+  }
+  return `L${bestIdx + 1}`
 }
 
 function getHeatPanelLayout(
@@ -856,18 +902,26 @@ export function ComponentDiagramCanvas({
   function buildComponentHeatTooltip(comp: ComponentInfo, heat: ComponentHeatMetrics): { title: string; lines: string[] } {
     const r = heat.componentRaw
     const totalFlow = r.incoming + r.outgoing
+    const hotspot =
+      r.incoming >= r.outgoing * 1.5
+        ? "受信偏重"
+        : r.outgoing >= r.incoming * 1.5
+          ? "送信偏重"
+          : "入出力は均衡"
+    const nextAction =
+      totalFlow >= 8
+        ? "次アクション: 依存本数が多い境界を1つ選び、Facade/Portで疎結合化"
+        : "次アクション: この状態を維持し、L4の増加だけ監視"
     return {
-      title: `${comp.name} / Component Stats`,
+      title: `${comp.name} / コンポーネント俯瞰`,
       lines: [
-        `Incoming links: ${r.incoming} (このコンポーネントを参照している他コンポーネント数)`,
-        `Outgoing links: ${r.outgoing} (このコンポーネントから参照している他コンポーネント数)`,
-        `Children: ${r.children} (配下にぶら下がる子要素数。Subsystem/Component など)`,
-        `Class load: ${r.classLoad} (この箱が直接保持しているクラス数)`,
-        `Total flow: ${totalFlow} (入出力リンクの合計。依存の交通量の目安)`,
+        `リンク: In ${r.incoming} / Out ${r.outgoing} (合計 ${totalFlow})`,
+        `内部規模: 子要素 ${r.children}, クラス数 ${r.classLoad}`,
+        `偏り判定: ${hotspot}`,
+        nextAction,
       ],
     }
   }
-
   function buildClassHeatTooltip(comp: ComponentInfo, heat: ComponentHeatMetrics): { title: string; lines: string[] } {
     const entries = heat.classRaw
       .map((value, idx) => ({ value, label: heat.classLabels[idx] ?? `Item${idx + 1}` }))
@@ -876,8 +930,8 @@ export function ComponentDiagramCanvas({
     const count = values.length
     if (count === 0) {
       return {
-        title: `${comp.name} / Class Stats`,
-        lines: ["No class metrics available"],
+        title: `${comp.name} / クラス負荷`,
+        lines: ["クラス指標なし"],
       }
     }
 
@@ -889,30 +943,39 @@ export function ComponentDiagramCanvas({
     const median = sorted[Math.floor((count - 1) / 2)]
     const p90 = sorted[Math.floor((count - 1) * 0.9)]
 
-    const bins = [0, 0, 0, 0]
-    const normalized = heat.classCells
-    for (const v of normalized) {
-      const idx = Math.min(3, Math.floor(v * 4))
-      bins[idx] += 1
-    }
+    const bins = buildHeatBins(heat.classCells)
 
     const topEntries = [...entries]
       .sort((a, b) => b.value - a.value)
       .slice(0, CLASS_TOOLTIP_TOP_N)
       .map((e) => `${e.label}(${e.value})`)
 
+    const l4Ratio = bins[3] / Math.max(1, count)
+    const balance =
+      l4Ratio >= 0.4
+        ? "偏り強"
+        : l4Ratio >= 0.2
+          ? "やや偏り"
+          : "概ね均等"
+    const nextAction =
+      l4Ratio >= 0.4
+        ? "次アクション: 負荷上位クラスを分割し、責務を別クラスへ移譲"
+        : l4Ratio >= 0.2
+          ? "次アクション: 上位クラスのメソッド群を集約単位ごとに整理"
+          : "次アクション: 現状維持。新規実装はL4集中を避ける"
+
     return {
-      title: `${comp.name} / Class Stats`,
+      title: `${comp.name} / クラス負荷`,
       lines: [
-        `Classes: ${count} (評価対象のクラス件数)`,
-        `Min / Avg / Max: ${min} / ${avg.toFixed(1)} / ${max} (各クラス負荷の最小/平均/最大)`,
-        `Median / P90: ${median} / ${p90} (中央値と上位10%境界。偏り確認に有効)`,
-        `Density bins (L1-L4): ${bins.join(" / ")} (低負荷→高負荷の4段階分布)`,
-        `Top ${topEntries.length}: ${topEntries.join(", ")} (負荷上位クラス。値はメンバー数+操作数)`,
+        `負荷上位クラス: ${topEntries.join(", ") || "-"}`,
+        `4段階分布 (L1-L4): ${bins.join(" / ")} -> ${balance}`,
+        "L1-L4補足: L1=低負荷, L2=やや低, L3=やや高, L4=高負荷（同一コンポーネント内での相対評価）",
+        `Min / Avg / Max: ${min} / ${avg.toFixed(1)} / ${max}`,
+        `Median / P90: ${median} / ${p90}`,
+        nextAction,
       ],
     }
   }
-
   function hitTestHeatRow(worldX: number, worldY: number): { component: ComponentInfo; row: "component" | "class" } | null {
     if (!showComponentHeatmap && !showClassHeatmap) return null
     for (let i = components.length - 1; i >= 0; i--) {
