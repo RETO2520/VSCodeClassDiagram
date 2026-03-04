@@ -214,8 +214,12 @@ export function App({ service, componentService }: { service: ClassDiagramServic
     const [componentRefreshToken, setComponentRefreshToken] = useState(0)
     const [componentDslFiles, setComponentDslFiles] = useState<string[]>([])
     const [dslContentByPath, setDslContentByPath] = useState<Record<string, string>>({})
+    const componentListHydratedRef = useRef(false)
 
     const saveComponentListJson = useCallback((silent: boolean) => {
+        if (!componentListHydratedRef.current) {
+            return
+        }
         try {
             const snapshotComponents = (componentService as any).componentDomain.getComponents?.() ?? componentNodes
             const snapshotRelationships = (componentService as any).componentDomain.getRelationships?.() ?? componentRels
@@ -456,6 +460,7 @@ export function App({ service, componentService }: { service: ClassDiagramServic
                 const rawRelationships = Array.isArray(msg.payload?.relationships) ? msg.payload.relationships : []
                 const components = rawComponents as ComponentInfo[]
                 const relationships = rawRelationships as ComponentRelationship[]
+                componentListHydratedRef.current = true
 
                 try {
                     const restoredDomain = ComponentDomainModel.from(components, relationships)

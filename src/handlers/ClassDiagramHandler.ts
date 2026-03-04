@@ -50,6 +50,7 @@ export class ClassDiagramHandler {
             .register('ui.createFolder', this.handleUiCreateFolder.bind(this))
             .register('ui.deleteEntry', this.handleUiDeleteEntry.bind(this))
             .register('ui.renameEntry', this.handleUiRenameEntry.bind(this))
+            .register('loadComponentListJson', this.handleLoadComponentListJson.bind(this))
             .register('saveComponentListJson', this.handleSaveComponentListJson.bind(this))
             .register('deleteWithWarning', this.handleDeleteWithWarning.bind(this))
             ;
@@ -226,11 +227,14 @@ export class ClassDiagramHandler {
         }
     }
 
-    private async sendInitialComponentListJson(): Promise<void> {
+    private async handleLoadComponentListJson(_msg: any, _ctx: MessageContext): Promise<void> {
         if (!this.panel) return;
 
         const diagramRoot = this.fileService.getDiagramRootUri();
-        if (!diagramRoot) return;
+        if (!diagramRoot) {
+            vscode.window.showErrorMessage('Workspace is not open. Failed to load component list JSON.');
+            return;
+        }
 
         const targetUri = vscode.Uri.joinPath(diagramRoot, 'component-list.json');
         try {
@@ -243,9 +247,35 @@ export class ClassDiagramHandler {
                 command: 'componentListJsonLoaded',
                 payload: { components, relationships }
             });
-        } catch {
-            // component-list.json does not exist yet or invalid; skip restore silently
+            vscode.window.showInformationMessage('Loaded component list JSON (.diagram/component-list.json)');
+        } catch (e: any) {
+            this.logger.warn(`Failed to load component list JSON: ${e?.message || e}`);
+            vscode.window.showWarningMessage('Could not load .diagram/component-list.json');
         }
+    }
+
+    private async sendInitialComponentListJson(): Promise<void> {
+        if (!this.panel) return;
+
+        const diagramRoot = this.fileService.getDiagramRootUri();
+        if (!diagramRoot) return;
+
+        const targetUri = vscode.Uri.joinPath(diagramRoot, 'component-list.json');
+        let components: any[] = [];
+        let relationships: any[] = [];
+        try {
+            const loaded = await this.fileService.readFile(targetUri);
+            const parsed: any = loaded.parsed ?? {};
+            components = Array.isArray(parsed.components) ? parsed.components : [];
+            relationships = Array.isArray(parsed.relationships) ? parsed.relationships : [];
+        } catch {
+            // component-list.json does not exist yet or invalid; send empty snapshot for initialization handshake
+        }
+
+        this.panel.webview.postMessage({
+            command: 'componentListJsonLoaded',
+            payload: { components, relationships }
+        });
     }
 
     private async handleLoadJson(msg: any, ctx: MessageContext): Promise<void> {

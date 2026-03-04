@@ -33,6 +33,7 @@ export type WebviewToHostMessage =
     | { command: 'ui.createFolder'; payload: { relativeParentPath: string } }
     | { command: 'ui.deleteEntry'; payload: { relativePath: string } }
     | { command: 'ui.renameEntry'; payload: { oldRelativePath: string; newName: string } }
+    | { command: 'loadComponentListJson' }
     | {
         command: 'saveComponentListJson'; payload: {
             components: unknown[];

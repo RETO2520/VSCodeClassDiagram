@@ -73,6 +73,14 @@ export function ComponentEditorContainer({
         }
     }, [service]);
 
+    const loadContentListJson = useCallback(() => {
+        try {
+            postMessage({ command: 'loadComponentListJson' });
+        } catch (err) {
+            console.error("loadContentListJson error:", err);
+        }
+    }, []);
+
     // 同期処理
     const refreshFromService = useCallback(() => {
         try {
@@ -220,6 +228,7 @@ export function ComponentEditorContainer({
                 onAddChildComponent={handleAddChildComponent}
                 onRemoveChildComponent={handleRemoveChildComponent}
                 onSaveContentListJson={() => saveContentListJson({ silent: false })}
+                onLoadContentListJson={loadContentListJson}
             />
             {busy && <div className="sr-only">Processing...</div>}
         </div>

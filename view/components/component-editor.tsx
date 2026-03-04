@@ -20,6 +20,7 @@ import {
     Plus,
     Trash2,
     Save,
+    FolderOpen,
     Box,
     Layers,
     LayoutDashboard,
@@ -282,6 +283,7 @@ interface ComponentEditorPanelProps {
     onAddChildComponent?: (parentId: string, childId: string) => void
     onRemoveChildComponent?: (parentId: string, childId: string) => void
     onSaveContentListJson?: () => void
+    onLoadContentListJson?: () => void
 }
 
 const MIN_LIST_WIDTH = 120
@@ -305,6 +307,7 @@ export function ComponentEditorPanel({
     onAddChildComponent,
     onRemoveChildComponent,
     onSaveContentListJson,
+    onLoadContentListJson,
 }: ComponentEditorPanelProps) {
     const selectedComponent = components.find((c) => c.id === selectedId)
     const [listWidth, setListWidth] = useState(DEFAULT_LIST_WIDTH)
@@ -518,6 +521,15 @@ export function ComponentEditorPanel({
                                 title="Save content list as JSON"
                             >
                                 <Save className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={onLoadContentListJson}
+                                className="h-6 w-6 text-muted-foreground"
+                                title="Load content list from .diagram/component-list.json"
+                            >
+                                <FolderOpen className="h-3.5 w-3.5" />
                             </Button>
                             <Select onValueChange={(v) => onAddComponent(v as ComponentKind)} value="">
                                 <SelectTrigger className="h-6 w-12 text-[10px] bg-transparent border-none p-0 focus:ring-0">
