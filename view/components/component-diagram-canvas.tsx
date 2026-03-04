@@ -19,6 +19,7 @@ const CORNER_RADIUS = 8
 const RESIZE_HANDLE_SIZE = 12
 const HEATMAP_PANEL_WIDTH = 96
 const HEATMAP_CELL_SIZE = 8
+const CLASS_TOOLTIP_TOP_N = 3
 
 const MIN_ZOOM = 0.2
 const MAX_ZOOM = 3
@@ -283,6 +284,7 @@ interface ComponentHeatMetrics {
     classLoad: number
   }
   classRaw: number[]
+  classLabels: string[]
 }
 
 interface HeatTooltipState {
@@ -734,17 +736,20 @@ export function ComponentDiagramCanvas({
       const componentCells = normalizeCells([incomingCount, outgoingCount, childCount, ownClassLoad])
 
       let classRawCells: number[] = []
+      let classLabels: string[] = []
       if (comp.kind === "component") {
         const dslPath = comp.dslPath ?? ""
         const summary = dslPath ? dslSummaryByPath[dslPath] : undefined
         if (summary) {
           classRawCells = summary.classes.map((c) => c.memberCount + c.operationCount)
+          classLabels = summary.classes.map((c) => c.name)
         } else {
           classRawCells = comp.classIds.map((classId) => {
             const cls = classById.get(classId)
             if (!cls) return 0
             return cls.members.length + cls.operations.length
           })
+          classLabels = comp.classIds.map((classId) => classById.get(classId)?.name ?? classId)
         }
       } else {
         classRawCells = comp.childComponentIds.map((childId) => {
@@ -752,6 +757,7 @@ export function ComponentDiagramCanvas({
           if (!child) return 0
           return classLoadOfComponent(child)
         })
+        classLabels = comp.childComponentIds.map((childId) => componentById.get(childId)?.name ?? childId)
       }
 
       result[comp.id] = {
@@ -764,6 +770,7 @@ export function ComponentDiagramCanvas({
           classLoad: ownClassLoad,
         },
         classRaw: classRawCells,
+        classLabels,
       }
     }
 
@@ -852,17 +859,20 @@ export function ComponentDiagramCanvas({
     return {
       title: `${comp.name} / Component Stats`,
       lines: [
-        `Incoming links: ${r.incoming}`,
-        `Outgoing links: ${r.outgoing}`,
-        `Children: ${r.children}`,
-        `Class load: ${r.classLoad}`,
-        `Total flow: ${totalFlow}`,
+        `Incoming links: ${r.incoming} (このコンポーネントを参照している他コンポーネント数)`,
+        `Outgoing links: ${r.outgoing} (このコンポーネントから参照している他コンポーネント数)`,
+        `Children: ${r.children} (配下にぶら下がる子要素数。Subsystem/Component など)`,
+        `Class load: ${r.classLoad} (この箱が直接保持しているクラス数)`,
+        `Total flow: ${totalFlow} (入出力リンクの合計。依存の交通量の目安)`,
       ],
     }
   }
 
   function buildClassHeatTooltip(comp: ComponentInfo, heat: ComponentHeatMetrics): { title: string; lines: string[] } {
-    const values = heat.classRaw.filter((v) => Number.isFinite(v))
+    const entries = heat.classRaw
+      .map((value, idx) => ({ value, label: heat.classLabels[idx] ?? `Item${idx + 1}` }))
+      .filter((e) => Number.isFinite(e.value))
+    const values = entries.map((e) => e.value)
     const count = values.length
     if (count === 0) {
       return {
@@ -886,13 +896,19 @@ export function ComponentDiagramCanvas({
       bins[idx] += 1
     }
 
+    const topEntries = [...entries]
+      .sort((a, b) => b.value - a.value)
+      .slice(0, CLASS_TOOLTIP_TOP_N)
+      .map((e) => `${e.label}(${e.value})`)
+
     return {
       title: `${comp.name} / Class Stats`,
       lines: [
-        `Classes: ${count}`,
-        `Min / Avg / Max: ${min} / ${avg.toFixed(1)} / ${max}`,
-        `Median / P90: ${median} / ${p90}`,
-        `Density bins (L1-L4): ${bins.join(" / ")}`,
+        `Classes: ${count} (評価対象のクラス件数)`,
+        `Min / Avg / Max: ${min} / ${avg.toFixed(1)} / ${max} (各クラス負荷の最小/平均/最大)`,
+        `Median / P90: ${median} / ${p90} (中央値と上位10%境界。偏り確認に有効)`,
+        `Density bins (L1-L4): ${bins.join(" / ")} (低負荷→高負荷の4段階分布)`,
+        `Top ${topEntries.length}: ${topEntries.join(", ")} (負荷上位クラス。値はメンバー数+操作数)`,
       ],
     }
   }
@@ -1231,7 +1247,7 @@ export function ComponentDiagramCanvas({
 
       {heatTooltip && (
         <div
-          className="absolute z-20 max-w-[320px] rounded border border-slate-200 bg-white/95 px-2 py-1.5 shadow-md"
+          className="absolute z-20 max-w-[460px] rounded border border-slate-200 bg-white/95 px-2 py-1.5 shadow-md"
           style={{
             left: heatTooltip.screenX,
             top: heatTooltip.screenY,
