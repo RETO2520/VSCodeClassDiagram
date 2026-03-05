@@ -265,6 +265,7 @@ export function ComponentEditorContainer({
                 components={components}
                 classes={classes}
                 availableDslFiles={availableDslFiles}
+                relationships={relationships}
                 selectedId={selectedId}
                 onSelectComponent={setSelectedId}
                 onUpdateComponent={handleUpdateComponent}

@@ -14,6 +14,7 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
@@ -28,8 +29,10 @@ import {
     Settings2,
     ChevronDown,
     ChevronRight,
+    ArrowRight,
+    ArrowLeft,
 } from "lucide-react"
-import type { ComponentInfo, ComponentKind } from "@/lib/component-diagram-types"
+import type { ComponentInfo, ComponentKind, ComponentRelationship } from "@/lib/component-diagram-types"
 import type { ClassInfo } from "@/lib/class-diagram-types"
 
 // ==============================
@@ -41,6 +44,10 @@ interface ComponentEditorProps {
     allComponents: ComponentInfo[]
     allClasses: ClassInfo[]
     availableDslFiles?: string[]
+    /** 祖先ノードの配列（最上位が先頭） */
+    parentPath?: ComponentInfo[]
+    /** このノードに関連する依存関係 */
+    relationships?: ComponentRelationship[]
     onChange: (updated: ComponentInfo) => void
     onDelete: () => void
     onAssignClass?: (classId: string) => void
@@ -68,6 +75,8 @@ export function ComponentEditor({
     allComponents,
     allClasses,
     availableDslFiles = [],
+    parentPath = [],
+    relationships = [],
     onChange,
     onDelete,
     onAssignClass,
@@ -96,9 +105,29 @@ export function ComponentEditor({
         return false
     })
 
+    const outgoing = relationships.filter((r) => r.sourceComponentId === componentInfo.id)
+    const incoming = relationships.filter((r) => r.targetComponentId === componentInfo.id)
+
     return (
         <ScrollArea className="h-full">
             <div className="flex flex-col gap-4 p-4">
+                {/* Parent Breadcrumb */}
+                {parentPath.length > 0 && (
+                    <div className="flex items-center gap-1 text-[11px] text-muted-foreground flex-wrap">
+                        {parentPath.map((ancestor, idx) => (
+                            <React.Fragment key={ancestor.id}>
+                                <span className="flex items-center gap-0.5">
+                                    {kindIcons[ancestor.kind]}
+                                    <span>{ancestor.name}</span>
+                                </span>
+                                {idx < parentPath.length - 1 && <span className="mx-0.5">{"›"}</span>}
+                            </React.Fragment>
+                        ))}
+                        <span className="mx-0.5">{"›"}</span>
+                        <span className="font-medium text-foreground">{componentInfo.name}</span>
+                    </div>
+                )}
+
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -260,6 +289,88 @@ export function ComponentEditor({
                         </div>
                     </>
                 )}
+
+                {/* Dependencies */}
+                {(outgoing.length > 0 || incoming.length > 0) && (
+                    <>
+                        <Separator />
+                        <div className="flex flex-col gap-2">
+                            <Label className="text-xs font-medium text-muted-foreground">{"Dependencies"}</Label>
+                            {outgoing.length > 0 && (
+                                <div className="flex flex-col gap-1">
+                                    {outgoing.map((rel) => {
+                                        const target = allComponents.find((c) => c.id === rel.targetComponentId)
+                                        return (
+                                            <TooltipProvider key={rel.id}>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-1 py-0.5 rounded hover:bg-accent/50">
+                                                            <ArrowRight className="h-3 w-3 text-blue-500 shrink-0" />
+                                                            <span className="truncate">{target?.name ?? "Unknown"}</span>
+                                                            {rel.label && (
+                                                                <Badge variant="outline" className="text-[10px] px-1 py-0 ml-auto shrink-0">
+                                                                    {rel.label}
+                                                                </Badge>
+                                                            )}
+                                                            {rel.basedOnIds.length > 0 && (
+                                                                <span className="text-[10px] text-muted-foreground/60 shrink-0">
+                                                                    {`(${rel.basedOnIds.length})`}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="left">
+                                                        <p className="text-xs">{`${componentInfo.name} → ${target?.name ?? "Unknown"}`}</p>
+                                                        {rel.label && <p className="text-xs text-muted-foreground">{rel.label}</p>}
+                                                        {rel.basedOnIds.length > 0 && (
+                                                            <p className="text-xs text-muted-foreground">{`Based on ${rel.basedOnIds.length} relationship(s)`}</p>
+                                                        )}
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                            {incoming.length > 0 && (
+                                <div className="flex flex-col gap-1">
+                                    {incoming.map((rel) => {
+                                        const source = allComponents.find((c) => c.id === rel.sourceComponentId)
+                                        return (
+                                            <TooltipProvider key={rel.id}>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-1 py-0.5 rounded hover:bg-accent/50">
+                                                            <ArrowLeft className="h-3 w-3 text-orange-500 shrink-0" />
+                                                            <span className="truncate">{source?.name ?? "Unknown"}</span>
+                                                            {rel.label && (
+                                                                <Badge variant="outline" className="text-[10px] px-1 py-0 ml-auto shrink-0">
+                                                                    {rel.label}
+                                                                </Badge>
+                                                            )}
+                                                            {rel.basedOnIds.length > 0 && (
+                                                                <span className="text-[10px] text-muted-foreground/60 shrink-0">
+                                                                    {`(${rel.basedOnIds.length})`}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="left">
+                                                        <p className="text-xs">{`${source?.name ?? "Unknown"} → ${componentInfo.name}`}</p>
+                                                        {rel.label && <p className="text-xs text-muted-foreground">{rel.label}</p>}
+                                                        {rel.basedOnIds.length > 0 && (
+                                                            <p className="text-xs text-muted-foreground">{`Based on ${rel.basedOnIds.length} relationship(s)`}</p>
+                                                        )}
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </>
+                )}
             </div>
         </ScrollArea>
     )
@@ -273,6 +384,7 @@ interface ComponentEditorPanelProps {
     components: ComponentInfo[]
     classes: ClassInfo[]
     availableDslFiles?: string[]
+    relationships?: ComponentRelationship[]
     selectedId: string | null
     onSelectComponent: (id: string) => void
     onUpdateComponent: (id: string, updated: ComponentInfo) => void
@@ -298,6 +410,7 @@ export function ComponentEditorPanel({
     components,
     classes,
     availableDslFiles = [],
+    relationships = [],
     selectedId,
     onSelectComponent,
     onUpdateComponent,
@@ -345,6 +458,20 @@ export function ComponentEditorPanel({
         }
         return parentMap
     }, [components, componentById])
+
+    /** 選択ノードの祖先パスを算出（最上位が先頭） */
+    const getAncestorPath = useCallback((componentId: string): ComponentInfo[] => {
+        const path: ComponentInfo[] = []
+        let currentId: string | undefined = parentByChild.get(componentId)
+        const visited = new Set<string>()
+        while (currentId && !visited.has(currentId)) {
+            visited.add(currentId)
+            const comp = componentById.get(currentId)
+            if (comp) path.unshift(comp)
+            currentId = parentByChild.get(currentId)
+        }
+        return path
+    }, [parentByChild, componentById])
 
     const sortedComponents = useMemo(() => {
         const kindOrder: Record<ComponentKind, number> = {
@@ -580,6 +707,8 @@ export function ComponentEditorPanel({
                                 allComponents={components}
                                 allClasses={classes}
                                 availableDslFiles={availableDslFiles}
+                                parentPath={getAncestorPath(selectedComponent.id)}
+                                relationships={relationships}
                                 onChange={(updated) => onUpdateComponent(selectedComponent.id, updated)}
                                 onDelete={() => onDeleteComponent(selectedComponent.id)}
                                 onAssignClass={(classId) => onAssignClass?.(selectedComponent.id, classId)}
