@@ -465,4 +465,25 @@ export class ComponentService {
             classCount: comp.classIds.length,
         }))
     }
+
+    // ----------------------------------------------------------
+    // 複数DSL統合
+    // ----------------------------------------------------------
+
+    /**
+     * 複数 DSL ファイルの内容を統合解析し、コンポーネントへの
+     * クラス自動アサインと依存関係の連鎖導出を行う。
+     *
+     * DslIntegrator に委譲する便利メソッド。
+     *
+     * @param dslContents DSLファイルの dslPath → テキスト内容の配列
+     * @returns 統合結果（新しいドメインモデルペア + 依存関係 + メタ情報）
+     */
+    integrateMultipleDsl(
+        dslContents: Array<{ dslPath: string; content: string }>
+    ): import('./DslIntegrator').IntegrationResult {
+        // 遅延 import で循環依存を回避
+        const { DslIntegrator } = require('./DslIntegrator') as typeof import('./DslIntegrator')
+        return DslIntegrator.integrate(this.componentDomain, dslContents)
+    }
 }

@@ -6,7 +6,8 @@ import type { ComponentInfo, ComponentKind, ComponentRelationship } from "@/lib/
 import type { ClassInfo } from "@/lib/class-diagram-types";
 import { ComponentEditorPanel } from "./component-editor";
 import { ComponentService } from "../lib/application/ComponentService";
-import { postMessage } from "../../frontend/src/bridge/vscode-bridge";
+import { DslIntegrator } from "../lib/application/DslIntegrator";
+import { postMessage, onMessage } from "../../frontend/src/bridge/vscode-bridge";
 
 /**
  * Props:
@@ -116,6 +117,39 @@ export function ComponentEditorContainer({
         refreshFromService();
     }, [refreshFromService, refreshToken]);
 
+    // ── DSL統合: IPC応答を受信したら integrate を実行 ──────────
+    useEffect(() => {
+        const cleanup = onMessage((msg) => {
+            if (msg.command === 'diagramFilesBulkLoaded') {
+                const files = (msg as any).payload?.files as Array<{ relativePath: string; dsl: string }> | undefined;
+                if (!files || files.length === 0) return;
+
+                try {
+                    const dslContents = files.map(f => ({
+                        dslPath: f.relativePath,
+                        content: f.dsl,
+                    }));
+
+                    const result = DslIntegrator.integrate(
+                        service['componentDomain'],
+                        dslContents
+                    );
+
+                    // サービスの内部状態を更新
+                    (service as any).classDomain = result.classDomain;
+                    (service as any).componentDomain = result.componentDomain;
+                    refreshFromService();
+
+                    // 自動保存（サイレント）
+                    saveContentListJson({ silent: true });
+                } catch (err) {
+                    console.error('[DslIntegrator] Integration failed:', err);
+                }
+            }
+        });
+        return cleanup;
+    }, [service, refreshFromService, saveContentListJson]);
+
     //Handlers
     const handleUpdateComponent = async (id: string, updated: ComponentInfo) => {
         setBusy(true);
@@ -212,6 +246,19 @@ export function ComponentEditorContainer({
         }
     }
 
+    const handleIntegrateDsl = useCallback(() => {
+        const paths = DslIntegrator.collectDslPaths(service['componentDomain']);
+        if (paths.length === 0) {
+            console.warn('[DslIntegrator] No components have dslPath set');
+            return;
+        }
+        // 既存の IPC を利用して DSL ファイル内容を一括リクエスト
+        postMessage({
+            command: 'loadDiagramFilesBulk',
+            payload: { relativePaths: paths },
+        });
+    }, [service]);
+
     return (
         <div className="h-full">
             <ComponentEditorPanel
@@ -229,6 +276,7 @@ export function ComponentEditorContainer({
                 onRemoveChildComponent={handleRemoveChildComponent}
                 onSaveContentListJson={() => saveContentListJson({ silent: false })}
                 onLoadContentListJson={loadContentListJson}
+                onIntegrateDsl={handleIntegrateDsl}
             />
             {busy && <div className="sr-only">Processing...</div>}
         </div>

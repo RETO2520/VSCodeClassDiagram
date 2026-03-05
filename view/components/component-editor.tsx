@@ -284,6 +284,7 @@ interface ComponentEditorPanelProps {
     onRemoveChildComponent?: (parentId: string, childId: string) => void
     onSaveContentListJson?: () => void
     onLoadContentListJson?: () => void
+    onIntegrateDsl?: () => void
 }
 
 const MIN_LIST_WIDTH = 120
@@ -308,6 +309,7 @@ export function ComponentEditorPanel({
     onRemoveChildComponent,
     onSaveContentListJson,
     onLoadContentListJson,
+    onIntegrateDsl,
 }: ComponentEditorPanelProps) {
     const selectedComponent = components.find((c) => c.id === selectedId)
     const [listWidth, setListWidth] = useState(DEFAULT_LIST_WIDTH)
@@ -513,6 +515,15 @@ export function ComponentEditorPanel({
                     <div className="flex items-center justify-between border-b border-border px-3 py-3">
                         <h2 className="text-xs font-semibold text-card-foreground">{"Components"}</h2>
                         <div className="flex items-center gap-1">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={onIntegrateDsl}
+                                className="h-6 w-6 text-muted-foreground"
+                                title="Integrate DSL files and derive dependencies"
+                            >
+                                <Layers className="h-3.5 w-3.5" />
+                            </Button>
                             <Button
                                 variant="ghost"
                                 size="icon"
