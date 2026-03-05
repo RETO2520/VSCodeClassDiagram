@@ -190,7 +190,7 @@ export function deriveComponentRelationships(
             // 既存があれば basedOnIds をマージ（手動ラベルは保持）
             result.push({
                 ...existingRel,
-                basedOnIds: Array.from(new Set([...existingRel.basedOnIds, ...basedOnIds])),
+                basedOnIds: Array.from(basedOnIds),
             })
             existingMap.delete(key)
         } else {

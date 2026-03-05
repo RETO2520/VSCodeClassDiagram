@@ -227,4 +227,54 @@ suite('DslIntegrator', () => {
         assert.ok(classNames!.includes('NewOrder'));
         assert.ok(!classNames!.includes('Order'), 'Old class should not be in new integration result');
     });
+
+    test('integrate does not accumulate evidence on repeated runs with unchanged DSL', () => {
+        let model = ComponentDomainModel.createEmpty();
+        const r1 = addComponentWithDslPath(model, 'OrderComp', 'order.dsl');
+        model = r1.model;
+        const r2 = addComponentWithDslPath(model, 'UserComp', 'user.dsl');
+        model = r2.model;
+
+        const dslContents: DslContentEntry[] = [
+            {
+                dslPath: 'order.dsl',
+                content: [
+                    'class Order',
+                    '  -customer: User',
+                ].join('\n'),
+            },
+            {
+                dslPath: 'user.dsl',
+                content: [
+                    'class User',
+                    '  -name: string',
+                ].join('\n'),
+            },
+        ];
+
+        const result1 = DslIntegrator.integrate(model, dslContents);
+        const rel1 = result1.derived.find(r => {
+            const src = result1.componentDomain.getComponent(r.sourceComponentId);
+            const tgt = result1.componentDomain.getComponent(r.targetComponentId);
+            return src?.name === 'OrderComp' && tgt?.name === 'UserComp';
+        });
+        assert.ok(rel1, 'First run should derive OrderComp -> UserComp');
+        const evidenceCount1 = rel1!.basedOnIds.length;
+        assert.ok(evidenceCount1 > 0, 'First run should derive at least one evidence id');
+
+        const result2 = DslIntegrator.integrate(result1.componentDomain, dslContents);
+        const rel2 = result2.derived.find(r => {
+            const src = result2.componentDomain.getComponent(r.sourceComponentId);
+            const tgt = result2.componentDomain.getComponent(r.targetComponentId);
+            return src?.name === 'OrderComp' && tgt?.name === 'UserComp';
+        });
+        assert.ok(rel2, 'Second run should derive OrderComp -> UserComp');
+        const evidenceCount2 = rel2!.basedOnIds.length;
+
+        assert.strictEqual(
+            evidenceCount2,
+            evidenceCount1,
+            'Evidence IDs should be recomputed, not accumulated across runs'
+        );
+    });
 });

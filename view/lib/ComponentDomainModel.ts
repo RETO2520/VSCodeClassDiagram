@@ -431,7 +431,9 @@ export class ComponentDomainModel {
             if (existingRel) {
                 const merged: ComponentRelationship = {
                     ...existingRel,
-                    basedOnIds: Array.from(new Set([...existingRel.basedOnIds, ...basedOnIds])),
+                    // Recompute evidence from current lower-level relationships.
+                    // Do not keep stale IDs from previous derive runs.
+                    basedOnIds: Array.from(basedOnIds),
                 }
                 nextRelMap.set(merged.id, merged)
                 derived.push(merged)
