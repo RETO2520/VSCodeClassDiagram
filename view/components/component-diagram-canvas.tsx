@@ -480,6 +480,86 @@ function getEdgePoint(
   return { sx, sy, side }
 }
 
+function drawDiamondArrow(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, color: string) {
+  const size = 10
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.rotate(angle)
+  ctx.beginPath()
+  ctx.moveTo(0, 0)
+  ctx.lineTo(-size, -size / 2)
+  ctx.lineTo(-size * 2, 0)
+  ctx.lineTo(-size, size / 2)
+  ctx.closePath()
+  ctx.fillStyle = "white"
+  ctx.fill()
+  ctx.strokeStyle = color
+  ctx.lineWidth = 1.5
+  ctx.stroke()
+  ctx.restore()
+}
+
+function drawParentRelationship(
+  ctx: CanvasRenderingContext2D,
+  parent: ComponentInfo,
+  child: ComponentInfo,
+) {
+  const sCx = parent.x + parent.width / 2
+  const sCy = parent.y + parent.height / 2
+  const tCx = child.x + child.width / 2
+  const tCy = child.y + child.height / 2
+
+  const { sx, sy, side: sSide } = getEdgePoint(parent.x, parent.y, parent.width, parent.height, tCx, tCy)
+  const { sx: tx, sy: ty, side: tSide } = getEdgePoint(child.x, child.y, child.width, child.height, sCx, sCy)
+
+  // Use a distinct color (e.g., slate-400 or blue-400) for hierarchy
+  const color = "#94a3b8"
+
+  // orthogonal routing
+  const points: { x: number; y: number }[] = [{ x: sx, y: sy }]
+  if (sSide === "left" || sSide === "right") {
+    if (tSide === "left" || tSide === "right") {
+      const midX = (sx + tx) / 2
+      points.push({ x: midX, y: sy })
+      points.push({ x: midX, y: ty })
+    } else {
+      points.push({ x: tx, y: sy })
+    }
+  } else {
+    if (tSide === "top" || tSide === "bottom") {
+      const midY = (sy + ty) / 2
+      points.push({ x: sx, y: midY })
+      points.push({ x: tx, y: midY })
+    } else {
+      points.push({ x: sx, y: ty })
+    }
+  }
+  points.push({ x: tx, y: ty })
+
+  ctx.save()
+  // Solid line for composition/hierarchy
+  ctx.setLineDash([])
+  ctx.strokeStyle = color
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(points[0].x, points[0].y)
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y)
+  ctx.stroke()
+  ctx.restore()
+
+  const last = points[points.length - 1]
+  const prev = points[points.length - 2]
+  const angle = Math.atan2(last.y - prev.y, last.x - prev.x)
+
+  // Draw diamond arrow at the parent end if we wanted UML style, 
+  // but let's draw a diamond at the child end to indicate "pointing to child" or vice versa.
+  // UML Composition has diamond at the parent. Let's put the diamond at the parent side:
+  const first = points[0]
+  const second = points[1]
+  const startAngle = Math.atan2(first.y - second.y, first.x - second.x)
+  drawDiamondArrow(ctx, sx, sy, startAngle, color)
+}
+
 function drawOpenArrow(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, color: string) {
   const size = 12
   ctx.save()
@@ -631,10 +711,11 @@ function drawZoomIndicator(ctx: CanvasRenderingContext2D, zoom: number) {
 }
 
 function drawLegend(ctx: CanvasRenderingContext2D, canvasWidth: number) {
-  const items: Array<{ label: string; color: string }> = [
+  const items: Array<{ label: string; color: string; isParentLine?: boolean }> = [
     { label: "Application", color: kindColors("application").border },
     { label: "Subsystem", color: kindColors("subsystem").border },
     { label: "Component", color: kindColors("component").border },
+    { label: "Parent Relation", color: "#94a3b8", isParentLine: true },
   ]
 
   const startX = canvasWidth - 170
@@ -659,10 +740,19 @@ function drawLegend(ctx: CanvasRenderingContext2D, canvasWidth: number) {
     const y = startY + i * lineSpacing + 10
     ctx.beginPath()
     ctx.strokeStyle = it.color
-    ctx.lineWidth = 3
+    ctx.lineWidth = it.isParentLine ? 2 : 3
+    if (it.isParentLine) {
+      ctx.setLineDash([])
+    } else {
+      ctx.setLineDash([])
+    }
     ctx.moveTo(startX, y)
     ctx.lineTo(startX + lineLen, y)
     ctx.stroke()
+
+    if (it.isParentLine) {
+      drawDiamondArrow(ctx, startX, y, 0, it.color)
+    }
 
     ctx.fillStyle = "#475569"
     ctx.textAlign = "left"
@@ -841,6 +931,15 @@ export function ComponentDiagramCanvas({
     ctx.save()
     ctx.translate(panOffset.x, panOffset.y)
     ctx.scale(zoom, zoom)
+
+    for (const comp of components) {
+      for (const childId of comp.childComponentIds) {
+        const child = components.find((c) => c.id === childId)
+        if (child) {
+          drawParentRelationship(ctx, comp, child)
+        }
+      }
+    }
 
     for (const rel of relationships) {
       drawComponentRelationship(ctx, rel, components)
