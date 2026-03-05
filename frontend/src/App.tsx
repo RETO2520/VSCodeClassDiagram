@@ -503,6 +503,18 @@ export function App({ service, componentService }: { service: ClassDiagramServic
                     }
                     return next
                 })
+                return
+            }
+
+            if (msg.command === 'diagramFileLoaded') {
+                const relativePath = (msg.payload as any)?.relativePath
+                const dsl = (msg.payload as any)?.dsl
+                if (typeof relativePath === 'string' && typeof dsl === 'string') {
+                    setDslContentByPath((prev) => ({
+                        ...prev,
+                        [relativePath]: dsl,
+                    }))
+                }
             }
         })
 

@@ -14,6 +14,7 @@ import { RustBuilder } from '../CodeComponents/RustBuilder';
 
 export class ClassDiagramHandler {
     private panel: vscode.WebviewPanel | undefined;
+    private saveWatcherDisposable: vscode.Disposable | undefined;
     private readonly context: vscode.ExtensionContext;
     private readonly typeModel: TypeModel;
     private readonly logger: Logger;
@@ -82,6 +83,8 @@ export class ClassDiagramHandler {
         this.panel.webview.html = this.getHtmlForWebview(this.panel.webview);
 
         this.panel.onDidDispose(() => {
+            this.saveWatcherDisposable?.dispose();
+            this.saveWatcherDisposable = undefined;
             this.panel = undefined;
         }, null, this.context.subscriptions);
 
@@ -100,6 +103,41 @@ export class ClassDiagramHandler {
         // Initial setup
         this.sendPrimitiveTypes();
         this.sendInitialComponentListJson();
+        this.setupDslFileSaveWatcher();
+    }
+
+    private setupDslFileSaveWatcher(): void {
+        this.saveWatcherDisposable?.dispose();
+        this.saveWatcherDisposable = vscode.workspace.onDidSaveTextDocument(async (document) => {
+            if (!this.panel) return;
+
+            const workspaceRoot = this.fileService.getWorkspaceRoot();
+            if (!workspaceRoot) return;
+
+            const diagramRoot = vscode.Uri.joinPath(workspaceRoot, '.diagram').toString().toLowerCase();
+            const fileUri = document.uri.toString().toLowerCase();
+            if (!fileUri.startsWith(diagramRoot)) return;
+
+            const normalizedPath = document.uri.path.toLowerCase();
+            if (!(normalizedPath.endsWith('.dsl') || normalizedPath.endsWith('.txt'))) return;
+
+            const relativeWorkspacePath = vscode.workspace.asRelativePath(document.uri, false).replace(/\\/g, '/');
+            if (!relativeWorkspacePath.startsWith('.diagram/')) return;
+            const relativePath = relativeWorkspacePath.slice('.diagram/'.length);
+            if (!relativePath) return;
+
+            this.panel.webview.postMessage({
+                command: 'diagramFileLoaded',
+                payload: { relativePath, dsl: document.getText() }
+            });
+
+            const files = await this.fileService.getDiagramFiles();
+            this.panel.webview.postMessage({
+                command: 'diagramFilesLoaded',
+                payload: { files }
+            });
+        });
+        this.context.subscriptions.push(this.saveWatcherDisposable);
     }
 
     private getHtmlForWebview(webview: vscode.Webview): string {
@@ -442,6 +480,10 @@ export class ClassDiagramHandler {
 
         const success = await this.fileService.writeDiagramFile(relativePath, dsl);
         if (success) {
+            ctx.panel.webview.postMessage({
+                command: 'diagramFileLoaded',
+                payload: { relativePath, dsl }
+            });
             vscode.window.showInformationMessage(`Saved ${relativePath}`);
         } else {
             vscode.window.showErrorMessage(`Failed to save ${relativePath}`);
