@@ -1,5 +1,5 @@
 import type { ClassInfo, Relationship, RelationshipType } from "./class-diagram-types"
-import { createId, isReferenceType } from "./class-diagram-types"
+import { isReferenceType } from "./class-diagram-types"
 
 /**
  * クラス情報の配列からリレーションシップを自動検出する。
@@ -28,6 +28,26 @@ export function detectRelationships(classes: ClassInfo[]): Relationship[] {
   }
 
   const seen = new Set<string>()
+  const stableRelationshipId = (
+    type: RelationshipType,
+    sourceId: string,
+    targetId: string,
+    label?: string,
+    sourceMemberId?: string,
+    sourceMultiplicity?: string,
+    targetMultiplicity?: string,
+  ): string => {
+    return [
+      "rel",
+      type,
+      sourceId,
+      targetId,
+      sourceMemberId ?? "",
+      label ?? "",
+      sourceMultiplicity ?? "",
+      targetMultiplicity ?? "",
+    ].join(":")
+  }
 
   function addRelationship(
     sourceId: string,
@@ -43,7 +63,15 @@ export function detectRelationships(classes: ClassInfo[]): Relationship[] {
     seen.add(key)
 
     relationships.push({
-      id: createId(),
+      id: stableRelationshipId(
+        type,
+        sourceId,
+        targetId,
+        label,
+        sourceMemberId,
+        sourceMultiplicity,
+        targetMultiplicity,
+      ),
       type,
       sourceId,
       targetId,

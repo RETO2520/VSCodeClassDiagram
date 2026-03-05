@@ -1320,6 +1320,26 @@ export class DomainModel {
     detectRelationships(): Relationship[] {
         const relationships: Relationship[] = []
         const relationshipSet = new Set<string>()
+        const stableRelationshipId = (
+            type: string,
+            sourceId: string,
+            targetId: string,
+            label?: string,
+            sourceMemberId?: string,
+            sourceMultiplicity?: string,
+            targetMultiplicity?: string,
+        ): string => {
+            return [
+                'rel',
+                type,
+                sourceId,
+                targetId,
+                sourceMemberId ?? '',
+                label ?? '',
+                sourceMultiplicity ?? '',
+                targetMultiplicity ?? '',
+            ].join(':')
+        }
 
         for (const cls of this.classMap.values()) {
             // 継承関係
@@ -1327,7 +1347,7 @@ export class DomainModel {
                 const key = `generalization:${cls.id}:${cls.baseClassId}`
                 if (!relationshipSet.has(key)) {
                     relationships.push({
-                        id: createId(),
+                        id: stableRelationshipId('generalization', cls.id, cls.baseClassId),
                         type: 'generalization',
                         sourceId: cls.id,
                         targetId: cls.baseClassId,
@@ -1341,7 +1361,7 @@ export class DomainModel {
                 const key = `realization:${cls.id}:${interfaceId}`
                 if (!relationshipSet.has(key)) {
                     relationships.push({
-                        id: createId(),
+                        id: stableRelationshipId('realization', cls.id, interfaceId),
                         type: 'realization',
                         sourceId: cls.id,
                         targetId: interfaceId,
@@ -1375,7 +1395,15 @@ export class DomainModel {
                     const key = `${relType}:${cls.id}:${targetClass.id}:${member.name}`
                     if (!relationshipSet.has(key)) {
                         relationships.push({
-                            id: createId(),
+                            id: stableRelationshipId(
+                                relType,
+                                cls.id,
+                                targetClass.id,
+                                member.name,
+                                member.id,
+                                member.sourceMultiplicity,
+                                member.targetMultiplicity,
+                            ),
                             type: relType,
                             sourceId: cls.id,
                             targetId: targetClass.id,
@@ -1401,7 +1429,13 @@ export class DomainModel {
                         const key = `dependency:${cls.id}:${targetClass.id}:${operation.name}:${param.name}`
                         if (!relationshipSet.has(key)) {
                             relationships.push({
-                                id: createId(),
+                                id: stableRelationshipId(
+                                    'dependency',
+                                    cls.id,
+                                    targetClass.id,
+                                    `${operation.name}(${param.name})`,
+                                    operation.id,
+                                ),
                                 type: 'dependency',
                                 sourceId: cls.id,
                                 targetId: targetClass.id,
@@ -1426,7 +1460,13 @@ export class DomainModel {
                         const key = `dependency:${cls.id}:${targetClass.id}:${operation.name}:returnType`
                         if (!relationshipSet.has(key)) {
                             relationships.push({
-                                id: createId(),
+                                id: stableRelationshipId(
+                                    'dependency',
+                                    cls.id,
+                                    targetClass.id,
+                                    `${operation.name}(): ${operation.returnType}`,
+                                    operation.id,
+                                ),
                                 type: 'dependency',
                                 sourceId: cls.id,
                                 targetId: targetClass.id,

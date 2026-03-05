@@ -47,7 +47,7 @@ import { ComponentEditorContainer } from '@/components/ComponentEditorContainer'
 import { DiagramCanvas } from '@/components/diagram-canvas'
 import { ComponentDiagramCanvas } from '@/components/component-diagram-canvas'
 import { detectRelationships } from '@/lib/detect-relationships'
-import type { ClassInfo } from '@/lib/class-diagram-types'
+import type { ClassInfo, Relationship } from '@/lib/class-diagram-types'
 import type { ComponentInfo, ComponentRelationship } from '@/lib/component-diagram-types'
 import { ComponentDomainModel } from '@/lib/ComponentDomainModel'
 import { Undo2, Redo2, ChevronDown, ChevronUp } from 'lucide-react'
@@ -337,7 +337,29 @@ export function App({ service, componentService }: { service: ClassDiagramServic
     }, [vsCodeState.classes])
 
     const { selectedId, setSelectedId, saveJson, loadJson, loadDsl, generateCode, changePrimitiveTypes } = vsCodeState
-    const relationships = useMemo(() => detectRelationships(classes), [classes])
+    const classRelationships = useMemo<Relationship[]>(() => detectRelationships(classes), [classes])
+    const componentCanvasClasses = useMemo<ClassInfo[]>(() => {
+        try {
+            const domain = (componentService as any).classDomain
+            if (domain?.getClasses) {
+                return domain.getClasses()
+            }
+        } catch {
+            // fall through to global classes
+        }
+        return classes
+    }, [componentService, classes, componentNodes, componentRels, componentRefreshToken])
+    const componentCanvasClassRelationships = useMemo<Relationship[]>(() => {
+        try {
+            const domain = (componentService as any).classDomain
+            if (domain?.detectRelationships) {
+                return domain.detectRelationships()
+            }
+        } catch {
+            // fall through to local detection
+        }
+        return detectRelationships(componentCanvasClasses)
+    }, [componentService, componentCanvasClasses, componentNodes, componentRels, componentRefreshToken])
 
     const handleMoveClass = useCallback((id: string, x: number, y: number) => {
         setClasses(prev => {
@@ -580,7 +602,7 @@ export function App({ service, componentService }: { service: ClassDiagramServic
                             />
                             <div className="flex-1 min-w-0">
                                 <DiagramCanvas
-                                    classes={classes} relationships={relationships}
+                                    classes={classes} relationships={classRelationships}
                                     selectedId={selectedId} onSelectClass={setSelectedId}
                                     onMoveClass={handleMoveClass} onOperationClick={handleOperationClick}
                                 />
@@ -601,7 +623,8 @@ export function App({ service, componentService }: { service: ClassDiagramServic
                                 <ComponentDiagramCanvas
                                     components={componentNodes}
                                     relationships={componentRels}
-                                    classes={classes}
+                                    classRelationships={componentCanvasClassRelationships}
+                                    classes={componentCanvasClasses}
                                     dslContentByPath={dslContentByPath}
                                     selectedId={selectedId}
                                     onSelectComponent={setSelectedId}

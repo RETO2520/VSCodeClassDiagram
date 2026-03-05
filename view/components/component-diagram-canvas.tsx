@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { ZoomIn, ZoomOut, Maximize2, Maximize } from "lucide-react"
 import type { ComponentInfo, ComponentKind, ComponentRelationship } from "@/lib/component-diagram-types"
-import type { ClassInfo } from "@/lib/class-diagram-types"
+import type { ClassInfo, Relationship as ClassRelationship } from "@/lib/class-diagram-types"
 
 // ==============================
 // Constants
@@ -20,6 +20,7 @@ const RESIZE_HANDLE_SIZE = 12
 const HEATMAP_PANEL_WIDTH = 96
 const HEATMAP_CELL_SIZE = 8
 const CLASS_TOOLTIP_TOP_N = 3
+const MAX_EVIDENCE_TOOLTIP_LINES = 16
 
 const MIN_ZOOM = 0.2
 const MAX_ZOOM = 3
@@ -310,6 +311,79 @@ interface HeatTooltipState {
   lines: string[]
 }
 
+function relationshipDisplayName(rel: ComponentRelationship, componentNameById: Map<string, string>): string {
+  const sourceName = componentNameById.get(rel.sourceComponentId) ?? rel.sourceComponentId
+  const targetName = componentNameById.get(rel.targetComponentId) ?? rel.targetComponentId
+  return `${sourceName} -> ${targetName}`
+}
+
+function describeClassRelationshipEvidence(
+  rel: ClassRelationship,
+  classById: Map<string, ClassInfo>,
+  classNameById: Map<string, string>,
+): string {
+  const classSourceName = classNameById.get(rel.sourceId) ?? rel.sourceId
+  const classTargetName = classNameById.get(rel.targetId) ?? rel.targetId
+  const sourceClass = classById.get(rel.sourceId)
+
+  let via = rel.label?.trim() ?? ""
+  if (rel.sourceMemberId && sourceClass) {
+    const member = sourceClass.members.find((m) => m.id === rel.sourceMemberId)
+    if (member) {
+      via = `${member.name}: ${member.type}`
+    } else {
+      const op = sourceClass.operations.find((o) => o.id === rel.sourceMemberId)
+      if (op) via = `${op.name}()`
+    }
+  }
+
+  const relType = rel.type ? ` [${rel.type}]` : ""
+  return via
+    ? `- ${classSourceName} -> ${classTargetName}${relType} (${via})`
+    : `- ${classSourceName} -> ${classTargetName}${relType}`
+}
+
+function buildEvidenceTooltipLines(
+  rel: ComponentRelationship,
+  relationshipById: Map<string, ComponentRelationship>,
+  componentNameById: Map<string, string>,
+  classRelationshipById: Map<string, ClassRelationship>,
+  classById: Map<string, ClassInfo>,
+  classNameById: Map<string, string>,
+): string[] {
+  if (rel.basedOnIds.length === 0) return ["No derived evidence"]
+
+  const lines: string[] = []
+  const visited = new Set<string>()
+
+  const walk = (evidenceId: string, depth: number) => {
+    if (lines.length >= MAX_EVIDENCE_TOOLTIP_LINES) return
+    if (visited.has(evidenceId)) return
+    visited.add(evidenceId)
+
+    const lower = relationshipById.get(evidenceId)
+    const indent = "  ".repeat(Math.min(depth, 3))
+    if (!lower) {
+      const classRel = classRelationshipById.get(evidenceId)
+      if (classRel) {
+        lines.push(`${indent}${describeClassRelationshipEvidence(classRel, classById, classNameById)}`)
+      } else {
+        lines.push(`${indent}- Lower-level relation (name unresolved)`)
+      }
+      return
+    }
+
+    lines.push(`${indent}- ${relationshipDisplayName(lower, componentNameById)}`)
+    for (const childId of lower.basedOnIds) walk(childId, depth + 1)
+  }
+
+  for (const evidenceId of rel.basedOnIds) walk(evidenceId, 0)
+  if (lines.length >= MAX_EVIDENCE_TOOLTIP_LINES) {
+    lines.push("...and more")
+  }
+  return lines
+}
+
 function parseDslSummary(dsl: string): DslSummary {
   const lines = dsl.split(/\r?\n/)
   const classes: DslClassSummary[] = []
@@ -575,14 +649,13 @@ function drawOpenArrow(ctx: CanvasRenderingContext2D, x: number, y: number, angl
   ctx.restore()
 }
 
-function drawComponentRelationship(
-  ctx: CanvasRenderingContext2D,
+function getRelationshipRoute(
   rel: ComponentRelationship,
   components: ComponentInfo[],
-) {
+): { source: ComponentInfo; target: ComponentInfo; points: { x: number; y: number }[] } | null {
   const source = components.find((c) => c.id === rel.sourceComponentId)
   const target = components.find((c) => c.id === rel.targetComponentId)
-  if (!source || !target) return
+  if (!source || !target) return null
 
   const sCx = source.x + source.width / 2
   const sCy = source.y + source.height / 2
@@ -592,10 +665,6 @@ function drawComponentRelationship(
   const { sx, sy, side: sSide } = getEdgePoint(source.x, source.y, source.width, source.height, tCx, tCy)
   const { sx: tx, sy: ty, side: tSide } = getEdgePoint(target.x, target.y, target.width, target.height, sCx, sCy)
 
-  const color = "#64748b"
-  const isDerived = rel.basedOnIds.length > 0
-
-  // orthogonal routing
   const points: { x: number; y: number }[] = [{ x: sx, y: sy }]
   if (sSide === "left" || sSide === "right") {
     if (tSide === "left" || tSide === "right") {
@@ -616,6 +685,55 @@ function drawComponentRelationship(
   }
   points.push({ x: tx, y: ty })
 
+  return { source, target, points }
+}
+
+function getRelationshipLabelLayout(
+  ctx: CanvasRenderingContext2D,
+  rel: ComponentRelationship,
+  points: { x: number; y: number }[],
+) {
+  const isDerived = rel.basedOnIds.length > 0
+  const label = rel.label ?? (isDerived ? `${rel.basedOnIds.length} evidence` : "manual")
+  if (!label) return null
+
+  const midIdx = Math.floor(points.length / 2)
+  const p1 = points[midIdx - 1] ?? points[0]
+  const p2 = points[midIdx] ?? points[points.length - 1]
+  const lx = (p1.x + p2.x) / 2
+  const ly = (p1.y + p2.y) / 2
+
+  ctx.save()
+  ctx.font = "bold 10px sans-serif"
+  const tw = ctx.measureText(label).width
+  ctx.restore()
+
+  return {
+    isDerived,
+    label,
+    lx,
+    ly,
+    boxX: lx - tw / 2 - 6,
+    boxY: ly - 18,
+    boxW: tw + 12,
+    boxH: 16,
+  }
+}
+
+function drawComponentRelationship(
+  ctx: CanvasRenderingContext2D,
+  rel: ComponentRelationship,
+  components: ComponentInfo[],
+) {
+  const route = getRelationshipRoute(rel, components)
+  if (!route) return
+  const { points } = route
+  const tx = points[points.length - 1].x
+  const ty = points[points.length - 1].y
+
+  const color = "#64748b"
+  const isDerived = rel.basedOnIds.length > 0
+
   ctx.save()
   if (!isDerived) ctx.setLineDash([6, 4]) // manual relationship
   ctx.strokeStyle = color
@@ -631,27 +749,21 @@ function drawComponentRelationship(
   const angle = Math.atan2(last.y - prev.y, last.x - prev.x)
   drawOpenArrow(ctx, tx, ty, angle, color)
 
-  const label = rel.label ?? (isDerived ? `${rel.basedOnIds.length} evidence` : "manual")
-  if (label) {
-    const midIdx = Math.floor(points.length / 2)
-    const p1 = points[midIdx - 1] ?? points[0]
-    const p2 = points[midIdx] ?? points[points.length - 1]
-    const lx = (p1.x + p2.x) / 2
-    const ly = (p1.y + p2.y) / 2
+  const labelLayout = getRelationshipLabelLayout(ctx, rel, points)
+  if (labelLayout) {
     ctx.save()
-    ctx.font = `bold 10px sans-serif`
+    ctx.font = "bold 10px sans-serif"
     ctx.fillStyle = "#0f172a"
-    const tw = ctx.measureText(label).width
     ctx.fillStyle = "rgba(255,255,255,0.9)"
     ctx.beginPath()
-    ctx.roundRect(lx - tw / 2 - 6, ly - 18, tw + 12, 16, 4)
+    ctx.roundRect(labelLayout.boxX, labelLayout.boxY, labelLayout.boxW, labelLayout.boxH, 4)
     ctx.fill()
     ctx.strokeStyle = "#e2e8f0"
     ctx.lineWidth = 1
     ctx.stroke()
     ctx.fillStyle = "#334155"
     ctx.textAlign = "center"
-    ctx.fillText(label, lx, ly - 6)
+    ctx.fillText(labelLayout.label, labelLayout.lx, labelLayout.ly - 6)
     ctx.restore()
   }
 }
@@ -768,6 +880,7 @@ function drawLegend(ctx: CanvasRenderingContext2D, canvasWidth: number) {
 interface ComponentDiagramCanvasProps {
   components: ComponentInfo[]
   relationships: ComponentRelationship[]
+  classRelationships?: ClassRelationship[]
   classes: ClassInfo[]
   dslContentByPath?: Record<string, string>
   selectedId: string | null
@@ -781,6 +894,7 @@ interface ComponentDiagramCanvasProps {
 export function ComponentDiagramCanvas({
   components,
   relationships,
+  classRelationships = [],
   classes,
   dslContentByPath = {},
   selectedId,
@@ -797,6 +911,7 @@ export function ComponentDiagramCanvas({
   const [showComponentHeatmap, setShowComponentHeatmap] = useState(true)
   const [showClassHeatmap, setShowClassHeatmap] = useState(true)
   const [heatTooltip, setHeatTooltip] = useState<HeatTooltipState | null>(null)
+  const [evidenceTooltip, setEvidenceTooltip] = useState<HeatTooltipState | null>(null)
 
   const interactionRef = useRef<{
     mode: "none" | "dragging-component" | "resizing-component" | "panning"
@@ -843,6 +958,36 @@ export function ComponentDiagramCanvas({
     }
     return result
   }, [dslContentByPath])
+
+  const componentNameById = useMemo(() => {
+    const result = new Map<string, string>()
+    for (const comp of components) result.set(comp.id, comp.name)
+    return result
+  }, [components])
+
+  const relationshipById = useMemo(() => {
+    const result = new Map<string, ComponentRelationship>()
+    for (const rel of relationships) result.set(rel.id, rel)
+    return result
+  }, [relationships])
+
+  const classRelationshipById = useMemo(() => {
+    const result = new Map<string, ClassRelationship>()
+    for (const rel of classRelationships) result.set(rel.id, rel)
+    return result
+  }, [classRelationships])
+
+  const classNameById = useMemo(() => {
+    const result = new Map<string, string>()
+    for (const cls of classes) result.set(cls.id, cls.name)
+    return result
+  }, [classes])
+
+  const classById = useMemo(() => {
+    const result = new Map<string, ClassInfo>()
+    for (const cls of classes) result.set(cls.id, cls)
+    return result
+  }, [classes])
 
   const heatMetricsByComponentId = useMemo<Record<string, ComponentHeatMetrics>>(() => {
     const incoming = new Map<string, number>()
@@ -1103,6 +1248,38 @@ export function ComponentDiagramCanvas({
     return null
   }
 
+  function hitTestEvidenceLabel(
+    worldX: number,
+    worldY: number,
+  ): { rel: ComponentRelationship; sourceName: string; targetName: string } | null {
+    const canvas = canvasRef.current
+    if (!canvas) return null
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return null
+
+    for (let i = relationships.length - 1; i >= 0; i--) {
+      const rel = relationships[i]
+      if (rel.basedOnIds.length === 0) continue
+      const route = getRelationshipRoute(rel, components)
+      if (!route) continue
+      const layout = getRelationshipLabelLayout(ctx, rel, route.points)
+      if (!layout) continue
+      if (
+        worldX >= layout.boxX &&
+        worldX <= layout.boxX + layout.boxW &&
+        worldY >= layout.boxY &&
+        worldY <= layout.boxY + layout.boxH
+      ) {
+        return {
+          rel,
+          sourceName: route.source.name,
+          targetName: route.target.name,
+        }
+      }
+    }
+    return null
+  }
+
   function handleMouseDown(e: React.MouseEvent) {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -1181,12 +1358,14 @@ export function ComponentDiagramCanvas({
 
     if (interaction.mode === "dragging-component" && interaction.componentId) {
       setHeatTooltip(null)
+      setEvidenceTooltip(null)
       onMoveComponent(interaction.componentId, world.x - interaction.offsetX, world.y - interaction.offsetY)
       return
     }
 
     if (interaction.mode === "resizing-component" && interaction.componentId && onResizeComponent) {
       setHeatTooltip(null)
+      setEvidenceTooltip(null)
       const comp = components.find((c) => c.id === interaction.componentId)
       if (!comp) return
       const dw = world.x - interaction.startWorldX
@@ -1199,11 +1378,33 @@ export function ComponentDiagramCanvas({
 
     if (interaction.mode === "panning") {
       setHeatTooltip(null)
+      setEvidenceTooltip(null)
       const dx = screenX - interaction.startPanX
       const dy = screenY - interaction.startPanY
       setPanOffset({ x: interaction.startOffsetX + dx, y: interaction.startOffsetY + dy })
       return
     }
+
+    const evidenceHit = hitTestEvidenceLabel(world.x, world.y)
+    if (evidenceHit) {
+      setHeatTooltip(null)
+      const evidenceLines = buildEvidenceTooltipLines(
+        evidenceHit.rel,
+        relationshipById,
+        componentNameById,
+        classRelationshipById,
+        classById,
+        classNameById,
+      )
+      setEvidenceTooltip({
+        screenX: screenX + 14,
+        screenY: screenY + 14,
+        title: `${evidenceHit.sourceName} -> ${evidenceHit.targetName}`,
+        lines: evidenceLines,
+      })
+      return
+    }
+    setEvidenceTooltip(null)
 
     const heatHit = hitTestHeatRow(world.x, world.y)
     if (!heatHit) {
@@ -1404,10 +1605,11 @@ export function ComponentDiagramCanvas({
           handleMouseUp()
           setCanvasCursor("grab")
           setHeatTooltip(null)
+          setEvidenceTooltip(null)
         }}
       />
 
-      {heatTooltip && (
+      {heatTooltip && !evidenceTooltip && (
         <div
           className="absolute z-20 max-w-[460px] rounded border border-slate-200 bg-white/95 px-2 py-1.5 shadow-md"
           style={{
@@ -1418,6 +1620,23 @@ export function ComponentDiagramCanvas({
         >
           <div className="text-[11px] font-semibold text-slate-800">{heatTooltip.title}</div>
           {heatTooltip.lines.map((line, idx) => (
+            <div key={idx} className="text-[10px] leading-4 text-slate-600">
+              {line}
+            </div>
+          ))}
+        </div>
+      )}
+      {evidenceTooltip && (
+        <div
+          className="absolute z-20 max-w-[520px] rounded border border-slate-200 bg-white/95 px-2 py-1.5 shadow-md"
+          style={{
+            left: evidenceTooltip.screenX,
+            top: evidenceTooltip.screenY,
+            pointerEvents: "none",
+          }}
+        >
+          <div className="text-[11px] font-semibold text-slate-800">根拠となる関係: {evidenceTooltip.title}</div>
+          {evidenceTooltip.lines.map((line, idx) => (
             <div key={idx} className="text-[10px] leading-4 text-slate-600">
               {line}
             </div>
