@@ -15,7 +15,7 @@
  *   - 下端: ステータスバー（カーソル位置 / エラー数 / 最終適用時刻）
  */
 
-import React, { useRef, useState, useCallback, useEffect } from 'react'
+import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { ComponentService } from '../lib/application/ComponentService';
 import Editor, { useMonaco, OnMount, OnChange } from '@monaco-editor/react'
 import DOMPurify from 'dompurify'
@@ -47,6 +47,20 @@ import { FolderTree } from './FolderTree';
 // ============================================================
 
 const DSL_LANGUAGE_ID = 'class-spec-dsl'
+
+function isTypeCompletionContext(model: Monaco.editor.ITextModel, position: Monaco.IPosition): boolean {
+    const line = model.getLineContent(position.lineNumber)
+    const before = line.slice(0, position.column - 1)
+    const trimmed = line.trimStart()
+
+    if (!/^[+\-#~]/.test(trimmed)) return false
+
+    const memberType = /^[\s]*[+\-#~]\s*(?:[sa]\s+)?\w+\s*:\s*[\w\[\]]*$/.test(before)
+    const returnType = /\)\s*:\s*[\w\[\]]*$/.test(before)
+    const paramType = /[(,]\s*\w+\s*:\s*[\w\[\]]*$/.test(before)
+
+    return memberType || returnType || paramType
+}
 
 /**
  * Monaco インスタンスが用意されたタイミングで一度だけ呼ぶ。
@@ -135,6 +149,9 @@ function registerDslLanguage(monaco: typeof Monaco) {
 
     monaco.languages.registerCompletionItemProvider(DSL_LANGUAGE_ID, {
         provideCompletionItems(model, position) {
+            if (isTypeCompletionContext(model as Monaco.editor.ITextModel, position as Monaco.IPosition)) {
+                return { suggestions: [] }
+            }
             const word = model.getWordUntilPosition(position)
             const range = {
                 startLineNumber: position.lineNumber,
@@ -206,6 +223,8 @@ export interface FileEntry {
     path: string;
     isDirectory: boolean;
 }
+
+type CommandScopeMode = 'local' | 'global'
 
 // ============================================================
 // resolveContext
@@ -804,7 +823,7 @@ abstract class Entity
 Order *> OrderItem :items 1 *
 `
 
-export function SpecEditorPanel({ service, classes, visible, onCursorContext }: SpecEditorPanelProps) {
+export function SpecEditorPanel({ service, classes, visible, onCursorContext, componentService }: SpecEditorPanelProps) {
     // @monaco-editor/react が用意する monaco インスタンス
     const monaco = useMonaco()
 
@@ -834,6 +853,72 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
 
     const [diagramFiles, setDiagramFiles] = useState<FileEntry[]>([]);
     const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
+    const [commandScope, setCommandScope] = useState<CommandScopeMode>('local');
+    const [localDslClassNames, setLocalDslClassNames] = useState<string[]>([]);
+    const completionTypeNamesRef = useRef<string[]>([]);
+    const completionTypeCommentRef = useRef<Map<string, string>>(new Map());
+
+    const completionClassPool = useMemo(() => {
+        const byName = new Map<string, ClassInfo>();
+        const add = (arr: ClassInfo[]) => {
+            for (const c of arr) {
+                if (!c?.name) continue;
+                if (!byName.has(c.name)) byName.set(c.name, c);
+            }
+        };
+
+        try {
+            add(service.getModel().getClasses());
+        } catch {
+            // no-op
+        }
+        add(classes || []);
+        try {
+            const domain = (componentService as any)?.classDomain;
+            if (domain?.getClasses) add(domain.getClasses());
+        } catch {
+            // no-op
+        }
+        return Array.from(byName.values());
+    }, [service, classes, componentService, localDslClassNames]);
+
+    const commandScopeClasses = useMemo(() => {
+        if (commandScope === 'global') return completionClassPool;
+        if (!localDslClassNames.length) return completionClassPool;
+        const classMap = new Map(completionClassPool.map(c => [c.name, c]));
+        return localDslClassNames
+            .map(name => classMap.get(name))
+            .filter((c): c is ClassInfo => Boolean(c));
+    }, [completionClassPool, commandScope, localDslClassNames]);
+
+    const scopedTypeNames = useMemo(() => {
+        const source = commandScope === 'global' ? completionClassPool : commandScopeClasses;
+        return source.map(c => c.name);
+    }, [commandScope, completionClassPool, commandScopeClasses]);
+
+    useEffect(() => {
+        completionTypeNamesRef.current = scopedTypeNames;
+        const source = commandScope === 'global' ? completionClassPool : commandScopeClasses;
+        const commentMap = new Map<string, string>();
+        for (const c of source) {
+            const componentIds = c.componentIds ?? [];
+            if (componentIds.length > 0) {
+                let comment = `assigned (${componentIds.length})`;
+                try {
+                    const names = componentService?.getComponentNamesForClass?.(c.id) ?? [];
+                    if (names.length > 0) {
+                        comment = `assigned: ${names.join(', ')}`;
+                    }
+                } catch {
+                    // keep fallback comment
+                }
+                commentMap.set(c.name, comment);
+            } else {
+                commentMap.set(c.name, 'unassigned');
+            }
+        }
+        completionTypeCommentRef.current = commentMap;
+    }, [scopedTypeNames, commandScope, completionClassPool, commandScopeClasses, componentService]);
 
     // ── IPC Listeners ──────────────────────────────────────────
 
@@ -859,6 +944,7 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
             // 2. モデルをリセットして再構築
             service.setModel(DomainModel.createEmpty())
             const parsed = parserRef.current.parse(dsl, service)
+            setLocalDslClassNames(parsed.classes.map(cls => cls.name))
 
             // 3. ワークフローデータを名前ベースで復元
             //    ただしパーサが DSL 内の Scenario から既に workflow を設定した操作は除外する。
@@ -952,6 +1038,7 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
             }
 
             setStatus({ state: 'error', errors: [msg], warnings: [], dslWarnings: [], classCount: 0, lastApplied: null, cliSuggestions: [] })
+            setLocalDslClassNames([])
         }
     }, [classes, service, monaco])
 
@@ -1115,6 +1202,62 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
                     return codeLens;
                 },
             });
+            const lang = monacoInstance.languages.getLanguages().find((l: any) => l.id === DSL_LANGUAGE_ID) as any;
+            if (lang) lang._codeLensRegistered = true;
+        }
+
+        if (!monacoInstance.languages.getLanguages().some(
+            (l: any) => l.id === DSL_LANGUAGE_ID && (l as any)._typeCompletionRegistered
+        )) {
+            monacoInstance.languages.registerCompletionItemProvider(DSL_LANGUAGE_ID, {
+                triggerCharacters: [':', ' ', '['],
+                provideCompletionItems(model: any, position: any) {
+                    if (!isTypeCompletionContext(model as Monaco.editor.ITextModel, position as Monaco.IPosition)) {
+                        return { suggestions: [] }
+                    }
+                    const word = model.getWordUntilPosition(position)
+                    const range = {
+                        startLineNumber: position.lineNumber,
+                        endLineNumber: position.lineNumber,
+                        startColumn: word.startColumn,
+                        endColumn: word.endColumn,
+                    }
+
+                    const builtins = ['string', 'number', 'boolean', 'int', 'float', 'double', 'void', 'Date', 'DateTime', 'any']
+                    const classNames = completionTypeNamesRef.current
+                    const comments = completionTypeCommentRef.current
+                    const prefix = (word.word || '').toLowerCase()
+                    const uniq = new Set<string>([...classNames, ...builtins])
+
+                    const suggestions = Array.from(uniq)
+                        .filter(n => !prefix || n.toLowerCase().startsWith(prefix))
+                        .map(n => {
+                            const isClassType = classNames.includes(n)
+                            const comment = comments.get(n) ?? ''
+                            const safeComment = comment.replace(/\r?\n/g, ' ')
+                            // let insertText = isClassType && safeComment
+                            //     ? `${n} // ${safeComment}`
+                            //     : n;
+                            const insertText = n;
+                            return {
+                                label: n,
+                                kind: isClassType
+                                    ? monacoInstance.languages.CompletionItemKind.Class
+                                    : monacoInstance.languages.CompletionItemKind.Keyword,
+                                insertText,
+                                detail: isClassType ? comment : 'builtin',
+                                documentation: isClassType
+                                    ? `type ${n} // ${comment}`
+                                    : `builtin type: ${n}`,
+                                range,
+                            }
+                        })
+
+                    return { suggestions }
+                },
+            });
+            const lang = monacoInstance.languages.getLanguages().find((l: any) => l.id === DSL_LANGUAGE_ID) as any;
+            if (lang) lang._typeCompletionRegistered = true;
         }
 
         // ── CodeLens コマンドのハンドラ登録 ───────────────────────
@@ -1390,6 +1533,16 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
 
                 <div style={{ flex: 1 }} />
 
+                <ToolbarBtn
+                    onClick={() => setCommandScope(prev => prev === 'local' ? 'global' : 'local')}
+                    title="コマンド補完のクラス参照範囲を切替"
+                    accent={commandScope === 'local' ? '#22c55e' : '#f59e0b'}
+                >
+                    {commandScope === 'local'
+                        ? `Scope: Local (${commandScopeClasses.length})`
+                        : `Scope: Global (${completionClassPool.length})`}
+                </ToolbarBtn>
+
                 {/* プレビュートグル */}
                 <ToolbarBtn
                     onClick={() => setShowPreview(v => !v)}
@@ -1498,7 +1651,7 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext }: 
                                 }}>
                                 {/* ここにCommandLine を配置 */}
                                 <CommandLine
-                                    classes={classes || []}
+                                    classes={commandScopeClasses}
                                     initialValue={cmdInitialValue}
                                     onExecute={(cmd) => {
                                         setCmdInitialValue('');
