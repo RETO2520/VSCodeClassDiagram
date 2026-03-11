@@ -1143,30 +1143,70 @@ export function ComponentDiagramCanvas({
     return worldX >= hx && worldX <= hx + RESIZE_HANDLE_SIZE && worldY >= hy && worldY <= hy + RESIZE_HANDLE_SIZE
   }
 
-  function buildComponentHeatTooltip(comp: ComponentInfo, heat: ComponentHeatMetrics): { title: string; lines: string[] } {
+  function buildComponentHeatTooltip(
+    comp: ComponentInfo,
+    heat: ComponentHeatMetrics,
+    classRelationships: ClassRelationship[]
+  ): { title: string; lines: string[] } {
     const r = heat.componentRaw
     const totalFlow = r.incoming + r.outgoing
-    const hotspot =
-      r.incoming >= r.outgoing * 1.5
-        ? "受信偏重"
-        : r.outgoing >= r.incoming * 1.5
-          ? "送信偏重"
-          : "入出力は均衡"
-    const nextAction =
-      totalFlow >= 8
-        ? "次アクション: 依存本数が多い境界を1つ選び、Facade/Portで疎結合化"
-        : "次アクション: この状態を維持し、L4の増加だけ監視"
+
+    const compClassIds = new Set(comp.classIds)
+    const externalRels = classRelationships.filter((rel) => {
+      const isSrcInside = compClassIds.has(rel.sourceId)
+      const isTgtInside = compClassIds.has(rel.targetId)
+      return (isSrcInside && !isTgtInside) || (!isSrcInside && isTgtInside)
+    })
+
+    let inheritanceCount = 0
+    let delegationCount = 0 // association, aggregation, composition
+    let dependencyCount = 0
+
+    for (const rel of externalRels) {
+      if (rel.type === "generalization" || rel.type === "realization") inheritanceCount++
+      else if (rel.type === "association" || rel.type === "aggregation" || rel.type === "composition") delegationCount++
+      else if (rel.type === "dependency") dependencyCount++
+    }
+
+    const nextActions: string[] = []
+
+    if (r.incoming >= r.outgoing * 1.5) {
+      nextActions.push("[受信偏重] 外部からの依存が集中しています。Facade/Portを設けて内部実装を隠蔽することを検討してください。")
+    } else if (r.outgoing >= r.incoming * 1.5) {
+      nextActions.push("[送信偏重] 外部への依存が多い状態です。変更の波及を抑えるため、依存先をインターフェースに依存させる(DIP)構成を推奨します。")
+    } else if (totalFlow >= 8) {
+      nextActions.push("[密結合の兆候] 入出力双方向に多数の依存があります。責務過多の可能性があるため、コンポーネントの分割を検討してください。")
+    } else {
+      nextActions.push("[安定] 入出力は概ね均衡しています。現在のL4(高負荷)クラスの増加率のみ監視してください。")
+    }
+
+    if (inheritanceCount > 0) {
+      nextActions.push(`[継承: ${inheritanceCount}件] 境界を越える継承があります。結合度が非常に高いため、インターフェース抽出(実現)や委譲(コンポジション)への切り替えを検討してください。`)
+    }
+    if (delegationCount > totalFlow * 0.5 && delegationCount > 3) {
+      nextActions.push(`[委譲/参照: ${delegationCount}件] 外部の実装への直接参照/委譲が多数発生しています。Facadeを配置して窓口を一本化することを推奨します。`)
+    }
+    if (dependencyCount > totalFlow * 0.5 && dependencyCount > 3) {
+      nextActions.push(`[依存: ${dependencyCount}件] 特定機能への依存が集中しています。Port(DIP)を切って疎結合化を検討してください。`)
+    }
+
     return {
       title: `${comp.name} / コンポーネント俯瞰`,
       lines: [
         `リンク: In ${r.incoming} / Out ${r.outgoing} (合計 ${totalFlow})`,
         `内部規模: 子要素 ${r.children}, クラス数 ${r.classLoad}`,
-        `偏り判定: ${hotspot}`,
-        nextAction,
+        `外部結合エッジ: 継承 ${inheritanceCount} / 委譲・参照 ${delegationCount} / 依存 ${dependencyCount}`,
+        "--- 次アクション候補 ---",
+        ...nextActions.map((action) => `• ${action}`),
       ],
     }
   }
-  function buildClassHeatTooltip(comp: ComponentInfo, heat: ComponentHeatMetrics): { title: string; lines: string[] } {
+  function buildClassHeatTooltip(
+    comp: ComponentInfo,
+    heat: ComponentHeatMetrics,
+    classRelationships: ClassRelationship[],
+    classes: ClassInfo[]
+  ): { title: string; lines: string[] } {
     const entries = heat.classRaw
       .map((value, idx) => ({ value, label: heat.classLabels[idx] ?? `Item${idx + 1}` }))
       .filter((e) => Number.isFinite(e.value))
@@ -1192,31 +1232,63 @@ export function ComponentDiagramCanvas({
     const topEntries = [...entries]
       .sort((a, b) => b.value - a.value)
       .slice(0, CLASS_TOOLTIP_TOP_N)
-      .map((e) => `${e.label}(${e.value})`)
+
+    const topClassNames = topEntries.map((e) => `${e.label}(${e.value})`).join(", ") || "-"
+
+    const classNameToId = new Map<string, string>()
+    for (const cls of classes) {
+      classNameToId.set(cls.name, cls.id)
+    }
+
+    let combinedInheritance = 0
+    let combinedOutgoingDelegation = 0
+    let combinedIncomingDependency = 0
+
+    for (const topEntry of topEntries) {
+      const cid = classNameToId.get(topEntry.label)
+      if (!cid) continue
+
+      for (const rel of classRelationships) {
+        if (rel.sourceId === cid) {
+          if (rel.type === "generalization" || rel.type === "realization") combinedInheritance++
+          else if (rel.type === "association" || rel.type === "aggregation" || rel.type === "composition")
+            combinedOutgoingDelegation++
+        } else if (rel.targetId === cid) {
+          if (rel.type === "dependency") combinedIncomingDependency++
+        }
+      }
+    }
 
     const l4Ratio = bins[3] / Math.max(1, count)
-    const balance =
-      l4Ratio >= 0.4
-        ? "偏り強"
-        : l4Ratio >= 0.2
-          ? "やや偏り"
-          : "概ね均等"
-    const nextAction =
-      l4Ratio >= 0.4
-        ? "次アクション: 負荷上位クラスを分割し、責務を別クラスへ移譲"
-        : l4Ratio >= 0.2
-          ? "次アクション: 上位クラスのメソッド群を集約単位ごとに整理"
-          : "次アクション: 現状維持。新規実装はL4集中を避ける"
+    const nextActions: string[] = []
+
+    if (l4Ratio >= 0.4) {
+      nextActions.push("[全体: 偏り強] 上位クラスに負荷が過度に集中しています。責務を分割し、複数のクラスへ振る舞いを分散してください。")
+    } else if (l4Ratio >= 0.2) {
+      nextActions.push("[全体: やや偏り] 上位クラスのメソッド群が肥大化しつつあります。集約単位ごとにモジュールを分けることを検討してください。")
+    } else {
+      nextActions.push("[全体: 概ね均等] 現状維持。新規実装時はこの均等さを保ち、L4クラスの機能を増やしすぎないよう注意してください。")
+    }
+
+    if (combinedOutgoingDelegation > 5) {
+      nextActions.push("[傾向: 送信委譲偏重] 上位負荷クラスが多数の外部クラスを委譲・操作しています。God Class化の恐れがあるため、Strategy/State等のパターンでロジックを委譲先に移すことを検討してください。")
+    }
+    if (combinedIncomingDependency > 5) {
+      nextActions.push("[傾向: 受信依存偏重] 上位負荷クラスに他クラスからの利用（依存）が集中しています（共通Utility化の兆候）。巨大すぎる場合は関心事ごとにクラス空間を分割してください。")
+    }
+    if (combinedInheritance > 2) {
+      nextActions.push("[傾向: 継承多用] 負荷上位クラスが複数の継承・実現を行っています。継承によりクラス規模が拡大している場合、委譲(Composition)への切り替えを検討してください。")
+    }
 
     return {
       title: `${comp.name} / クラス負荷`,
       lines: [
-        `負荷上位クラス: ${topEntries.join(", ") || "-"}`,
-        `4段階分布 (L1-L4): ${bins.join(" / ")} -> ${balance}`,
-        "L1-L4補足: L1=低負荷, L2=やや低, L3=やや高, L4=高負荷（同一コンポーネント内での相対評価）",
-        `Min / Avg / Max: ${min} / ${avg.toFixed(1)} / ${max}`,
-        `Median / P90: ${median} / ${p90}`,
-        nextAction,
+        `負荷上位クラス: ${topClassNames}`,
+        `4段階分布 (L1-L4): ${bins.join(" / ")} -> ${l4Ratio >= 0.4 ? "偏り強" : l4Ratio >= 0.2 ? "やや偏り" : "概ね均等"}`,
+        `Min / Avg / Max: ${min} / ${avg.toFixed(1)} / ${max} (※メンバ操作数)`,
+        `上位クラス結合傾向: 継承 ${combinedInheritance} / 送信委譲 ${combinedOutgoingDelegation} / 受信依存 ${combinedIncomingDependency}`,
+        "--- 次アクション候補 ---",
+        ...nextActions.map((action) => `• ${action}`),
       ],
     }
   }
@@ -1420,8 +1492,8 @@ export function ComponentDiagramCanvas({
 
     const payload =
       heatHit.row === "component"
-        ? buildComponentHeatTooltip(heatHit.component, heat)
-        : buildClassHeatTooltip(heatHit.component, heat)
+        ? buildComponentHeatTooltip(heatHit.component, heat, classRelationships)
+        : buildClassHeatTooltip(heatHit.component, heat, classRelationships, classes)
 
     setHeatTooltip({
       screenX: screenX + 14,
