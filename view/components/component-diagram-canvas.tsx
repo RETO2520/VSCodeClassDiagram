@@ -1150,6 +1150,7 @@ interface ComponentDiagramCanvasProps {
   onResizeComponent?: (id: string, width: number, height: number) => void
   onAddPort?: (componentId: string, direction: "input" | "output") => void
   onDeletePort?: (componentId: string, portId: string) => void
+  onRenamePort?: (componentId: string, portId: string, nextName: string) => void
   onAddRelationship?: (sourceComponentId: string, targetComponentId: string, label?: string) => void
   onAddPortConnection?: (
     sourceComponentId: string, sourcePortId: string,
@@ -1174,6 +1175,7 @@ export function ComponentDiagramCanvas({
   onResizeComponent,
   onAddPort,
   onDeletePort,
+  onRenamePort,
   onAddRelationship,
   onAddPortConnection,
   onDeletePortConnection,
@@ -1350,6 +1352,27 @@ export function ComponentDiagramCanvas({
     showComponentHeatmap,
     showClassHeatmap,
   ])
+
+  const validPortNamesByComponentId = useMemo(() => {
+    const result = new Map<string, Set<string>>()
+    for (const comp of components) {
+      const names = new Set<string>()
+      if (comp.kind === "component") {
+        const dslPath = comp.dslPath ?? ""
+        const summary = dslPath ? dslSummaryByPath[dslPath] : undefined
+        if (summary && summary.classes.length > 0) {
+          summary.classes.forEach((c) => names.add(c.name))
+        } else {
+          comp.classIds.forEach((cid) => {
+            const name = classNameById.get(cid)
+            if (name) names.add(name)
+          })
+        }
+      }
+      result.set(comp.id, names)
+    }
+    return result
+  }, [components, dslSummaryByPath, classNameById])
 
   const heatMetricsByComponentId = useMemo<Record<string, ComponentHeatMetrics>>(() => {
     const incoming = new Map<string, number>()
@@ -2279,6 +2302,15 @@ export function ComponentDiagramCanvas({
         {components.map((comp) => {
           const ports = componentPorts.get(comp.id) || { inputs: [], outputs: [] }
           const heat = heatMetricsByComponentId[comp.id]
+          const validPortNames = validPortNamesByComponentId.get(comp.id)
+          const hasInvalidPortNames = (() => {
+            if (!validPortNames || validPortNames.size === 0) return false
+            const manualPorts = comp.manualPorts ?? []
+            return manualPorts.some((p) => {
+              const trimmed = p.name.trim()
+              return trimmed.length > 0 && !validPortNames.has(trimmed)
+            })
+          })()
           const { statsLabel, childListTitle, childItems } = buildComponentNodeData(
             comp,
             components,
@@ -2294,6 +2326,7 @@ export function ComponentDiagramCanvas({
               childListTitle={childListTitle}
               statsLabel={statsLabel}
               ports={ports}
+              hasInvalidPortNames={hasInvalidPortNames}
               connectedPortIds={portConnections.reduce<string[]>((acc, pc) => {
                 if (pc.sourceComponentId === comp.id) acc.push(pc.sourcePortId)
                 if (pc.targetComponentId === comp.id) acc.push(pc.targetPortId)
@@ -2305,6 +2338,7 @@ export function ComponentDiagramCanvas({
               onAddInputPort={() => onAddPort?.(comp.id, "input")}
               onAddOutputPort={() => onAddPort?.(comp.id, "output")}
               onDeletePort={(portId) => onDeletePort?.(comp.id, portId)}
+              onRenamePort={(portId, nextName) => onRenamePort?.(comp.id, portId, nextName)}
             />
           )
         })}

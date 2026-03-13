@@ -55,6 +55,7 @@ export interface ComponentNodeProps {
   // Ports mapping
   ports: PortGroup
   connectedPortIds?: string[]
+  hasInvalidPortNames?: boolean
 
   // Heatmap data
   heat?: ComponentHeatMetrics
@@ -65,6 +66,7 @@ export interface ComponentNodeProps {
   onAddInputPort?: () => void
   onAddOutputPort?: () => void
   onDeletePort?: (portId: string) => void
+  onRenamePort?: (portId: string, nextName: string) => void
 }
 
 // ==============================
@@ -150,14 +152,17 @@ export function ComponentNode({
   statsLabel,
   ports,
   connectedPortIds,
+  hasInvalidPortNames = false,
   heat,
   showComponentHeatmap = true,
   showClassHeatmap = true,
   onAddInputPort,
   onAddOutputPort,
-  onDeletePort
+  onDeletePort,
+  onRenamePort
 }: ComponentNodeProps) {
   const styles = getStylesByKind(comp.kind, isSelected)
+  const warningClass = hasInvalidPortNames ? "border-amber-500 ring-2 ring-amber-400" : ""
 
   const hasHeatmap = heat && (showComponentHeatmap || showClassHeatmap)
   const connectedPortIdSet = new Set(connectedPortIds ?? [])
@@ -165,7 +170,7 @@ export function ComponentNode({
 
   return (
     <div
-      className={`absolute shadow-md rounded-xl font-mono text-sm border-2 overflow-visible select-none transition-shadow pointer-events-none ${styles.container}`}
+      className={`absolute shadow-md rounded-xl font-mono text-sm border-2 overflow-visible select-none transition-shadow pointer-events-none ${styles.container} ${warningClass}`}
       style={{
         left: comp.x,
         top: comp.y,
@@ -273,7 +278,18 @@ export function ComponentNode({
                         ].join(" ")}
                       />
                       <div className="flex items-center gap-1 min-w-0">
-                        <span className="text-[11px] truncate max-w-[140px]" title={inputPort.name}>{inputPort.name}</span>
+                        {comp.manualPorts?.some((mp) => mp.id === inputPort.id) ? (
+                          <input
+                            className="text-[11px] truncate max-w-[140px] bg-transparent border border-slate-200 rounded px-1 h-4 pointer-events-auto"
+                            value={inputPort.name}
+                            title={inputPort.name}
+                            onChange={(e) => onRenamePort?.(inputPort.id, e.target.value)}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <span className="text-[11px] truncate max-w-[140px]" title={inputPort.name}>{inputPort.name}</span>
+                        )}
                         {comp.manualPorts?.some((mp) => mp.id === inputPort.id) && (
                           <button
                             className="w-4 h-3.5 bg-red-100 text-red-700 border border-red-200 rounded flex items-center justify-center hover:bg-red-200 text-[10px] pointer-events-auto"
@@ -292,7 +308,18 @@ export function ComponentNode({
                   {outputPort ? (
                     <>
                       <div className="flex items-center gap-1 min-w-0 justify-end">
-                        <span className="text-[11px] truncate max-w-[140px]" title={outputPort.name}>{outputPort.name}</span>
+                        {comp.manualPorts?.some((mp) => mp.id === outputPort.id) ? (
+                          <input
+                            className="text-[11px] truncate max-w-[140px] bg-transparent border border-slate-200 rounded px-1 h-4 pointer-events-auto text-right"
+                            value={outputPort.name}
+                            title={outputPort.name}
+                            onChange={(e) => onRenamePort?.(outputPort.id, e.target.value)}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <span className="text-[11px] truncate max-w-[140px]" title={outputPort.name}>{outputPort.name}</span>
+                        )}
                         {comp.manualPorts?.some((mp) => mp.id === outputPort.id) && (
                           <button
                             className="w-4 h-3.5 bg-red-100 text-red-700 border border-red-200 rounded flex items-center justify-center hover:bg-red-200 text-[10px] pointer-events-auto"

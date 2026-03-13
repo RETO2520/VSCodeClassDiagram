@@ -466,6 +466,20 @@ export function App({ service, componentService }: { service: ClassDiagramServic
         debouncedSaveComponentDSL(newNodes)
     }, [componentNodes, debouncedSaveComponentDSL])
 
+    const handleRenamePort = useCallback((componentId: string, portId: string, nextName: string) => {
+        const newNodes = componentNodes.map(node => {
+            if (node.id === componentId) {
+                return {
+                    ...node,
+                    manualPorts: (node.manualPorts || []).map(p => p.id === portId ? { ...p, name: nextName } : p),
+                }
+            }
+            return node
+        })
+        setComponentNodes(newNodes)
+        debouncedSaveComponentDSL(newNodes)
+    }, [componentNodes, debouncedSaveComponentDSL])
+
     const handleAddRelationship = useCallback((sourceComponentId: string, targetComponentId: string, label?: string) => {
         if (sourceComponentId === targetComponentId) return
         try {
@@ -761,6 +775,7 @@ export function App({ service, componentService }: { service: ClassDiagramServic
                                     onResizeComponent={handleResizeComponent}
                                     onAddPort={handleAddPort}
                                     onDeletePort={handleDeletePort}
+                                    onRenamePort={handleRenamePort}
                                     onAddRelationship={handleAddRelationship}
                                     onAddPortConnection={handleAddPortConnection}
                                     onDeletePortConnection={handleDeletePortConnection}
