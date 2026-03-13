@@ -1,6 +1,7 @@
 "use client"
 
 import React from "react"
+import { ComponentNode } from "./component-node"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { ZoomIn, ZoomOut, Maximize2, Maximize } from "lucide-react"
@@ -426,6 +427,53 @@ function drawComponentBox(
     )
     ctx.restore()
   }
+}
+
+function buildComponentNodeData(
+  comp: ComponentInfo,
+  components: ComponentInfo[],
+  classes: ClassInfo[],
+  dslSummaryByPath: Record<string, DslSummary>,
+) {
+  const statsLabel =
+    comp.kind === "component"
+      ? (() => {
+        const dslPath = comp.dslPath ?? ""
+        const summary = dslPath ? dslSummaryByPath[dslPath] : undefined
+        if (summary) return `DSL Classes: ${summary.classes.length}`
+        if (dslPath) return `DSL: ${dslPath}`
+        return `Classes: ${comp.classIds.length}`
+      })()
+      : `Children: ${comp.childComponentIds.length}`
+
+  let childListTitle = ""
+  let childItems: string[] = []
+
+  if (comp.kind === "application") {
+    childListTitle = "Subsystems"
+    const subsystems = components.filter(
+      (c) => c.kind === "subsystem" && comp.childComponentIds.includes(c.id),
+    )
+    childItems = subsystems.map((c) => c.name)
+  } else if (comp.kind === "subsystem") {
+    childListTitle = "Components"
+    const comps = components.filter(
+      (c) => c.kind === "component" && comp.childComponentIds.includes(c.id),
+    )
+    childItems = comps.map((c) => c.name)
+  } else {
+    const dslPath = comp.dslPath ?? ""
+    const summary = dslPath ? dslSummaryByPath[dslPath] : undefined
+    if (summary) {
+      childListTitle = `DSL (${dslPath})`
+      childItems = summary.classes.map((c) => `${c.name} [F:${c.memberCount} M:${c.operationCount}]`)
+    } else {
+      childListTitle = "Classes"
+      childItems = comp.classIds.map((cid) => classes.find((cls) => cls.id === cid)?.name ?? cid)
+    }
+  }
+
+  return { statsLabel, childListTitle, childItems }
 }
 
 function clipText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
@@ -1417,20 +1465,7 @@ export function ComponentDiagramCanvas({
     for (const pc of portConnections) {
       drawPortConnection(ctx, pc, componentPorts)
     }
-    for (const comp of components) {
-      drawComponentBox(
-        ctx,
-        comp,
-        comp.id === selectedId,
-        components,
-        classes,
-        dslSummaryByPath,
-        heatMetricsByComponentId,
-        showComponentHeatmap,
-        showClassHeatmap,
-        componentPorts.get(comp.id) || { inputs: [], outputs: [] },
-      )
-    }
+    // Component boxes are rendered as React nodes overlaying the canvas.
 
     if (connecting) {
       const endX = connecting.hoverTarget?.worldX ?? connecting.toWorld.x
@@ -2240,6 +2275,42 @@ export function ComponentDiagramCanvas({
           setConnecting(null)
         }}
       />
+
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
+          transformOrigin: "top left",
+        }}
+      >
+        {components.map((comp) => {
+          const ports = componentPorts.get(comp.id) || { inputs: [], outputs: [] }
+          const heat = heatMetricsByComponentId[comp.id]
+          const { statsLabel, childListTitle, childItems } = buildComponentNodeData(
+            comp,
+            components,
+            classes,
+            dslSummaryByPath,
+          )
+          return (
+            <ComponentNode
+              key={comp.id}
+              comp={comp}
+              isSelected={comp.id === selectedId}
+              childItems={childItems}
+              childListTitle={childListTitle}
+              statsLabel={statsLabel}
+              ports={ports}
+              heat={heat}
+              showComponentHeatmap={showComponentHeatmap}
+              showClassHeatmap={showClassHeatmap}
+              onAddInputPort={() => onAddPort?.(comp.id, "input")}
+              onAddOutputPort={() => onAddPort?.(comp.id, "output")}
+              onDeletePort={(portId) => onDeletePort?.(comp.id, portId)}
+            />
+          )
+        })}
+      </div>
 
       {heatTooltip && !evidenceTooltip && (
         <div
