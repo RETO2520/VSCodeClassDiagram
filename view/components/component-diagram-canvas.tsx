@@ -2219,7 +2219,7 @@ export function ComponentDiagramCanvas({
   }
 
   return (
-    <div ref={containerRef} className="relative h-full w-full bg-background">
+    <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-background">
       <canvas
         ref={canvasRef}
         className="h-full w-full"
