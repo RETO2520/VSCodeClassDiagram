@@ -67,7 +67,7 @@ const BODY_PADDING = 10
 const LINE_HEIGHT = 18
 const CORNER_RADIUS = 8
 const RESIZE_HANDLE_SIZE = 12
-const HEATMAP_PANEL_WIDTH = 96
+const HEATMAP_PANEL_WIDTH = 112
 const HEATMAP_CELL_SIZE = 8
 const CLASS_TOOLTIP_TOP_N = 3
 const MAX_EVIDENCE_TOOLTIP_LINES = 16
@@ -727,7 +727,7 @@ function getHeatPanelLayout(
   const panelX = comp.x + comp.width - BODY_PADDING - HEATMAP_PANEL_WIDTH
   const panelY = comp.y + headerH + BODY_PADDING - 2
   const rowCount = [showComponentHeatmap, showClassHeatmap].filter(Boolean).length
-  const panelH = rowCount * 16 + 10
+  const panelH = rowCount * 16 + 8
   return { panelX, panelY, panelH }
 }
 

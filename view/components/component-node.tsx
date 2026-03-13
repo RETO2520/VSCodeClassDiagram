@@ -112,11 +112,7 @@ function HeatCellBar({ cells }: { cells: number[] }) {
     return <div className="h-2 flex-1 bg-slate-300 rounded-sm"></div>
   }
 
-  const bins = [0, 0, 0, 0]
-  cells.forEach(v => {
-    const idx = Math.min(3, Math.floor(v * 4))
-    bins[idx] += 1
-  })
+  const bins = buildHeatBins(cells)
 
   return (
     <div className="flex h-2 flex-1 border border-slate-200 rounded-sm overflow-hidden bg-white">
@@ -138,6 +134,25 @@ function HeatCellBar({ cells }: { cells: number[] }) {
       })}
     </div>
   )
+}
+
+function buildHeatBins(cells: number[]) {
+  const bins = [0, 0, 0, 0]
+  cells.forEach((v) => {
+    const idx = Math.min(3, Math.floor(v * 4))
+    bins[idx] += 1
+  })
+  return bins
+}
+
+function dominantLevelLabel(cells: number[]) {
+  if (cells.length === 0) return "L0"
+  const bins = buildHeatBins(cells)
+  let bestIdx = 0
+  for (let i = 1; i < bins.length; i++) {
+    if (bins[i] > bins[bestIdx]) bestIdx = i
+  }
+  return `L${bestIdx + 1}`
 }
 
 // ==============================
@@ -220,19 +235,23 @@ export function ComponentNode({
 
         {/* Heatmap Panel (Absolute positioned to top right of content area if exists) */}
         {hasHeatmap && (
-          <div className="absolute top-3 right-3 w-24 bg-white/95 rounded-md border border-slate-200 shadow-sm p-1.5 flex flex-col gap-1.5 z-10">
+          <div className="absolute top-3 right-3 w-28 bg-white/95 rounded-md border border-slate-200 shadow-sm p-1.5 flex flex-col gap-1 z-10">
             {showComponentHeatmap && (
-              <div className="flex items-center gap-1.5 text-[9px]">
-                <span className="font-bold text-slate-600 w-5">Cmp</span>
+              <div className="flex items-center gap-1.5 text-[9px] h-3">
+                <span className="font-bold text-slate-600 w-5 shrink-0">Cmp</span>
                 <HeatCellBar cells={heat.componentCells} />
-                <span className="text-slate-500 w-4 text-right">{heat.componentCells.length}</span>
+                <span className="text-slate-500 text-right tabular-nums tracking-tight shrink-0 whitespace-nowrap">
+                  {dominantLevelLabel(heat.componentCells)}
+                </span>
               </div>
             )}
             {showClassHeatmap && (
-              <div className="flex items-center gap-1.5 text-[9px]">
-                <span className="font-bold text-slate-600 w-5">Cls</span>
+              <div className="flex items-center gap-1.5 text-[9px] h-3">
+                <span className="font-bold text-slate-600 w-5 shrink-0">Cls</span>
                 <HeatCellBar cells={heat.classCells} />
-                <span className="text-slate-500 w-4 text-right">{heat.classCells.length}</span>
+                <span className="text-slate-500 text-right tabular-nums tracking-tight shrink-0 whitespace-nowrap">
+                  {dominantLevelLabel(heat.classCells)}
+                </span>
               </div>
             )}
           </div>
