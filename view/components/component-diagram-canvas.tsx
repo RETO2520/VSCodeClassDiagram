@@ -1310,11 +1310,13 @@ export function ComponentDiagramCanvas({
       }
 
       const HEADER_H = 48
-      const BODY_PAD = BODY_PADDING
+      const BODY_PAD = 12
       const CONTENT_GAP = 4
-      const PORT_HEADER_GAP = 8
+      const PORT_HEADER_MARGIN_TOP = 8
       const PORT_HEADER_HEIGHT = LINE_HEIGHT
+      const PORT_LIST_MARGIN_TOP = 4
       const PORT_ROW_HEIGHT = LINE_HEIGHT
+      const DOM_SOCKET_RADIUS = 7.5
 
       let textY = comp.y + HEADER_H + BODY_PAD
       textY += LINE_HEIGHT // stats line
@@ -1341,19 +1343,19 @@ export function ComponentDiagramCanvas({
         textY += itemsCount * LINE_HEIGHT
       }
 
-      textY += PORT_HEADER_GAP
-      textY += PORT_HEADER_HEIGHT
+      const headerTop = textY + PORT_HEADER_MARGIN_TOP
+      const portsTop = headerTop + PORT_HEADER_HEIGHT + PORT_LIST_MARGIN_TOP
 
-      const inputSocketX = comp.x + BODY_PADDING + SOCKET_RADIUS + 2
-      const outputSocketX = comp.x + comp.width - BODY_PADDING - SOCKET_RADIUS - 2
+      const inputSocketX = comp.x + BODY_PAD + DOM_SOCKET_RADIUS
+      const outputSocketX = comp.x + comp.width - BODY_PAD - DOM_SOCKET_RADIUS
 
-      let inY = textY + PORT_ROW_HEIGHT / 2
+      let inY = portsTop + PORT_ROW_HEIGHT / 2
       for (const p of compPorts.inputs) {
         p.worldX = inputSocketX
         p.worldY = inY
         inY += PORT_ROW_HEIGHT
       }
-      let outY = textY + PORT_ROW_HEIGHT / 2
+      let outY = portsTop + PORT_ROW_HEIGHT / 2
       for (const p of compPorts.outputs) {
         p.worldX = outputSocketX
         p.worldY = outY
@@ -1800,9 +1802,9 @@ export function ComponentDiagramCanvas({
   ): { componentId: string; direction: "input" | "output" } | null {
     for (const comp of components) {
       const HEADER_H = 48
-      const BODY_PAD = BODY_PADDING
+      const BODY_PAD = 12
       const CONTENT_GAP = 4
-      const PORT_HEADER_GAP = 8
+      const PORT_HEADER_MARGIN_TOP = 8
       const PORT_HEADER_HEIGHT = LINE_HEIGHT
 
       let textY = comp.y + HEADER_H + BODY_PAD
@@ -1830,9 +1832,9 @@ export function ComponentDiagramCanvas({
         textY += itemsCount * LINE_HEIGHT
       }
 
-      const headerY = textY + PORT_HEADER_GAP
-      const inHeaderX = comp.x + BODY_PADDING
-      const outHeaderX = comp.x + comp.width - BODY_PADDING
+      const headerY = textY + PORT_HEADER_MARGIN_TOP
+      const inHeaderX = comp.x + BODY_PAD
+      const outHeaderX = comp.x + comp.width - BODY_PAD
 
       const btnW = 16
       const btnH = 14
