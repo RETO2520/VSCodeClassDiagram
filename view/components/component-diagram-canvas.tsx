@@ -1309,9 +1309,16 @@ export function ComponentDiagramCanvas({
         })
       }
 
-      let textY = comp.y + 48 + BODY_PADDING + 12
+      const HEADER_H = 48
+      const BODY_PAD = BODY_PADDING
+      const CONTENT_GAP = 4
+      const PORT_HEADER_GAP = 8
+      const PORT_HEADER_HEIGHT = LINE_HEIGHT
+      const PORT_ROW_HEIGHT = LINE_HEIGHT
+
+      let textY = comp.y + HEADER_H + BODY_PAD
+      textY += LINE_HEIGHT // stats line
       if (comp.description) textY += LINE_HEIGHT
-      textY += LINE_HEIGHT // for the summary line
 
       let itemsCount = 0
       if (comp.kind === "application") {
@@ -1329,29 +1336,28 @@ export function ComponentDiagramCanvas({
       }
 
       if (itemsCount > 0) {
-        textY += LINE_HEIGHT // for title
-        for (let i = 0; i < itemsCount; i++) {
-          textY += LINE_HEIGHT
-        }
+        textY += CONTENT_GAP
+        textY += LINE_HEIGHT // title
+        textY += itemsCount * LINE_HEIGHT
       }
-      textY += LINE_HEIGHT // for the empty line before ports
 
-      const reservedRightWidth = (showComponentHeatmap || showClassHeatmap) ? HEATMAP_PANEL_WIDTH + 8 : 0
+      textY += PORT_HEADER_GAP
+      textY += PORT_HEADER_HEIGHT
+
       const inputSocketX = comp.x + BODY_PADDING + SOCKET_RADIUS + 2
-      const outputSocketX = comp.x + comp.width - BODY_PADDING - reservedRightWidth - SOCKET_RADIUS - 2
+      const outputSocketX = comp.x + comp.width - BODY_PADDING - SOCKET_RADIUS - 2
 
-      let inY = textY + LINE_HEIGHT
-      const maxY = comp.y + comp.height - BODY_PADDING - 8
+      let inY = textY + PORT_ROW_HEIGHT / 2
       for (const p of compPorts.inputs) {
         p.worldX = inputSocketX
-        p.worldY = Math.min(inY, maxY)
-        inY += LINE_HEIGHT
+        p.worldY = inY
+        inY += PORT_ROW_HEIGHT
       }
-      let outY = textY + LINE_HEIGHT
+      let outY = textY + PORT_ROW_HEIGHT / 2
       for (const p of compPorts.outputs) {
         p.worldX = outputSocketX
-        p.worldY = Math.min(outY, maxY)
-        outY += LINE_HEIGHT
+        p.worldY = outY
+        outY += PORT_ROW_HEIGHT
       }
     }
     return ports
@@ -1793,9 +1799,15 @@ export function ComponentDiagramCanvas({
     worldY: number,
   ): { componentId: string; direction: "input" | "output" } | null {
     for (const comp of components) {
-      let textY = comp.y + 48 + BODY_PADDING + 12
+      const HEADER_H = 48
+      const BODY_PAD = BODY_PADDING
+      const CONTENT_GAP = 4
+      const PORT_HEADER_GAP = 8
+      const PORT_HEADER_HEIGHT = LINE_HEIGHT
+
+      let textY = comp.y + HEADER_H + BODY_PAD
+      textY += LINE_HEIGHT // stats line
       if (comp.description) textY += LINE_HEIGHT
-      textY += LINE_HEIGHT
 
       let itemsCount = 0
       if (comp.kind === "application") {
@@ -1813,20 +1825,19 @@ export function ComponentDiagramCanvas({
       }
 
       if (itemsCount > 0) {
-        textY += LINE_HEIGHT
-        for (let i = 0; i < itemsCount; i++) {
-          textY += LINE_HEIGHT
-        }
+        textY += CONTENT_GAP
+        textY += LINE_HEIGHT // title
+        textY += itemsCount * LINE_HEIGHT
       }
 
-      const reservedRightWidth = (showComponentHeatmap || showClassHeatmap) ? HEATMAP_PANEL_WIDTH + 8 : 0
+      const headerY = textY + PORT_HEADER_GAP
       const inHeaderX = comp.x + BODY_PADDING
-      const outHeaderX = comp.x + comp.width - BODY_PADDING - reservedRightWidth
+      const outHeaderX = comp.x + comp.width - BODY_PADDING
 
       const btnW = 16
       const btnH = 14
-      const btnY = textY - 10
-      const inputBtnX = inHeaderX + 34
+      const btnY = headerY + (PORT_HEADER_HEIGHT - btnH) / 2
+      const inputBtnX = inHeaderX + 62
       const outputBtnX = outHeaderX - 50
 
       if (worldX >= inputBtnX && worldX <= inputBtnX + btnW && worldY >= btnY && worldY <= btnY + btnH) {
@@ -2301,6 +2312,11 @@ export function ComponentDiagramCanvas({
               childListTitle={childListTitle}
               statsLabel={statsLabel}
               ports={ports}
+              connectedPortIds={portConnections.reduce<string[]>((acc, pc) => {
+                if (pc.sourceComponentId === comp.id) acc.push(pc.sourcePortId)
+                if (pc.targetComponentId === comp.id) acc.push(pc.targetPortId)
+                return acc
+              }, [])}
               heat={heat}
               showComponentHeatmap={showComponentHeatmap}
               showClassHeatmap={showClassHeatmap}

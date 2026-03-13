@@ -54,6 +54,7 @@ export interface ComponentNodeProps {
 
   // Ports mapping
   ports: PortGroup
+  connectedPortIds?: string[]
 
   // Heatmap data
   heat?: ComponentHeatMetrics
@@ -148,6 +149,7 @@ export function ComponentNode({
   childListTitle,
   statsLabel,
   ports,
+  connectedPortIds,
   heat,
   showComponentHeatmap = true,
   showClassHeatmap = true,
@@ -158,6 +160,8 @@ export function ComponentNode({
   const styles = getStylesByKind(comp.kind, isSelected)
 
   const hasHeatmap = heat && (showComponentHeatmap || showClassHeatmap)
+  const connectedPortIdSet = new Set(connectedPortIds ?? [])
+  const portRowCount = Math.max(ports.inputs.length, ports.outputs.length)
 
   return (
     <div
@@ -179,28 +183,30 @@ export function ComponentNode({
       </div>
 
       {/* Body container */}
-      <div className="p-3 flex flex-col gap-2 h-[calc(100%-3rem)] overflow-hidden relative">
-        {/* Stats */}
-        <div className="text-[11px] font-medium opacity-90">{statsLabel}</div>
+      <div className="p-3 flex flex-col h-[calc(100%-3rem)] overflow-visible relative z-20">
+        <div className="flex flex-col">
+          {/* Stats */}
+          <div className="text-[11px] font-medium opacity-90 leading-[18px] h-[18px]">{statsLabel}</div>
 
-        {/* Description */}
-        {comp.description && (
-          <div className="text-[11px] text-slate-500 truncate" title={comp.description}>
-            {comp.description}
-          </div>
-        )}
+          {/* Description */}
+          {comp.description && (
+            <div className="text-[11px] text-slate-500 truncate leading-[18px] h-[18px]" title={comp.description}>
+              {comp.description}
+            </div>
+          )}
 
-        {/* Children / Class List */}
-        {childItems.length > 0 && (
-          <div className="flex-1 mt-1 flex flex-col min-h-0">
-            <div className="text-[11px] font-bold mb-1">{childListTitle}:</div>
-            <ul className="text-[11px] space-y-1 overflow-y-auto pr-2 custom-scrollbar">
-              {childItems.map((item, idx) => (
-                <li key={idx} className="truncate text-slate-700">- {item}</li>
-              ))}
-            </ul>
-          </div>
-        )}
+          {/* Children / Class List */}
+          {childItems.length > 0 && (
+            <div className="mt-1 flex flex-col">
+              <div className="text-[11px] font-bold leading-[18px] h-[18px]">{childListTitle}:</div>
+              <ul className="text-[11px] space-y-0 pr-2">
+                {childItems.map((item, idx) => (
+                  <li key={idx} className="truncate text-slate-700 leading-[18px] h-[18px]">- {item}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
 
         {/* Heatmap Panel (Absolute positioned to top right of content area if exists) */}
         {hasHeatmap && (
@@ -222,8 +228,8 @@ export function ComponentNode({
           </div>
         )}
 
-        {/* Ports Section Header */}
-        <div className="mt-auto flex justify-between items-center text-[11px] font-bold relative z-0">
+        {/* Ports Section Header (always visible) */}
+        <div className="flex justify-between items-center text-[11px] font-bold mt-2 leading-[18px] h-[18px]">
           <div className="flex items-center gap-2">
             Requires
             <button
@@ -243,77 +249,69 @@ export function ComponentNode({
             Provides
           </div>
         </div>
+
+        {/* Ports List (flow layout, two columns) */}
+        <div className="mt-1 flex flex-col gap-0">
+          {Array.from({ length: portRowCount }).map((_, idx) => {
+            const inputPort = ports.inputs[idx]
+            const outputPort = ports.outputs[idx]
+
+            return (
+              <div key={idx} className="grid grid-cols-2 gap-x-4 items-center h-[18px]">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  {inputPort ? (
+                    <>
+                      <div
+                        className={[
+                          "w-[15px] h-[15px] border-2 border-green-800 rounded-full flex items-center justify-center shadow-sm z-10",
+                          connectedPortIdSet.has(inputPort.id) ? "bg-green-500" : "bg-black",
+                        ].join(" ")}
+                      />
+                      <div className="flex items-center gap-1 min-w-0">
+                        <span className="text-[11px] truncate max-w-[140px]" title={inputPort.name}>{inputPort.name}</span>
+                        {comp.manualPorts?.some((mp) => mp.id === inputPort.id) && (
+                          <button
+                            className="w-4 h-3.5 bg-red-100 text-red-700 border border-red-200 rounded flex items-center justify-center hover:bg-red-200 text-[10px] pointer-events-auto"
+                            title="Remove manual port"
+                            onClick={(e) => { e.stopPropagation(); onDeletePort?.(inputPort.id) }}
+                          >
+                            -
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+
+                <div className="flex items-center gap-1.5 justify-end min-w-0">
+                  {outputPort ? (
+                    <>
+                      <div className="flex items-center gap-1 min-w-0 justify-end">
+                        <span className="text-[11px] truncate max-w-[140px]" title={outputPort.name}>{outputPort.name}</span>
+                        {comp.manualPorts?.some((mp) => mp.id === outputPort.id) && (
+                          <button
+                            className="w-4 h-3.5 bg-red-100 text-red-700 border border-red-200 rounded flex items-center justify-center hover:bg-red-200 text-[10px] pointer-events-auto"
+                            title="Remove manual port"
+                            onClick={(e) => { e.stopPropagation(); onDeletePort?.(outputPort.id) }}
+                          >
+                            -
+                          </button>
+                        )}
+                      </div>
+                      <div
+                        className={[
+                          "w-[15px] h-[15px] border-2 border-red-800 rounded-full flex items-center justify-center shadow-sm z-10",
+                          connectedPortIdSet.has(outputPort.id) ? "bg-red-500" : "bg-black",
+                        ].join(" ")}
+                      />
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            )
+          })}
+        </div>
       </div>
-
-      {/* Sockets (Absolute positioned along boundaries) */}
-      {/* In HTML/React, port positioning can be matched by relying on `comp.y` offset, 
-          or rendering ports cleanly spaced as part of the flex layout. 
-          Given that `port.worldY` is relative to canvas, we offset it by `comp.y`.
-          Here we draw them properly floating on the edges. */}
-      {ports.inputs.map((p) => {
-        const isManual = comp.manualPorts?.some(mp => mp.id === p.id)
-        // Offset port from the top of the node, using world coordinates.
-        const top = p.worldY - comp.y
-
-        return (
-          <div
-            key={p.id}
-            className="absolute left-0 flex items-center gap-1.5 -translate-x-1.5 translate-y-[-50%]"
-            style={{ top }}
-          >
-            {/* Socket handle */}
-            <div className="w-[15px] h-[15px] bg-green-500 border-2 border-green-800 rounded-full flex items-center justify-center shadow-sm z-10 cursor-crosshair">
-              <div className="w-[3px] h-[3px] bg-white opacity-80 rounded-full translate-x-[-1px] translate-y-[-1px]" />
-            </div>
-
-            {/* Port label */}
-            <div className="flex items-center gap-1 bg-white/70 backdrop-blur-sm rounded px-1">
-              <span className="text-[11px] truncate max-w-[80px]" title={p.name}>{p.name}</span>
-              {isManual && (
-                <button
-                  className="w-4 h-3.5 bg-red-100 text-red-700 border border-red-200 rounded flex items-center justify-center hover:bg-red-200 text-[10px] pointer-events-auto"
-                  title="Remove manual port"
-                  onClick={(e) => { e.stopPropagation(); onDeletePort?.(p.id) }}
-                >
-                  -
-                </button>
-              )}
-            </div>
-          </div>
-        )
-      })}
-
-      {ports.outputs.map((p) => {
-        const isManual = comp.manualPorts?.some(mp => mp.id === p.id)
-        const top = p.worldY - comp.y
-
-        return (
-          <div
-            key={p.id}
-            className="absolute right-0 flex items-center gap-1.5 translate-x-1.5 translate-y-[-50%] flex-row-reverse"
-            style={{ top }}
-          >
-            {/* Socket handle */}
-            <div className="w-[15px] h-[15px] bg-red-500 border-2 border-red-800 rounded-full flex items-center justify-center shadow-sm z-10 cursor-crosshair">
-              <div className="w-[3px] h-[3px] bg-white opacity-80 rounded-full translate-x-[-1px] translate-y-[-1px]" />
-            </div>
-
-            {/* Port label */}
-            <div className="flex items-center gap-1 bg-white/70 backdrop-blur-sm rounded px-1 flex-row-reverse">
-              <span className="text-[11px] truncate max-w-[80px]" title={p.name}>{p.name}</span>
-              {isManual && (
-                <button
-                  className="w-4 h-3.5 bg-red-100 text-red-700 border border-red-200 rounded flex items-center justify-center hover:bg-red-200 text-[10px] pointer-events-auto"
-                  title="Remove manual port"
-                  onClick={(e) => { e.stopPropagation(); onDeletePort?.(p.id) }}
-                >
-                  -
-                </button>
-              )}
-            </div>
-          </div>
-        )
-      })}
 
       {/* Resize Handle (Bottom Right) */}
       {isSelected && (
