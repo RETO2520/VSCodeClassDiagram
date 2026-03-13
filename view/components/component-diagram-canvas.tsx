@@ -1010,8 +1010,8 @@ function drawPortConnection(
   const arrowLen = 8
   const t = 0.98
   const t1 = 1 - t
-  const ax = t1*t1*t1*sx + 3*t1*t1*t*(sx+dx) + 3*t1*t*t*(tx-dx) + t*t*t*tx
-  const ay = t1*t1*t1*sy + 3*t1*t1*t*sy + 3*t1*t*t*ty + t*t*t*ty
+  const ax = t1 * t1 * t1 * sx + 3 * t1 * t1 * t * (sx + dx) + 3 * t1 * t * t * (tx - dx) + t * t * t * tx
+  const ay = t1 * t1 * t1 * sy + 3 * t1 * t1 * t * sy + 3 * t1 * t * t * ty + t * t * t * ty
   const angle = Math.atan2(ty - ay, tx - ax)
   ctx.fillStyle = "#8b5cf6"
   ctx.beginPath()
@@ -1078,25 +1078,6 @@ function drawGrid(
     ctx.lineTo(width, y)
     ctx.stroke()
   }
-  ctx.restore()
-}
-
-function drawZoomIndicator(ctx: CanvasRenderingContext2D, zoom: number) {
-  const text = `${Math.round(zoom * 100)}%`
-  ctx.save()
-  ctx.font = "bold 11px sans-serif"
-  ctx.fillStyle = "rgba(255,255,255,0.9)"
-  const tw = ctx.measureText(text).width
-  ctx.beginPath()
-  ctx.roundRect(12, 12, tw + 16, 24, 4)
-  ctx.fill()
-  ctx.strokeStyle = "#e2e8f0"
-  ctx.lineWidth = 1
-  ctx.stroke()
-
-  ctx.fillStyle = "#475569"
-  ctx.textAlign = "left"
-  ctx.fillText(text, 20, 29)
   ctx.restore()
 }
 
@@ -1501,7 +1482,6 @@ export function ComponentDiagramCanvas({
     ctx.restore()
 
     drawLegend(ctx, rect.width)
-    drawZoomIndicator(ctx, zoom)
   }, [
     components,
     relationships,
@@ -2366,7 +2346,13 @@ export function ComponentDiagramCanvas({
       )}
 
       {/* Controls */}
-      <div className="absolute left-4 top-4 flex gap-2">
+      <div className="absolute left-4 top-4 flex items-center gap-2">
+        <div
+          className="h-7 min-w-[54px] rounded border border-slate-200 bg-white/90 px-2 text-[11px] font-semibold text-slate-600 shadow-sm flex items-center justify-center"
+          title="Current zoom"
+        >
+          {Math.round(zoom * 100)}%
+        </div>
         <Button
           variant={showComponentHeatmap ? "default" : "outline"}
           size="sm"

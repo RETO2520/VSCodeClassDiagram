@@ -179,7 +179,12 @@ export function ComponentNode({
       {/* Header */}
       <div className={`px-3 py-2 rounded-t-lg h-12 flex flex-col justify-center ${styles.header}`}>
         <div className="text-[11px] italic opacity-80">{kindLabel(comp.kind)}</div>
-        <div className="font-bold text-[13px] truncate">{comp.name}</div>
+        <div
+          className="font-bold text-[13px] leading-[15px] break-words"
+          title={comp.name}
+        >
+          {comp.name}
+        </div>
       </div>
 
       {/* Body container */}
