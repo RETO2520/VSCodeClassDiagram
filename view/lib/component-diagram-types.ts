@@ -54,6 +54,8 @@ export interface ComponentInfo {
     /** 設計メモ・補足説明 */
     description?: string
     dslPath?: string
+    /** 手動で追加されたポート */
+    manualPorts?: { id: string; name: string; direction: 'input' | 'output' }[]
 }
 
 // ==============================
@@ -94,6 +96,30 @@ export interface ComponentRelationship {
 }
 
 // ==============================
+// PortConnection
+// ==============================
+
+/**
+ * ポート間の接続（提供インターフェース → 要求インターフェース）
+ *
+ * ComponentRelationship（エビデンスベースの依存関係）とは独立に、
+ * 提供/要求ポート同士を明示的に結線するためのモデル。
+ */
+export interface PortConnection {
+    id: string
+    /** 接続元（提供側）コンポーネントID */
+    sourceComponentId: string
+    /** 接続元ポートID */
+    sourcePortId: string
+    /** 接続先（要求側）コンポーネントID */
+    targetComponentId: string
+    /** 接続先ポートID */
+    targetPortId: string
+    /** 接続の意味・ラベル（任意） */
+    label?: string
+}
+
+// ==============================
 // Helper Functions
 // ==============================
 
@@ -114,6 +140,7 @@ export function createEmptyComponent(
         y: pos.y,
         width: 320,
         height: 240,
+        manualPorts: [],
     }
 }
 

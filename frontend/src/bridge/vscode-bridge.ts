@@ -38,6 +38,7 @@ export type WebviewToHostMessage =
         command: 'saveComponentListJson'; payload: {
             components: unknown[];
             relationships?: unknown[];
+            portConnections?: unknown[];
             silent?: boolean;
         }
     }
@@ -55,6 +56,7 @@ export type HostToWebviewMessage =
         command: 'componentListJsonLoaded'; payload: {
             components: unknown[];
             relationships?: unknown[];
+            portConnections?: unknown[];
         }
     }
 

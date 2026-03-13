@@ -48,7 +48,7 @@ import { DiagramCanvas } from '@/components/diagram-canvas'
 import { ComponentDiagramCanvas } from '@/components/component-diagram-canvas'
 import { detectRelationships } from '@/lib/detect-relationships'
 import type { ClassInfo, Relationship } from '@/lib/class-diagram-types'
-import type { ComponentInfo, ComponentRelationship } from '@/lib/component-diagram-types'
+import type { ComponentInfo, ComponentRelationship, PortConnection } from '@/lib/component-diagram-types'
 import { ComponentDomainModel } from '@/lib/ComponentDomainModel'
 import { Undo2, Redo2, ChevronDown, ChevronUp } from 'lucide-react'
 import { useVSCodeState } from './bridge/use-vscode'
@@ -211,6 +211,7 @@ export function App({ service, componentService }: { service: ClassDiagramServic
     // ── Component Diagram ──
     const [componentNodes, setComponentNodes] = useState<ComponentInfo[]>([])
     const [componentRels, setComponentRels] = useState<ComponentRelationship[]>([])
+    const [portConnections, setPortConnections] = useState<PortConnection[]>([])
     const [componentRefreshToken, setComponentRefreshToken] = useState(0)
     const [componentDslFiles, setComponentDslFiles] = useState<string[]>([])
     const [dslContentByPath, setDslContentByPath] = useState<Record<string, string>>({})
@@ -228,6 +229,7 @@ export function App({ service, componentService }: { service: ClassDiagramServic
                 payload: {
                     components: snapshotComponents,
                     relationships: snapshotRelationships,
+                    portConnections: (componentService as any).componentDomain.getPortConnections?.() ?? portConnections,
                     silent,
                 },
             })
@@ -235,6 +237,32 @@ export function App({ service, componentService }: { service: ClassDiagramServic
             console.error('[App] saveComponentListJson error:', err)
         }
     }, [componentService, componentNodes, componentRels])
+
+    const debouncedSaveComponentDSL = useCallback((nodes: ComponentInfo[]) => {
+        if (!componentListHydratedRef.current) {
+            return
+        }
+        if (componentUpdateDebounceRef.current) {
+            clearTimeout(componentUpdateDebounceRef.current)
+        }
+        componentUpdateDebounceRef.current = setTimeout(() => {
+            try {
+                const snapshotComponents = nodes
+                const snapshotRelationships = (componentService as any).componentDomain.getRelationships?.() ?? componentRels
+                postMessage({
+                    command: 'saveComponentListJson',
+                    payload: {
+                        components: snapshotComponents,
+                        relationships: snapshotRelationships,
+                        portConnections: (componentService as any).componentDomain.getPortConnections?.() ?? portConnections,
+                        silent: true,
+                    },
+                })
+            } catch (err) {
+                console.error('[App] debouncedSaveComponentDSL error:', err)
+            }
+        }, 500) // 500ms debounce
+    }, [componentService, componentRels])
 
     // ── Spec DSL 下部ペイン ──
     const [specPaneOpen, setSpecPaneOpen] = useState(true)
@@ -378,7 +406,8 @@ export function App({ service, componentService }: { service: ClassDiagramServic
             } catch { }
             return next
         })
-    }, [componentService])
+        debouncedSaveComponentDSL(componentNodes)
+    }, [componentService, componentNodes])
 
     const handleResizeComponent = useCallback((id: string, width: number, height: number) => {
         setComponentNodes(prev => {
@@ -389,7 +418,104 @@ export function App({ service, componentService }: { service: ClassDiagramServic
             } catch { }
             return next
         })
-    }, [componentService])
+        debouncedSaveComponentDSL(componentNodes)
+    }, [componentService, componentNodes])
+
+    const handleSelectComponent = useCallback((id: string | null) => {
+        setSelectedId(id)
+    }, [setSelectedId])
+
+    // ===============================
+    // 手動ポートのハンドラー
+    // ===============================
+    const handleAddPort = useCallback((componentId: string, direction: 'input' | 'output') => {
+        const newNodes = componentNodes.map(node => {
+            if (node.id === componentId) {
+                const existing = node.manualPorts || []
+                const prefix = direction === 'input' ? 'in' : 'out'
+                const used = new Set(existing.map(p => p.name))
+                let nextIndex = existing.filter(p => p.direction === direction).length + 1
+                let portName = `${prefix}-${nextIndex}`
+                while (used.has(portName)) {
+                    nextIndex += 1
+                    portName = `${prefix}-${nextIndex}`
+                }
+                const id = `manual-${Date.now()}`
+                return {
+                    ...node,
+                    manualPorts: [...existing, { id, name: portName, direction }]
+                }
+            }
+            return node
+        })
+        setComponentNodes(newNodes)
+        debouncedSaveComponentDSL(newNodes)
+    }, [componentNodes, debouncedSaveComponentDSL])
+
+    const handleDeletePort = useCallback((componentId: string, portId: string) => {
+        const newNodes = componentNodes.map(node => {
+            if (node.id === componentId) {
+                return {
+                    ...node,
+                    manualPorts: (node.manualPorts || []).filter(p => p.id !== portId)
+                }
+            }
+            return node
+        })
+        setComponentNodes(newNodes)
+        debouncedSaveComponentDSL(newNodes)
+    }, [componentNodes, debouncedSaveComponentDSL])
+
+    const handleAddRelationship = useCallback((sourceComponentId: string, targetComponentId: string, label?: string) => {
+        if (sourceComponentId === targetComponentId) return
+        try {
+            const domain = (componentService as any).componentDomain
+            const existing = domain?.getRelationships?.() ?? componentRels
+            const hasSameManual = existing.some((rel: ComponentRelationship) =>
+                rel.sourceComponentId === sourceComponentId
+                && rel.targetComponentId === targetComponentId
+                && (rel.label ?? "") === (label ?? "")
+                && rel.basedOnIds.length === 0
+            )
+            if (hasSameManual) return
+
+            const nextDomain = domain.addRelationship(sourceComponentId, targetComponentId, label)
+                ; (componentService as any).componentDomain = nextDomain
+            const nextRels = nextDomain.getRelationships?.() ?? existing
+            setComponentRels(nextRels)
+            debouncedSaveComponentDSL(componentNodes)
+        } catch (err) {
+            console.error('[App] handleAddRelationship error:', err)
+        }
+    }, [componentService, componentRels, componentNodes, debouncedSaveComponentDSL])
+
+    const handleAddPortConnection = useCallback((
+        sourceComponentId: string, sourcePortId: string,
+        targetComponentId: string, targetPortId: string,
+        label?: string
+    ) => {
+        try {
+            const domain = (componentService as any).componentDomain
+            const nextDomain = domain.addPortConnection(sourceComponentId, sourcePortId, targetComponentId, targetPortId, label)
+            ;(componentService as any).componentDomain = nextDomain
+            setPortConnections(nextDomain.getPortConnections?.() ?? [])
+            debouncedSaveComponentDSL(componentNodes)
+        } catch (err) {
+            console.error('[App] handleAddPortConnection error:', err)
+        }
+    }, [componentService, componentNodes, debouncedSaveComponentDSL])
+
+    const handleDeletePortConnection = useCallback((connectionId: string) => {
+        try {
+            const domain = (componentService as any).componentDomain
+            const nextDomain = domain.removePortConnection(connectionId)
+            ;(componentService as any).componentDomain = nextDomain
+            setPortConnections(nextDomain.getPortConnections?.() ?? [])
+            debouncedSaveComponentDSL(componentNodes)
+        } catch (err) {
+            console.error('[App] handleDeletePortConnection error:', err)
+        }
+    }, [componentService, componentNodes, debouncedSaveComponentDSL])
 
     // ── classes が変更されたときに componentNodes を同期する ──
     // SpecEditorPanel や Canvas からの class 変更を検出して、
@@ -480,15 +606,18 @@ export function App({ service, componentService }: { service: ClassDiagramServic
             if (msg.command === 'componentListJsonLoaded') {
                 const rawComponents = Array.isArray(msg.payload?.components) ? msg.payload.components : []
                 const rawRelationships = Array.isArray(msg.payload?.relationships) ? msg.payload.relationships : []
+                const rawPortConnections = Array.isArray(msg.payload?.portConnections) ? msg.payload.portConnections : []
                 const components = rawComponents as ComponentInfo[]
                 const relationships = rawRelationships as ComponentRelationship[]
+                const pcs = rawPortConnections as PortConnection[]
                 componentListHydratedRef.current = true
 
                 try {
-                    const restoredDomain = ComponentDomainModel.from(components, relationships)
+                    const restoredDomain = ComponentDomainModel.from(components, relationships, pcs)
                     ; (componentService as any).componentDomain = restoredDomain
                     setComponentNodes(restoredDomain.getComponents())
                     setComponentRels(restoredDomain.getRelationships())
+                    setPortConnections(restoredDomain.getPortConnections())
                     setComponentRefreshToken((prev) => prev + 1)
                 } catch (err) {
                     console.error('[App] Failed to restore component-list.json:', err)
@@ -627,10 +756,16 @@ export function App({ service, componentService }: { service: ClassDiagramServic
                                     classes={componentCanvasClasses}
                                     dslContentByPath={dslContentByPath}
                                     selectedId={selectedId}
-                                    onSelectComponent={setSelectedId}
+                                    onSelectComponent={handleSelectComponent}
                                     onMoveComponent={handleMoveComponent}
                                     onResizeComponent={handleResizeComponent}
-                                    onCommit={commitComponentChanges}
+                                    onAddPort={handleAddPort}
+                                    onDeletePort={handleDeletePort}
+                                    onAddRelationship={handleAddRelationship}
+                                    onAddPortConnection={handleAddPortConnection}
+                                    onDeletePortConnection={handleDeletePortConnection}
+                                    portConnections={portConnections}
+                                    onCommit={() => { debouncedSaveComponentDSL(componentNodes) }}
                                 />
                             </div>
                         </>

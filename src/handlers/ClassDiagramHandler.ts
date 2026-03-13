@@ -236,6 +236,7 @@ export class ClassDiagramHandler {
         const payload = msg.payload || {};
         const components = Array.isArray(payload.components) ? payload.components : [];
         const relationships = Array.isArray(payload.relationships) ? payload.relationships : [];
+        const portConnections = Array.isArray(payload.portConnections) ? payload.portConnections : [];
         const silent = !!payload.silent;
 
         const diagramRoot = this.fileService.getDiagramRootUri();
@@ -252,6 +253,7 @@ export class ClassDiagramHandler {
             await this.fileService.writeFile(targetUri, {
                 components,
                 relationships,
+                portConnections,
                 savedAt: new Date().toISOString(),
             });
             if (!silent) {
@@ -280,10 +282,11 @@ export class ClassDiagramHandler {
             const parsed: any = loaded.parsed ?? {};
             const components = Array.isArray(parsed.components) ? parsed.components : [];
             const relationships = Array.isArray(parsed.relationships) ? parsed.relationships : [];
+            const portConnections = Array.isArray(parsed.portConnections) ? parsed.portConnections : [];
 
             this.panel.webview.postMessage({
                 command: 'componentListJsonLoaded',
-                payload: { components, relationships }
+                payload: { components, relationships, portConnections }
             });
             vscode.window.showInformationMessage('Loaded component list JSON (.diagram/component-list.json)');
         } catch (e: any) {
@@ -301,18 +304,20 @@ export class ClassDiagramHandler {
         const targetUri = vscode.Uri.joinPath(diagramRoot, 'component-list.json');
         let components: any[] = [];
         let relationships: any[] = [];
+        let portConnections: any[] = [];
         try {
             const loaded = await this.fileService.readFile(targetUri);
             const parsed: any = loaded.parsed ?? {};
             components = Array.isArray(parsed.components) ? parsed.components : [];
             relationships = Array.isArray(parsed.relationships) ? parsed.relationships : [];
+            portConnections = Array.isArray(parsed.portConnections) ? parsed.portConnections : [];
         } catch {
             // component-list.json does not exist yet or invalid; send empty snapshot for initialization handshake
         }
 
         this.panel.webview.postMessage({
             command: 'componentListJsonLoaded',
-            payload: { components, relationships }
+            payload: { components, relationships, portConnections }
         });
     }
 

@@ -26,6 +26,7 @@ import {
     ComponentInfo,
     ComponentKind,
     ComponentRelationship,
+    PortConnection,
     createEmptyComponent,
     deriveComponentRelationships,
     findOrphanedBasedOnIds,
@@ -46,6 +47,7 @@ import {
 export interface ComponentDomainSnapshot {
     components: ComponentInfo[]
     relationships: ComponentRelationship[]
+    portConnections: PortConnection[]
     timestamp: number
     version: string
 }
@@ -107,12 +109,13 @@ export class ComponentDomainModel {
     ---------------------------- */
 
     static createEmpty(): ComponentDomainModel {
-        return new ComponentDomainModel(new Map(), new Map())
+        return new ComponentDomainModel(new Map(), new Map(), new Map())
     }
 
     static from(
         components: ComponentInfo[],
-        relationships: ComponentRelationship[] = []
+        relationships: ComponentRelationship[] = [],
+        portConnections: PortConnection[] = []
     ): ComponentDomainModel {
         const compMap = new Map<string, ComponentInfo>()
         for (const c of components) compMap.set(c.id, c)
@@ -120,11 +123,14 @@ export class ComponentDomainModel {
         const relMap = new Map<string, ComponentRelationship>()
         for (const r of relationships) relMap.set(r.id, r)
 
-        return new ComponentDomainModel(compMap, relMap)
+        const pcMap = new Map<string, PortConnection>()
+        for (const pc of portConnections) pcMap.set(pc.id, pc)
+
+        return new ComponentDomainModel(compMap, relMap, pcMap)
     }
 
     static fromSnapshot(snapshot: ComponentDomainSnapshot): ComponentDomainModel {
-        return ComponentDomainModel.from(snapshot.components, snapshot.relationships)
+        return ComponentDomainModel.from(snapshot.components, snapshot.relationships, snapshot.portConnections ?? [])
     }
 
     /* ----------------------------
@@ -133,7 +139,8 @@ export class ComponentDomainModel {
 
     private constructor(
         private readonly componentMap: Map<string, ComponentInfo>,
-        private readonly relationshipMap: Map<string, ComponentRelationship>
+        private readonly relationshipMap: Map<string, ComponentRelationship>,
+        private readonly portConnectionMap: Map<string, PortConnection>
     ) { }
 
     /* ----------------------------
@@ -141,13 +148,14 @@ export class ComponentDomainModel {
     ---------------------------- */
 
     clone(): ComponentDomainModel {
-        return ComponentDomainModel.from(this.getComponents(), this.getRelationships())
+        return ComponentDomainModel.from(this.getComponents(), this.getRelationships(), this.getPortConnections())
     }
 
     toSnapshot(): ComponentDomainSnapshot {
         return {
             components: this.getComponents(),
             relationships: this.getRelationships(),
+            portConnections: this.getPortConnections(),
             timestamp: Date.now(),
             version: '1.0',
         }
@@ -168,6 +176,10 @@ export class ComponentDomainModel {
 
     getRelationships(): ComponentRelationship[] {
         return Array.from(this.relationshipMap.values()).map(r => ({ ...r, basedOnIds: [...r.basedOnIds] }))
+    }
+
+    getPortConnections(): PortConnection[] {
+        return Array.from(this.portConnectionMap.values()).map(pc => ({ ...pc }))
     }
 
     /** 特定の kind のコンポーネント一覧を取得 */
@@ -194,7 +206,7 @@ export class ComponentDomainModel {
         const comp = createEmptyComponent(kind, existing)
         const next = new Map(this.componentMap)
         next.set(comp.id, comp)
-        return new ComponentDomainModel(next, new Map(this.relationshipMap))
+        return new ComponentDomainModel(next, new Map(this.relationshipMap), new Map(this.portConnectionMap))
     }
 
     removeComponent(componentId: string): ComponentDomainModel {
@@ -223,7 +235,15 @@ export class ComponentDomainModel {
             }
         }
 
-        return new ComponentDomainModel(nextComp, nextRel)
+        // 関連するPortConnectionを削除
+        const nextPC = new Map(this.portConnectionMap)
+        for (const [pcid, pc] of nextPC) {
+            if (pc.sourceComponentId === componentId || pc.targetComponentId === componentId) {
+                nextPC.delete(pcid)
+            }
+        }
+
+        return new ComponentDomainModel(nextComp, nextRel, nextPC)
     }
 
     updateComponent(updated: ComponentInfo): ComponentDomainModel {
@@ -232,7 +252,7 @@ export class ComponentDomainModel {
         }
         const next = new Map(this.componentMap)
         next.set(updated.id, { ...updated })
-        return new ComponentDomainModel(next, new Map(this.relationshipMap))
+        return new ComponentDomainModel(next, new Map(this.relationshipMap), new Map(this.portConnectionMap))
     }
 
     updateComponentPosition(id: string, x: number, y: number): ComponentDomainModel {
@@ -278,7 +298,7 @@ export class ComponentDomainModel {
             ...parent,
             childComponentIds: [...parent.childComponentIds, childId],
         })
-        return new ComponentDomainModel(next, new Map(this.relationshipMap))
+        return new ComponentDomainModel(next, new Map(this.relationshipMap), new Map(this.portConnectionMap))
     }
 
     removeChildComponent(parentId: string, childId: string): ComponentDomainModel {
@@ -290,7 +310,7 @@ export class ComponentDomainModel {
             ...parent,
             childComponentIds: parent.childComponentIds.filter(id => id !== childId),
         })
-        return new ComponentDomainModel(next, new Map(this.relationshipMap))
+        return new ComponentDomainModel(next, new Map(this.relationshipMap), new Map(this.portConnectionMap))
     }
 
     /* ----------------------------
@@ -331,7 +351,7 @@ export class ComponentDomainModel {
             }
 
         return {
-            model: new ComponentDomainModel(nextComp, new Map(this.relationshipMap)),
+            model: new ComponentDomainModel(nextComp, new Map(this.relationshipMap), new Map(this.portConnectionMap)),
             updatedClass,
         }
     }
@@ -359,7 +379,7 @@ export class ComponentDomainModel {
         }
 
         return {
-            model: new ComponentDomainModel(nextComp, new Map(this.relationshipMap)),
+            model: new ComponentDomainModel(nextComp, new Map(this.relationshipMap), new Map(this.portConnectionMap)),
             updatedClass,
         }
     }
@@ -463,7 +483,7 @@ export class ComponentDomainModel {
         )
 
         return {
-            model: new ComponentDomainModel(new Map(this.componentMap), nextRelMap),
+            model: new ComponentDomainModel(new Map(this.componentMap), nextRelMap, new Map(this.portConnectionMap)),
             orphaned,
         }
     }
@@ -485,7 +505,7 @@ export class ComponentDomainModel {
         }
         const next = new Map(this.relationshipMap)
         next.set(rel.id, rel)
-        return new ComponentDomainModel(new Map(this.componentMap), next)
+        return new ComponentDomainModel(new Map(this.componentMap), next, new Map(this.portConnectionMap))
     }
 
     /** Relationship のラベルを更新 */
@@ -494,7 +514,7 @@ export class ComponentDomainModel {
         if (!rel) throw new DomainError(`Relationship not found: ${relationshipId}`)
         const next = new Map(this.relationshipMap)
         next.set(relationshipId, { ...rel, label })
-        return new ComponentDomainModel(new Map(this.componentMap), next)
+        return new ComponentDomainModel(new Map(this.componentMap), next, new Map(this.portConnectionMap))
     }
 
     removeRelationship(relationshipId: string): ComponentDomainModel {
@@ -503,7 +523,46 @@ export class ComponentDomainModel {
         }
         const next = new Map(this.relationshipMap)
         next.delete(relationshipId)
-        return new ComponentDomainModel(new Map(this.componentMap), next)
+        return new ComponentDomainModel(new Map(this.componentMap), next, new Map(this.portConnectionMap))
+    }
+
+    /* ----------------------------
+       Port Connection Management
+    ---------------------------- */
+
+    /** ポート間接続を追加 */
+    addPortConnection(
+        sourceComponentId: string, sourcePortId: string,
+        targetComponentId: string, targetPortId: string,
+        label?: string
+    ): ComponentDomainModel {
+        if (!this.componentMap.has(sourceComponentId)) {
+            throw new DomainError(`Source component not found: ${sourceComponentId}`)
+        }
+        if (!this.componentMap.has(targetComponentId)) {
+            throw new DomainError(`Target component not found: ${targetComponentId}`)
+        }
+        const pc: PortConnection = {
+            id: createId(),
+            sourceComponentId,
+            sourcePortId,
+            targetComponentId,
+            targetPortId,
+            label,
+        }
+        const next = new Map(this.portConnectionMap)
+        next.set(pc.id, pc)
+        return new ComponentDomainModel(new Map(this.componentMap), new Map(this.relationshipMap), next)
+    }
+
+    /** ポート間接続を削除 */
+    removePortConnection(connectionId: string): ComponentDomainModel {
+        if (!this.portConnectionMap.has(connectionId)) {
+            throw new DomainError(`PortConnection not found: ${connectionId}`)
+        }
+        const next = new Map(this.portConnectionMap)
+        next.delete(connectionId)
+        return new ComponentDomainModel(new Map(this.componentMap), new Map(this.relationshipMap), next)
     }
 
     /* ----------------------------

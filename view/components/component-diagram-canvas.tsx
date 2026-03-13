@@ -4,8 +4,57 @@ import React from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { ZoomIn, ZoomOut, Maximize2, Maximize } from "lucide-react"
-import type { ComponentInfo, ComponentKind, ComponentRelationship } from "@/lib/component-diagram-types"
+import type { ComponentInfo, ComponentKind, ComponentRelationship, PortConnection } from "@/lib/component-diagram-types"
 import type { ClassInfo, Relationship as ClassRelationship } from "@/lib/class-diagram-types"
+import { postMessage } from "../../frontend/src/bridge/vscode-bridge"
+
+// ==============================
+// Types
+// ==============================
+interface PortInfo {
+  id: string
+  name: string
+  type: "input" | "output"
+  worldX: number
+  worldY: number
+}
+
+interface DslClassSummary {
+  name: string
+  memberCount: number
+  operationCount: number
+}
+
+interface DslSummary {
+  classes: DslClassSummary[]
+}
+
+interface ComponentHeatMetrics {
+  componentCells: number[]
+  classCells: number[]
+  componentRaw: {
+    incoming: number
+    outgoing: number
+    children: number
+    classLoad: number
+  }
+  classRaw: number[]
+  classLabels: string[]
+}
+
+interface PortGroup {
+  inputs: PortInfo[]
+  outputs: PortInfo[]
+}
+
+interface PortHit {
+  componentId: string
+  portId: string
+  direction: "input" | "output"
+  worldX: number
+  worldY: number
+  name: string
+}
 
 // ==============================
 // Constants
@@ -21,6 +70,8 @@ const HEATMAP_PANEL_WIDTH = 96
 const HEATMAP_CELL_SIZE = 8
 const CLASS_TOOLTIP_TOP_N = 3
 const MAX_EVIDENCE_TOOLTIP_LINES = 16
+const SOCKET_RADIUS = 6
+const SOCKET_HIT_RADIUS = 10
 
 const MIN_ZOOM = 0.2
 const MAX_ZOOM = 3
@@ -83,6 +134,65 @@ function drawRoundRect(
   ctx.roundRect(x, y, w, h, r)
 }
 
+function drawSocket(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  fill: string,
+  stroke: string,
+  isHot = false,
+) {
+  ctx.save()
+  if (isHot) {
+    ctx.shadowColor = fill
+    ctx.shadowBlur = 10
+  }
+  ctx.beginPath()
+  ctx.arc(x, y, SOCKET_RADIUS + 1.5, 0, Math.PI * 2)
+  ctx.fillStyle = "rgba(255,255,255,0.95)"
+  ctx.fill()
+  ctx.strokeStyle = stroke
+  ctx.lineWidth = 1.6
+  ctx.stroke()
+
+  ctx.beginPath()
+  ctx.arc(x, y, SOCKET_RADIUS - 1.5, 0, Math.PI * 2)
+  ctx.fillStyle = fill
+  ctx.fill()
+
+  ctx.beginPath()
+  ctx.arc(x - 2, y - 2, 1.2, 0, Math.PI * 2)
+  ctx.fillStyle = "rgba(255,255,255,0.85)"
+  ctx.fill()
+  ctx.restore()
+}
+
+function drawIconButton(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  label: string,
+  fill = "#e2e8f0",
+  text = "#1e3a8a",
+) {
+  ctx.save()
+  ctx.fillStyle = fill
+  ctx.beginPath()
+  ctx.roundRect(x, y, w, h, 3)
+  ctx.fill()
+  ctx.strokeStyle = "#cbd5f5"
+  ctx.lineWidth = 1
+  ctx.stroke()
+  ctx.fillStyle = text
+  ctx.font = `bold 10px ${MONO_FONT}`
+  ctx.textAlign = "center"
+  ctx.textBaseline = "middle"
+  ctx.fillText(label, x + w / 2, y + h / 2 + 0.5)
+  ctx.restore()
+}
+
 function drawComponentBox(
   ctx: CanvasRenderingContext2D,
   comp: ComponentInfo,
@@ -93,6 +203,7 @@ function drawComponentBox(
   heatMetricsByComponentId: Record<string, ComponentHeatMetrics>,
   showComponentHeatmap: boolean,
   showClassHeatmap: boolean,
+  ports: PortGroup,
 ) {
   const { x, y, width: w, height: h } = comp
   const colors = kindColors(comp.kind)
@@ -210,6 +321,57 @@ function drawComponentBox(
       ctx.fillText(line, x + BODY_PADDING + 8, textY)
       textY += LINE_HEIGHT
     }
+  }
+
+  // Port section
+  const inHeaderX = x + BODY_PADDING
+  const headerY = textY
+
+  ctx.fillStyle = colors.bodyText
+  ctx.font = `bold ${SMALL_FONT_SIZE}px ${MONO_FONT}`
+  ctx.textAlign = "left"
+  ctx.fillText("In:", inHeaderX, headerY)
+  // [+] button input
+  drawIconButton(ctx, inHeaderX + 34, headerY - 9, 16, 14, "+", "#dbeafe", "#1d4ed8")
+
+  const outHeaderX = x + w - BODY_PADDING - reservedRightWidth
+  ctx.fillStyle = colors.bodyText
+  ctx.textAlign = "right"
+  ctx.fillText("Out:", outHeaderX, headerY)
+  // [+] button output
+  drawIconButton(ctx, outHeaderX - 50, headerY - 9, 16, 14, "+", "#fee2e2", "#b91c1c")
+
+  const maxWPort = Math.max(0, (w - BODY_PADDING * 2 - reservedRightWidth) / 2)
+  const inputSocketX = x + BODY_PADDING + SOCKET_RADIUS + 2
+  const outputSocketX = x + w - BODY_PADDING - reservedRightWidth - SOCKET_RADIUS - 2
+  ctx.font = `${SMALL_FONT_SIZE}px ${MONO_FONT}`
+
+  for (const p of ports.inputs) {
+    if (p.worldY > maxY) break
+    const isManual = comp.manualPorts?.some((mp) => mp.id === p.id)
+
+    ctx.fillStyle = colors.bodyText
+    ctx.textAlign = "left"
+    ctx.fillText(clipText(ctx, p.name, maxWPort - 26), inputSocketX + 12, p.worldY + 4)
+    if (isManual) {
+      drawIconButton(ctx, inputSocketX + 24, p.worldY - 7, 16, 14, "–", "#fee2e2", "#b91c1c")
+    }
+
+    drawSocket(ctx, inputSocketX, p.worldY, "#22c55e", "#166534")
+  }
+
+  for (const p of ports.outputs) {
+    if (p.worldY > maxY) break
+    const isManual = comp.manualPorts?.some((mp) => mp.id === p.id)
+
+    ctx.fillStyle = colors.bodyText
+    ctx.textAlign = "right"
+    ctx.fillText(clipText(ctx, p.name, maxWPort - 26), outputSocketX - 12, p.worldY + 4)
+    if (isManual) {
+      drawIconButton(ctx, outputSocketX - 40, p.worldY - 7, 16, 14, "–", "#fee2e2", "#b91c1c")
+    }
+
+    drawSocket(ctx, outputSocketX, p.worldY, "#ef4444", "#991b1b")
   }
 
   if (showHeatPanel && heat) {
@@ -625,7 +787,7 @@ function drawParentRelationship(
   const prev = points[points.length - 2]
   const angle = Math.atan2(last.y - prev.y, last.x - prev.x)
 
-  // Draw diamond arrow at the parent end if we wanted UML style, 
+  // Draw diamond arrow at the parent end if we wanted UML style,
   // but let's draw a diamond at the child end to indicate "pointing to child" or vice versa.
   // UML Composition has diamond at the parent. Let's put the diamond at the parent side:
   const first = points[0]
@@ -768,6 +930,74 @@ function drawComponentRelationship(
   }
 }
 
+function drawPortConnection(
+  ctx: CanvasRenderingContext2D,
+  pc: PortConnection,
+  componentPorts: Map<string, PortGroup>,
+) {
+  const srcPorts = componentPorts.get(pc.sourceComponentId)
+  const tgtPorts = componentPorts.get(pc.targetComponentId)
+  if (!srcPorts || !tgtPorts) return
+
+  const srcPort = srcPorts.outputs.find(p => p.id === pc.sourcePortId)
+  const tgtPort = tgtPorts.inputs.find(p => p.id === pc.targetPortId)
+  if (!srcPort || !tgtPort) return
+
+  const sx = srcPort.worldX
+  const sy = srcPort.worldY
+  const tx = tgtPort.worldX
+  const ty = tgtPort.worldY
+  const dx = Math.abs(tx - sx) * 0.4
+
+  ctx.save()
+  ctx.strokeStyle = "#8b5cf6"
+  ctx.lineWidth = 2
+  ctx.setLineDash([])
+  ctx.beginPath()
+  ctx.moveTo(sx, sy)
+  ctx.bezierCurveTo(sx + dx, sy, tx - dx, ty, tx, ty)
+  ctx.stroke()
+
+  // arrowhead
+  const arrowLen = 8
+  const t = 0.98
+  const t1 = 1 - t
+  const ax = t1*t1*t1*sx + 3*t1*t1*t*(sx+dx) + 3*t1*t*t*(tx-dx) + t*t*t*tx
+  const ay = t1*t1*t1*sy + 3*t1*t1*t*sy + 3*t1*t*t*ty + t*t*t*ty
+  const angle = Math.atan2(ty - ay, tx - ax)
+  ctx.fillStyle = "#8b5cf6"
+  ctx.beginPath()
+  ctx.moveTo(tx, ty)
+  ctx.lineTo(tx - arrowLen * Math.cos(angle - Math.PI / 6), ty - arrowLen * Math.sin(angle - Math.PI / 6))
+  ctx.lineTo(tx - arrowLen * Math.cos(angle + Math.PI / 6), ty - arrowLen * Math.sin(angle + Math.PI / 6))
+  ctx.closePath()
+  ctx.fill()
+
+  // label
+  if (pc.label) {
+    const mx = (sx + tx) / 2
+    const my = (sy + ty) / 2 - 8
+    ctx.font = "bold 10px sans-serif"
+    const tw = ctx.measureText(pc.label).width
+    ctx.fillStyle = "rgba(255,255,255,0.9)"
+    ctx.beginPath()
+    ctx.roundRect(mx - tw / 2 - 4, my - 8, tw + 8, 16, 4)
+    ctx.fill()
+    ctx.strokeStyle = "#c4b5fd"
+    ctx.lineWidth = 1
+    ctx.stroke()
+    ctx.fillStyle = "#7c3aed"
+    ctx.textAlign = "center"
+    ctx.fillText(pc.label, mx, my + 4)
+  }
+
+  // draw sockets at endpoints
+  drawSocket(ctx, sx, sy, "#a78bfa", "#7c3aed", false)
+  drawSocket(ctx, tx, ty, "#a78bfa", "#7c3aed", false)
+
+  ctx.restore()
+}
+
 function drawGrid(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -823,11 +1053,12 @@ function drawZoomIndicator(ctx: CanvasRenderingContext2D, zoom: number) {
 }
 
 function drawLegend(ctx: CanvasRenderingContext2D, canvasWidth: number) {
-  const items: Array<{ label: string; color: string; isParentLine?: boolean }> = [
+  const items: Array<{ label: string; color: string; isParentLine?: boolean; isPortConnection?: boolean }> = [
     { label: "Application", color: kindColors("application").border },
     { label: "Subsystem", color: kindColors("subsystem").border },
     { label: "Component", color: kindColors("component").border },
     { label: "Parent Relation", color: "#94a3b8", isParentLine: true },
+    { label: "Port Connection", color: "#8b5cf6", isPortConnection: true },
   ]
 
   const startX = canvasWidth - 170
@@ -880,6 +1111,7 @@ function drawLegend(ctx: CanvasRenderingContext2D, canvasWidth: number) {
 interface ComponentDiagramCanvasProps {
   components: ComponentInfo[]
   relationships: ComponentRelationship[]
+  portConnections?: PortConnection[]
   classRelationships?: ClassRelationship[]
   classes: ClassInfo[]
   dslContentByPath?: Record<string, string>
@@ -887,6 +1119,15 @@ interface ComponentDiagramCanvasProps {
   onSelectComponent: (id: string | null) => void
   onMoveComponent: (id: string, x: number, y: number) => void
   onResizeComponent?: (id: string, width: number, height: number) => void
+  onAddPort?: (componentId: string, direction: "input" | "output") => void
+  onDeletePort?: (componentId: string, portId: string) => void
+  onAddRelationship?: (sourceComponentId: string, targetComponentId: string, label?: string) => void
+  onAddPortConnection?: (
+    sourceComponentId: string, sourcePortId: string,
+    targetComponentId: string, targetPortId: string,
+    label?: string
+  ) => void
+  onDeletePortConnection?: (connectionId: string) => void
   /** ドラッグ/リサイズが完了したタイミングのコミット通知（外部同期用） */
   onCommit?: () => void
 }
@@ -894,6 +1135,7 @@ interface ComponentDiagramCanvasProps {
 export function ComponentDiagramCanvas({
   components,
   relationships,
+  portConnections = [],
   classRelationships = [],
   classes,
   dslContentByPath = {},
@@ -901,6 +1143,11 @@ export function ComponentDiagramCanvas({
   onSelectComponent,
   onMoveComponent,
   onResizeComponent,
+  onAddPort,
+  onDeletePort,
+  onAddRelationship,
+  onAddPortConnection,
+  onDeletePortConnection,
   onCommit,
 }: ComponentDiagramCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -912,9 +1159,14 @@ export function ComponentDiagramCanvas({
   const [showClassHeatmap, setShowClassHeatmap] = useState(true)
   const [heatTooltip, setHeatTooltip] = useState<HeatTooltipState | null>(null)
   const [evidenceTooltip, setEvidenceTooltip] = useState<HeatTooltipState | null>(null)
+  const [connecting, setConnecting] = useState<{
+    from: PortHit
+    toWorld: { x: number; y: number }
+    hoverTarget?: PortHit
+  } | null>(null)
 
   const interactionRef = useRef<{
-    mode: "none" | "dragging-component" | "resizing-component" | "panning"
+    mode: "none" | "dragging-component" | "resizing-component" | "panning" | "connecting-port"
     componentId: string | null
     offsetX: number
     offsetY: number
@@ -988,6 +1240,79 @@ export function ComponentDiagramCanvas({
     for (const cls of classes) result.set(cls.id, cls)
     return result
   }, [classes])
+
+  const componentPorts = useMemo(() => {
+    const ports = new Map<string, { inputs: PortInfo[]; outputs: PortInfo[] }>()
+    for (const comp of components) {
+      ports.set(comp.id, { inputs: [], outputs: [] })
+    }
+
+    for (const comp of components) {
+      const compPorts = ports.get(comp.id)
+      if (!compPorts) continue
+
+      if (comp.manualPorts) {
+        comp.manualPorts.forEach((mp) => {
+          if (mp.direction === "input" && !compPorts.inputs.find((p) => p.id === mp.id)) {
+            compPorts.inputs.push({ id: mp.id, name: mp.name, type: "input", worldX: 0, worldY: 0 })
+          } else if (mp.direction === "output" && !compPorts.outputs.find((p) => p.id === mp.id)) {
+            compPorts.outputs.push({ id: mp.id, name: mp.name, type: "output", worldX: 0, worldY: 0 })
+          }
+        })
+      }
+
+      let textY = comp.y + 48 + BODY_PADDING + 12
+      if (comp.description) textY += LINE_HEIGHT
+      textY += LINE_HEIGHT // for the summary line
+
+      let itemsCount = 0
+      if (comp.kind === "application") {
+        itemsCount = components.filter((c) => c.kind === "subsystem" && comp.childComponentIds.includes(c.id)).length
+      } else if (comp.kind === "subsystem") {
+        itemsCount = components.filter((c) => c.kind === "component" && comp.childComponentIds.includes(c.id)).length
+      } else {
+        const dslPath = comp.dslPath ?? ""
+        const summary = dslPath ? dslSummaryByPath[dslPath] : undefined
+        if (summary) {
+          itemsCount = summary.classes.length
+        } else {
+          itemsCount = comp.classIds.length
+        }
+      }
+
+      if (itemsCount > 0) {
+        textY += LINE_HEIGHT // for title
+        for (let i = 0; i < itemsCount; i++) {
+          textY += LINE_HEIGHT
+        }
+      }
+      textY += LINE_HEIGHT // for the empty line before ports
+
+      const reservedRightWidth = (showComponentHeatmap || showClassHeatmap) ? HEATMAP_PANEL_WIDTH + 8 : 0
+      const inputSocketX = comp.x + BODY_PADDING + SOCKET_RADIUS + 2
+      const outputSocketX = comp.x + comp.width - BODY_PADDING - reservedRightWidth - SOCKET_RADIUS - 2
+
+      let inY = textY + LINE_HEIGHT
+      const maxY = comp.y + comp.height - BODY_PADDING - 8
+      for (const p of compPorts.inputs) {
+        p.worldX = inputSocketX
+        p.worldY = Math.min(inY, maxY)
+        inY += LINE_HEIGHT
+      }
+      let outY = textY + LINE_HEIGHT
+      for (const p of compPorts.outputs) {
+        p.worldX = outputSocketX
+        p.worldY = Math.min(outY, maxY)
+        outY += LINE_HEIGHT
+      }
+    }
+    return ports
+  }, [
+    components,
+    dslSummaryByPath,
+    showComponentHeatmap,
+    showClassHeatmap,
+  ])
 
   const heatMetricsByComponentId = useMemo<Record<string, ComponentHeatMetrics>>(() => {
     const incoming = new Map<string, number>()
@@ -1089,6 +1414,9 @@ export function ComponentDiagramCanvas({
     for (const rel of relationships) {
       drawComponentRelationship(ctx, rel, components)
     }
+    for (const pc of portConnections) {
+      drawPortConnection(ctx, pc, componentPorts)
+    }
     for (const comp of components) {
       drawComponentBox(
         ctx,
@@ -1100,7 +1428,31 @@ export function ComponentDiagramCanvas({
         heatMetricsByComponentId,
         showComponentHeatmap,
         showClassHeatmap,
+        componentPorts.get(comp.id) || { inputs: [], outputs: [] },
       )
+    }
+
+    if (connecting) {
+      const endX = connecting.hoverTarget?.worldX ?? connecting.toWorld.x
+      const endY = connecting.hoverTarget?.worldY ?? connecting.toWorld.y
+      const angle = Math.atan2(endY - connecting.from.worldY, endX - connecting.from.worldX)
+
+      ctx.save()
+      ctx.setLineDash([6, 4])
+      ctx.strokeStyle = "#f87171"
+      ctx.lineWidth = 1.6
+      ctx.beginPath()
+      ctx.moveTo(connecting.from.worldX, connecting.from.worldY)
+      ctx.lineTo(endX, endY)
+      ctx.stroke()
+      if (Math.hypot(endX - connecting.from.worldX, endY - connecting.from.worldY) > 8) {
+        drawOpenArrow(ctx, endX, endY, angle, "#f87171")
+      }
+      drawSocket(ctx, connecting.from.worldX, connecting.from.worldY, "#ef4444", "#991b1b", true)
+      if (connecting.hoverTarget) {
+        drawSocket(ctx, connecting.hoverTarget.worldX, connecting.hoverTarget.worldY, "#22c55e", "#166534", true)
+      }
+      ctx.restore()
     }
 
     ctx.restore()
@@ -1110,6 +1462,7 @@ export function ComponentDiagramCanvas({
   }, [
     components,
     relationships,
+    portConnections,
     classes,
     selectedId,
     zoom,
@@ -1118,6 +1471,8 @@ export function ComponentDiagramCanvas({
     heatMetricsByComponentId,
     showComponentHeatmap,
     showClassHeatmap,
+    componentPorts,
+    connecting,
   ])
 
   useEffect(() => {
@@ -1131,6 +1486,7 @@ export function ComponentDiagramCanvas({
     for (let i = components.length - 1; i >= 0; i--) {
       const c = components[i]
       if (worldX >= c.x && worldX <= c.x + c.width && worldY >= c.y && worldY <= c.y + c.height) {
+
         return c.id
       }
     }
@@ -1141,6 +1497,51 @@ export function ComponentDiagramCanvas({
     const hx = comp.x + comp.width - RESIZE_HANDLE_SIZE
     const hy = comp.y + comp.height - RESIZE_HANDLE_SIZE
     return worldX >= hx && worldX <= hx + RESIZE_HANDLE_SIZE && worldY >= hy && worldY <= hy + RESIZE_HANDLE_SIZE
+  }
+
+  function hitTestPortSocket(
+    worldX: number,
+    worldY: number,
+    direction?: "input" | "output",
+  ): PortHit | null {
+    for (let i = components.length - 1; i >= 0; i--) {
+      const comp = components[i]
+      const ports = componentPorts.get(comp.id)
+      if (!ports) continue
+
+      const inputPorts = direction === "output" ? [] : ports.inputs
+      const outputPorts = direction === "input" ? [] : ports.outputs
+
+      for (const p of inputPorts) {
+        const dx = worldX - p.worldX
+        const dy = worldY - p.worldY
+        if (dx * dx + dy * dy <= SOCKET_HIT_RADIUS * SOCKET_HIT_RADIUS) {
+          return {
+            componentId: comp.id,
+            portId: p.id,
+            direction: "input",
+            worldX: p.worldX,
+            worldY: p.worldY,
+            name: p.name,
+          }
+        }
+      }
+      for (const p of outputPorts) {
+        const dx = worldX - p.worldX
+        const dy = worldY - p.worldY
+        if (dx * dx + dy * dy <= SOCKET_HIT_RADIUS * SOCKET_HIT_RADIUS) {
+          return {
+            componentId: comp.id,
+            portId: p.id,
+            direction: "output",
+            worldX: p.worldX,
+            worldY: p.worldY,
+            name: p.name,
+          }
+        }
+      }
+    }
+    return null
   }
 
   function buildComponentHeatTooltip(
@@ -1352,6 +1753,82 @@ export function ComponentDiagramCanvas({
     return null
   }
 
+  function hitTestHeaderAdd(
+    worldX: number,
+    worldY: number,
+  ): { componentId: string; direction: "input" | "output" } | null {
+    for (const comp of components) {
+      let textY = comp.y + 48 + BODY_PADDING + 12
+      if (comp.description) textY += LINE_HEIGHT
+      textY += LINE_HEIGHT
+
+      let itemsCount = 0
+      if (comp.kind === "application") {
+        itemsCount = components.filter((c) => c.kind === "subsystem" && comp.childComponentIds.includes(c.id)).length
+      } else if (comp.kind === "subsystem") {
+        itemsCount = components.filter((c) => c.kind === "component" && comp.childComponentIds.includes(c.id)).length
+      } else {
+        const dslPath = comp.dslPath ?? ""
+        const summary = dslPath ? dslSummaryByPath[dslPath] : undefined
+        if (summary) {
+          itemsCount = summary.classes.length
+        } else {
+          itemsCount = comp.classIds.length
+        }
+      }
+
+      if (itemsCount > 0) {
+        textY += LINE_HEIGHT
+        for (let i = 0; i < itemsCount; i++) {
+          textY += LINE_HEIGHT
+        }
+      }
+
+      const reservedRightWidth = (showComponentHeatmap || showClassHeatmap) ? HEATMAP_PANEL_WIDTH + 8 : 0
+      const inHeaderX = comp.x + BODY_PADDING
+      const outHeaderX = comp.x + comp.width - BODY_PADDING - reservedRightWidth
+
+      const btnW = 16
+      const btnH = 14
+      const btnY = textY - 10
+      const inputBtnX = inHeaderX + 34
+      const outputBtnX = outHeaderX - 50
+
+      if (worldX >= inputBtnX && worldX <= inputBtnX + btnW && worldY >= btnY && worldY <= btnY + btnH) {
+        postMessage({ command: "log", level: "info", text: "hit input" })
+        return { componentId: comp.id, direction: "input" }
+      }
+      if (worldX >= outputBtnX && worldX <= outputBtnX + btnW && worldY >= btnY && worldY <= btnY + btnH) {
+        postMessage({ command: "log", level: "info", text: "hit output" })
+        return { componentId: comp.id, direction: "output" }
+      }
+    }
+    return null
+  }
+
+  function hitTestPortDelete(worldX: number, worldY: number): { componentId: string; portId: string } | null {
+    for (const comp of components) {
+      if (!comp.manualPorts) continue
+      const ports = componentPorts.get(comp.id)
+      if (!ports) continue
+
+      for (const p of ports.inputs) {
+        if (!comp.manualPorts.some((mp) => mp.id === p.id)) continue
+        if (worldX >= p.worldX + 24 && worldX <= p.worldX + 40 && worldY >= p.worldY - 7 && worldY <= p.worldY + 7) {
+          return { componentId: comp.id, portId: p.id }
+        }
+      }
+
+      for (const p of ports.outputs) {
+        if (!comp.manualPorts.some((mp) => mp.id === p.id)) continue
+        if (worldX >= p.worldX - 40 && worldX <= p.worldX - 24 && worldY >= p.worldY - 7 && worldY <= p.worldY + 7) {
+          return { componentId: comp.id, portId: p.id }
+        }
+      }
+    }
+    return null
+  }
+
   function handleMouseDown(e: React.MouseEvent) {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -1359,6 +1836,47 @@ export function ComponentDiagramCanvas({
     const screenX = e.clientX - rect.left
     const screenY = e.clientY - rect.top
     const world = screenToWorld(screenX, screenY)
+
+    const portHit = hitTestPortSocket(world.x, world.y, "output")
+    if (portHit) {
+      setConnecting({
+        from: portHit,
+        toWorld: { x: portHit.worldX, y: portHit.worldY },
+      })
+      interactionRef.current = {
+        ...interactionRef.current,
+        mode: "connecting-port",
+        componentId: null,
+        offsetX: 0,
+        offsetY: 0,
+        startPanX: 0,
+        startPanY: 0,
+        startOffsetX: 0,
+        startOffsetY: 0,
+        startW: 0,
+        startH: 0,
+        startWorldX: 0,
+        startWorldY: 0,
+      }
+      return
+    }
+
+    const addHit = hitTestHeaderAdd(world.x, world.y)
+    if (addHit && onAddPort) {
+      postMessage({
+        command: "log",
+        level: "info",
+        text: `invoke onAddPort (${addHit.direction})`,
+      })
+      onAddPort(addHit.componentId, addHit.direction)
+      return
+    }
+
+    const delHit = hitTestPortDelete(world.x, world.y)
+    if (delHit && onDeletePort) {
+      onDeletePort(delHit.componentId, delHit.portId)
+      return
+    }
 
     const hitId = hitTest(world.x, world.y)
     if (hitId) {
@@ -1427,6 +1945,22 @@ export function ComponentDiagramCanvas({
     const screenX = e.clientX - rect.left
     const screenY = e.clientY - rect.top
     const world = screenToWorld(screenX, screenY)
+
+    if (interaction.mode === "connecting-port") {
+      setHeatTooltip(null)
+      setEvidenceTooltip(null)
+      const hoverTarget = hitTestPortSocket(world.x, world.y, "input")
+      setConnecting((prev) => (
+        prev
+          ? {
+            ...prev,
+            toWorld: { x: world.x, y: world.y },
+            hoverTarget: hoverTarget ?? undefined,
+          }
+          : prev
+      ))
+      return
+    }
 
     if (interaction.mode === "dragging-component" && interaction.componentId) {
       setHeatTooltip(null)
@@ -1504,6 +2038,26 @@ export function ComponentDiagramCanvas({
   }
 
   function handleMouseUp() {
+    if (interactionRef.current.mode === "connecting-port") {
+      if (connecting?.hoverTarget) {
+        const target = connecting.hoverTarget
+        if (target.componentId !== connecting.from.componentId) {
+          if (onAddPortConnection) {
+            onAddPortConnection(
+              connecting.from.componentId, connecting.from.portId,
+              target.componentId, target.portId,
+            )
+          } else if (onAddRelationship) {
+            onAddRelationship(connecting.from.componentId, target.componentId, connecting.from.name)
+          }
+          onCommit?.()
+        }
+      }
+      setConnecting(null)
+      interactionRef.current.mode = "none"
+      return
+    }
+
     const wasInteractive =
       interactionRef.current.mode === "dragging-component" || interactionRef.current.mode === "resizing-component"
     interactionRef.current.mode = "none"
@@ -1656,6 +2210,11 @@ export function ComponentDiagramCanvas({
           if (!canvas) return
           const rect = canvas.getBoundingClientRect()
           const world = screenToWorld(e.clientX - rect.left, e.clientY - rect.top)
+          const socketHit = hitTestPortSocket(world.x, world.y)
+          if (socketHit) {
+            setCanvasCursor(socketHit.direction === "output" ? "crosshair" : "pointer")
+            return
+          }
           const hitId = hitTest(world.x, world.y)
           if (!hitId) {
             setCanvasCursor("grab")
@@ -1678,6 +2237,7 @@ export function ComponentDiagramCanvas({
           setCanvasCursor("grab")
           setHeatTooltip(null)
           setEvidenceTooltip(null)
+          setConnecting(null)
         }}
       />
 
