@@ -37,12 +37,12 @@ export function ComponentEditorContainer({
     selectedId?: string | null
     onSelectComponent?: (id: string | null) => void
 }) {
-    // 状態管理
-    const [components, setComponents] = useState<ComponentInfo[]>(() => service['componentDomain'].getComponents());
-    const [classes, setClasses] = useState<ClassInfo[]>(() => service['classDomain'].getClasses());
-    const [relationships, setRelationships] = useState<ComponentRelationship[]>(() => service['componentDomain'].getRelationships());
+    // 状態管理 — ComponentService の公開 API を使用
+    const [components, setComponents] = useState<ComponentInfo[]>(() => service.getComponents());
+    const [classes, setClasses] = useState<ClassInfo[]>(() => service.getClasses());
+    const [relationships, setRelationships] = useState<ComponentRelationship[]>(() => service.getRelationships());
     const [internalSelectedId, setInternalSelectedId] = useState<string | null>(() => {
-        const comps = service['componentDomain'].getComponents();
+        const comps = service.getComponents();
         return comps.length > 0 ? comps[0].id : null;
     });
 
@@ -59,13 +59,12 @@ export function ComponentEditorContainer({
 
     const saveContentListJson = useCallback((options?: { silent?: boolean }) => {
         try {
-            const snapshotComponents = service['componentDomain'].getComponents();
-            const snapshotRelationships = service['componentDomain'].getRelationships();
+            const snap = service.getSnapshot();
             postMessage({
                 command: 'saveComponentListJson',
                 payload: {
-                    components: snapshotComponents,
-                    relationships: snapshotRelationships,
+                    components: snap.components,
+                    relationships: snap.relationships,
                     silent: options?.silent ?? false,
                 },
             });
@@ -82,12 +81,12 @@ export function ComponentEditorContainer({
         }
     }, []);
 
-    // 同期処理
+    // 同期処理 — 公開 API を使用
     const refreshFromService = useCallback(() => {
         try {
-            const allComps = service['componentDomain'].getComponents();
-            const allCls = service['classDomain'].getClasses();
-            const allRels = service['componentDomain'].getRelationships();
+            const allComps = service.getComponents();
+            const allCls = service.getClasses();
+            const allRels = service.getRelationships();
 
             setComponents([...allComps]);
             setClasses([...allCls]);
@@ -104,18 +103,12 @@ export function ComponentEditorContainer({
         }
     }, [service, selectedId, setSelectedId, setGlobalComponents, setGlobalRelationships]);
 
-    // リスナー設定 (もし DomainModel が変更イベントを出すなら)
-    // 注意: ComponentService 自身には onModelChanged がないので、
-    // 必要に応じて service.classDomain や service.componentDomain にリスナーを張るか、
-    // ここでは単純に props や useEffect での初回同期に留める。
-    // ClassDiagramService.ts を参考に、同様の仕組みがあるか確認が必要。
-
+    // リスナー設定 — ComponentService の onModelChanged を使用
     useEffect(() => {
-        // 現在の ComponentService は内部に DomainModel を持っており、
-        // ClassDiagramService のようなイベントバスがないため、
-        // 開発の進展に合わせてイベント通知の仕組みを追加するのが望ましい。
+        service.onModelChanged(refreshFromService);
         refreshFromService();
-    }, [refreshFromService, refreshToken]);
+        return () => service.offModelChanged(refreshFromService);
+    }, [service, refreshFromService, refreshToken]);
 
     // ── DSL統合: IPC応答を受信したら integrate を実行 ──────────
     useEffect(() => {
@@ -131,14 +124,14 @@ export function ComponentEditorContainer({
                     }));
 
                     const result = DslIntegrator.integrate(
-                        service['componentDomain'],
+                        service.getComponentDomain(),
                         dslContents
                     );
 
-                    // サービスの内部状態を更新
-                    (service as any).classDomain = result.classDomain;
-                    (service as any).componentDomain = result.componentDomain;
-                    refreshFromService();
+                    // サービスの公開 API で内部状態を更新
+                    service.setClassDomain(result.classDomain);
+                    service.setComponentDomain(result.componentDomain);
+                    // onModelChanged が refreshFromService を呼ぶので手動呼び出し不要
 
                     // 自動保存（サイレント）
                     saveContentListJson({ silent: true });
@@ -150,21 +143,12 @@ export function ComponentEditorContainer({
         return cleanup;
     }, [service, refreshFromService, saveContentListJson]);
 
-    //Handlers
+    // Handlers — すべて ComponentService の公開 API を使用
     const handleUpdateComponent = async (id: string, updated: ComponentInfo) => {
         setBusy(true);
         try {
-            // ComponentService に直接 update メソッドがまだないので、
-            // 内部の componentDomain を直接操作するか、Service を拡張する。
-            // ここでは簡易的に DomainModel の updateComponent を呼び出し、結果をサービスに反映する想定。
-            // (本来は Service にビジネスロジックを集約すべき)
-            const nextDomain = service['componentDomain'].updateComponent(updated);
-            // 本来はここが Service の仕事:
-            // service.updateComponent(updated)
-
-            // 暫定的に snapshot 更新
-            (service as any).componentDomain = nextDomain;
-            refreshFromService();
+            service.updateComponentMut(updated);
+            // onModelChanged が refreshFromService を呼ぶ
         } catch (err) {
             console.error("handleUpdateComponent error:", err);
         } finally {
@@ -175,11 +159,8 @@ export function ComponentEditorContainer({
     const handleDeleteComponent = (id: string) => {
         setBusy(true);
         try {
-            const res = service.removeComponent(id);
-            (service as any).classDomain = res.classDomain;
-            (service as any).componentDomain = res.componentDomain;
-            refreshFromService();
-            const all = service['componentDomain'].getComponents();
+            service.removeComponentMut(id);
+            const all = service.getComponents();
             setSelectedId(all.length ? all[0].id : null);
         } catch (err) {
             console.error("handleDeleteComponent error:", err);
@@ -191,11 +172,7 @@ export function ComponentEditorContainer({
     const handleAddComponent = (kind: ComponentKind) => {
         setBusy(true);
         try {
-            const nextDomain = service['componentDomain'].addComponent(kind);
-            (service as any).componentDomain = nextDomain;
-            refreshFromService();
-            const all = nextDomain.getComponents();
-            const created = all[all.length - 1]; // addComponent は末尾に追加する
+            const created = service.addComponentMut(kind);
             if (created) setSelectedId(created.id);
         } catch (err) {
             console.error("handleAddComponent error:", err);
@@ -206,10 +183,7 @@ export function ComponentEditorContainer({
 
     const handleAssignClass = (compId: string, classId: string) => {
         try {
-            const res = service.assignClassToComponent(classId, compId);
-            (service as any).classDomain = res.classDomain;
-            (service as any).componentDomain = res.componentDomain;
-            refreshFromService();
+            service.assignClassMut(classId, compId);
         } catch (err) {
             console.error("handleAssignClass error:", err);
         }
@@ -217,10 +191,7 @@ export function ComponentEditorContainer({
 
     const handleUnassignClass = (compId: string, classId: string) => {
         try {
-            const res = service.unassignClassFromComponent(classId, compId);
-            (service as any).classDomain = res.classDomain;
-            (service as any).componentDomain = res.componentDomain;
-            refreshFromService();
+            service.unassignClassMut(classId, compId);
         } catch (err) {
             console.error("handleUnassignClass error:", err);
         }
@@ -228,9 +199,7 @@ export function ComponentEditorContainer({
 
     const handleAddChildComponent = (parentId: string, childId: string) => {
         try {
-            const nextDomain = service['componentDomain'].addChildComponent(parentId, childId);
-            (service as any).componentDomain = nextDomain;
-            refreshFromService();
+            service.addChildComponentMut(parentId, childId);
         } catch (err) {
             console.error("handleAddChildComponent error:", err);
         }
@@ -238,16 +207,14 @@ export function ComponentEditorContainer({
 
     const handleRemoveChildComponent = (parentId: string, childId: string) => {
         try {
-            const nextDomain = service['componentDomain'].removeChildComponent(parentId, childId);
-            (service as any).componentDomain = nextDomain;
-            refreshFromService();
+            service.removeChildComponentMut(parentId, childId);
         } catch (err) {
             console.error("handleRemoveChildComponent error:", err);
         }
     }
 
     const handleIntegrateDsl = useCallback(() => {
-        const paths = DslIntegrator.collectDslPaths(service['componentDomain']);
+        const paths = DslIntegrator.collectDslPaths(service.getComponentDomain());
         if (paths.length === 0) {
             console.warn('[DslIntegrator] No components have dslPath set');
             return;

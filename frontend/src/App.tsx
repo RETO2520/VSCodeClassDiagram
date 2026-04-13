@@ -48,8 +48,6 @@ import { DiagramCanvas } from '@/components/diagram-canvas'
 import { ComponentDiagramCanvas } from '@/components/component-diagram-canvas'
 import { detectRelationships } from '@/lib/detect-relationships'
 import type { ClassInfo, Relationship } from '@/lib/class-diagram-types'
-import type { ComponentInfo, ComponentRelationship, PortConnection } from '@/lib/component-diagram-types'
-import { ComponentDomainModel } from '@/lib/ComponentDomainModel'
 import { Undo2, Redo2, ChevronDown, ChevronUp } from 'lucide-react'
 import { useVSCodeState } from './bridge/use-vscode'
 import { CommandLine } from '@/components/command-line'
@@ -60,7 +58,7 @@ import { ActivitySidebar, EditorMode } from '@/components/ActivitySidebar'
 import { WorkflowEditorPanel, WFOpRef } from '@/components/WorkflowEditorPanel'
 import { SpecEditorPanel } from '@/components/SpecEditorPanel'
 import { ComponentService } from '@/lib/application/ComponentService'
-import { postMessage, onMessage } from './bridge/vscode-bridge'
+import { useComponentDiagram } from '@/hooks/use-component-diagram'
 
 // ==============================
 // 定数
@@ -106,43 +104,35 @@ function Toolbar({
                 </button>
                 <span className="text-xs text-muted-foreground ml-1">{historyCount}</span>
             </div>
-
-            <select value={language} onChange={e => onLanguageChange(e.target.value)}
-                className="h-8 rounded-md border bg-background px-2 text-sm">
-                <option value="csharp">C#</option>
-                <option value="typescript">TypeScript</option>
-                <option value="java">Java</option>
-                <option value="cpp">C++</option>
-                <option value="rust">Rust</option>
-            </select>
-
-            <button onClick={onSaveJson} className="h-8 rounded-md bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90">Save JSON</button>
-            <button onClick={onLoadJson} className="h-8 rounded-md bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90">Load JSON</button>
-            <button onClick={onLoadDsl} className="h-8 rounded-md bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90">Load DSL</button>
-            <button onClick={onGenerate} className="h-8 rounded-md bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90">Generate</button>
-
+            <div className="flex items-center gap-1 border-r pr-2">
+                <button onClick={onSaveJson} title="Save JSON" className="h-8 px-2 rounded-md text-xs hover:bg-accent">💾 Save</button>
+                <button onClick={onLoadJson} title="Load JSON" className="h-8 px-2 rounded-md text-xs hover:bg-accent">📂 Load</button>
+                <button onClick={onLoadDsl} title="Load DSL" className="h-8 px-2 rounded-md text-xs hover:bg-accent">📜 DSL</button>
+            </div>
+            <div className="flex items-center gap-1 border-r pr-2">
+                <select value={language} onChange={e => onLanguageChange(e.target.value)}
+                    className="h-8 rounded-md text-xs bg-background border px-1">
+                    <option value="csharp">C#</option>
+                    <option value="typescript">TypeScript</option>
+                    <option value="java">Java</option>
+                    <option value="cpp">C++</option>
+                    <option value="rust">Rust</option>
+                </select>
+                <button onClick={onGenerate} title="Generate Code" className="h-8 px-2 rounded-md text-xs hover:bg-accent">⚡ Generate</button>
+            </div>
             <div className="flex-1" />
-
-            {/* Spec DSL パネル開閉ボタン */}
             <button
-                onClick={onToggleSpecPane}
-                title={specPaneOpen ? 'Spec DSL エディタを閉じる' : 'Spec DSL エディタを開く'}
-                className="h-8 flex items-center gap-1.5 px-3 rounded-md border text-sm transition-colors"
-                style={{
-                    borderColor: specPaneOpen ? '#3b82f6' : undefined,
-                    color: specPaneOpen ? '#93c5fd' : undefined,
-                    background: specPaneOpen ? 'rgba(59,130,246,0.1)' : undefined,
-                }}
+                onClick={onToggleSpecPane} title="Toggle Spec DSL pane"
+                className="h-8 w-8 rounded-md flex items-center justify-center hover:bg-accent"
             >
-                {specPaneOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
-                Spec DSL
+                {specPaneOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
             </button>
         </div>
     )
 }
 
 // ==============================
-// ResizeHandle
+// Resize Handle
 // ==============================
 
 function ResizeHandle({ onDrag }: { onDrag: (dy: number) => void }) {
@@ -152,11 +142,11 @@ function ResizeHandle({ onDrag }: { onDrag: (dy: number) => void }) {
     const onPointerDown = (e: React.PointerEvent) => {
         dragging.current = true
         lastY.current = e.clientY
-            ; (e.target as Element).setPointerCapture(e.pointerId)
+        e.currentTarget.setPointerCapture(e.pointerId)
     }
     const onPointerMove = (e: React.PointerEvent) => {
         if (!dragging.current) return
-        const dy = lastY.current - e.clientY   // 上にドラッグ = ペイン拡大
+        const dy = lastY.current - e.clientY
         lastY.current = e.clientY
         onDrag(dy)
     }
@@ -207,62 +197,6 @@ export function App({ service, componentService }: { service: ClassDiagramServic
 
     // ── ワークフロー ──
     const [activeOpRef, setActiveOpRef] = useState<WFOpRef | null>(null)
-
-    // ── Component Diagram ──
-    const [componentNodes, setComponentNodes] = useState<ComponentInfo[]>([])
-    const [componentRels, setComponentRels] = useState<ComponentRelationship[]>([])
-    const [portConnections, setPortConnections] = useState<PortConnection[]>([])
-    const [componentRefreshToken, setComponentRefreshToken] = useState(0)
-    const [componentDslFiles, setComponentDslFiles] = useState<string[]>([])
-    const [dslContentByPath, setDslContentByPath] = useState<Record<string, string>>({})
-    const componentListHydratedRef = useRef(false)
-
-    const saveComponentListJson = useCallback((silent: boolean) => {
-        if (!componentListHydratedRef.current) {
-            return
-        }
-        try {
-            const snapshotComponents = (componentService as any).componentDomain.getComponents?.() ?? componentNodes
-            const snapshotRelationships = (componentService as any).componentDomain.getRelationships?.() ?? componentRels
-            postMessage({
-                command: 'saveComponentListJson',
-                payload: {
-                    components: snapshotComponents,
-                    relationships: snapshotRelationships,
-                    portConnections: (componentService as any).componentDomain.getPortConnections?.() ?? portConnections,
-                    silent,
-                },
-            })
-        } catch (err) {
-            console.error('[App] saveComponentListJson error:', err)
-        }
-    }, [componentService, componentNodes, componentRels])
-
-    const debouncedSaveComponentDSL = useCallback((nodes: ComponentInfo[]) => {
-        if (!componentListHydratedRef.current) {
-            return
-        }
-        if (componentUpdateDebounceRef.current) {
-            clearTimeout(componentUpdateDebounceRef.current)
-        }
-        componentUpdateDebounceRef.current = setTimeout(() => {
-            try {
-                const snapshotComponents = nodes
-                const snapshotRelationships = (componentService as any).componentDomain.getRelationships?.() ?? componentRels
-                postMessage({
-                    command: 'saveComponentListJson',
-                    payload: {
-                        components: snapshotComponents,
-                        relationships: snapshotRelationships,
-                        portConnections: (componentService as any).componentDomain.getPortConnections?.() ?? portConnections,
-                        silent: true,
-                    },
-                })
-            } catch (err) {
-                console.error('[App] debouncedSaveComponentDSL error:', err)
-            }
-        }, 500) // 500ms debounce
-    }, [componentService, componentRels])
 
     // ── Spec DSL 下部ペイン ──
     const [specPaneOpen, setSpecPaneOpen] = useState(true)
@@ -322,6 +256,10 @@ export function App({ service, componentService }: { service: ClassDiagramServic
         return () => service.offModelChanged(syncFromService)
     }, [service, setClasses])
 
+    // ── コンポーネント図のカスタムフック ──
+    const { selectedId, setSelectedId, saveJson, loadJson, loadDsl, generateCode, changePrimitiveTypes } = vsCodeState
+    const cd = useComponentDiagram(componentService, classes, setSelectedId)
+
     const handleOperationClick = useCallback(
         (params: { classIndex: number; opIndex: number; label: string }) => {
             // classes state ではなく service の最新モデルから classId/operationId を取る。
@@ -364,30 +302,7 @@ export function App({ service, componentService }: { service: ClassDiagramServic
         commandHistory.setClasses(vsCodeState.classes)
     }, [vsCodeState.classes])
 
-    const { selectedId, setSelectedId, saveJson, loadJson, loadDsl, generateCode, changePrimitiveTypes } = vsCodeState
     const classRelationships = useMemo<Relationship[]>(() => detectRelationships(classes), [classes])
-    const componentCanvasClasses = useMemo<ClassInfo[]>(() => {
-        try {
-            const domain = (componentService as any).classDomain
-            if (domain?.getClasses) {
-                return domain.getClasses()
-            }
-        } catch {
-            // fall through to global classes
-        }
-        return classes
-    }, [componentService, classes, componentNodes, componentRels, componentRefreshToken])
-    const componentCanvasClassRelationships = useMemo<Relationship[]>(() => {
-        try {
-            const domain = (componentService as any).classDomain
-            if (domain?.detectRelationships) {
-                return domain.detectRelationships()
-            }
-        } catch {
-            // fall through to local detection
-        }
-        return detectRelationships(componentCanvasClasses)
-    }, [componentService, componentCanvasClasses, componentNodes, componentRels, componentRefreshToken])
 
     const handleMoveClass = useCallback((id: string, x: number, y: number) => {
         setClasses(prev => {
@@ -396,196 +311,6 @@ export function App({ service, componentService }: { service: ClassDiagramServic
             return next
         })
     }, [setClasses, service])
-
-    const handleMoveComponent = useCallback((id: string, x: number, y: number) => {
-        setComponentNodes(prev => {
-            const next = prev.map(c => c.id === id ? { ...c, x, y } : c)
-            try {
-                const nextDomain = (componentService as any).componentDomain.updateComponentPosition(id, x, y)
-                    ; (componentService as any).componentDomain = nextDomain
-            } catch { }
-            return next
-        })
-        debouncedSaveComponentDSL(componentNodes)
-    }, [componentService, componentNodes])
-
-    const handleResizeComponent = useCallback((id: string, width: number, height: number) => {
-        setComponentNodes(prev => {
-            const next = prev.map(c => c.id === id ? { ...c, width, height } : c)
-            try {
-                const nextDomain = (componentService as any).componentDomain.updateComponentSize(id, width, height)
-                    ; (componentService as any).componentDomain = nextDomain
-            } catch { }
-            return next
-        })
-        debouncedSaveComponentDSL(componentNodes)
-    }, [componentService, componentNodes])
-
-    const handleSelectComponent = useCallback((id: string | null) => {
-        setSelectedId(id)
-    }, [setSelectedId])
-
-    // ===============================
-    // 手動ポートのハンドラー
-    // ===============================
-    const handleAddPort = useCallback((componentId: string, direction: 'input' | 'output') => {
-        const newNodes = componentNodes.map(node => {
-            if (node.id === componentId) {
-                const existing = node.manualPorts || []
-                const prefix = direction === 'input' ? 'in' : 'out'
-                const used = new Set(existing.map(p => p.name))
-                let nextIndex = existing.filter(p => p.direction === direction).length + 1
-                let portName = `${prefix}-${nextIndex}`
-                while (used.has(portName)) {
-                    nextIndex += 1
-                    portName = `${prefix}-${nextIndex}`
-                }
-                const id = `manual-${Date.now()}`
-                return {
-                    ...node,
-                    manualPorts: [...existing, { id, name: portName, direction }]
-                }
-            }
-            return node
-        })
-        setComponentNodes(newNodes)
-        debouncedSaveComponentDSL(newNodes)
-    }, [componentNodes, debouncedSaveComponentDSL])
-
-    const handleDeletePort = useCallback((componentId: string, portId: string) => {
-        const newNodes = componentNodes.map(node => {
-            if (node.id === componentId) {
-                return {
-                    ...node,
-                    manualPorts: (node.manualPorts || []).filter(p => p.id !== portId)
-                }
-            }
-            return node
-        })
-        setComponentNodes(newNodes)
-        debouncedSaveComponentDSL(newNodes)
-    }, [componentNodes, debouncedSaveComponentDSL])
-
-    const handleRenamePort = useCallback((componentId: string, portId: string, nextName: string) => {
-        const newNodes = componentNodes.map(node => {
-            if (node.id === componentId) {
-                return {
-                    ...node,
-                    manualPorts: (node.manualPorts || []).map(p => p.id === portId ? { ...p, name: nextName } : p),
-                }
-            }
-            return node
-        })
-        setComponentNodes(newNodes)
-        debouncedSaveComponentDSL(newNodes)
-    }, [componentNodes, debouncedSaveComponentDSL])
-
-    const handleAddRelationship = useCallback((sourceComponentId: string, targetComponentId: string, label?: string) => {
-        if (sourceComponentId === targetComponentId) return
-        try {
-            const domain = (componentService as any).componentDomain
-            const existing = domain?.getRelationships?.() ?? componentRels
-            const hasSameManual = existing.some((rel: ComponentRelationship) =>
-                rel.sourceComponentId === sourceComponentId
-                && rel.targetComponentId === targetComponentId
-                && (rel.label ?? "") === (label ?? "")
-                && rel.basedOnIds.length === 0
-            )
-            if (hasSameManual) return
-
-            const nextDomain = domain.addRelationship(sourceComponentId, targetComponentId, label)
-                ; (componentService as any).componentDomain = nextDomain
-            const nextRels = nextDomain.getRelationships?.() ?? existing
-            setComponentRels(nextRels)
-            debouncedSaveComponentDSL(componentNodes)
-        } catch (err) {
-            console.error('[App] handleAddRelationship error:', err)
-        }
-    }, [componentService, componentRels, componentNodes, debouncedSaveComponentDSL])
-
-    const handleAddPortConnection = useCallback((
-        sourceComponentId: string, sourcePortId: string,
-        targetComponentId: string, targetPortId: string,
-        label?: string
-    ) => {
-        try {
-            const domain = (componentService as any).componentDomain
-            const nextDomain = domain.addPortConnection(sourceComponentId, sourcePortId, targetComponentId, targetPortId, label)
-            ;(componentService as any).componentDomain = nextDomain
-            setPortConnections(nextDomain.getPortConnections?.() ?? [])
-            debouncedSaveComponentDSL(componentNodes)
-        } catch (err) {
-            console.error('[App] handleAddPortConnection error:', err)
-        }
-    }, [componentService, componentNodes, debouncedSaveComponentDSL])
-
-    const handleDeletePortConnection = useCallback((connectionId: string) => {
-        try {
-            const domain = (componentService as any).componentDomain
-            const nextDomain = domain.removePortConnection(connectionId)
-            ;(componentService as any).componentDomain = nextDomain
-            setPortConnections(nextDomain.getPortConnections?.() ?? [])
-            debouncedSaveComponentDSL(componentNodes)
-        } catch (err) {
-            console.error('[App] handleDeletePortConnection error:', err)
-        }
-    }, [componentService, componentNodes, debouncedSaveComponentDSL])
-
-    // ── classes が変更されたときに componentNodes を同期する ──
-    // SpecEditorPanel や Canvas からの class 変更を検出して、
-    // componentNodes 内のクラスIDがまだ有効かチェック
-    useEffect(() => {
-        console.debug('[App] classes changed, syncing componentNodes:', {
-            classCount: classes.length,
-            componentNodesCount: componentNodes.length,
-            classNames: classes.map(c => c.name)
-        })
-
-        // TODO: かなりの頻度で実行されるので、パフォーマンスを考慮する必要がある
-        setComponentNodes(prev => {
-            // classes から削除されたクラスを特定
-            const currentClassIds = new Set(classes.map(c => c.id))
-            const prevClassIds = new Set(prev.flatMap(comp => comp.classIds))
-
-            // 削除されたクラスを含むコンポーネントをチェック
-            const deletedClassIds = Array.from(prevClassIds).filter(id => !currentClassIds.has(id))
-
-            if (deletedClassIds.length === 0) {
-
-                postMessage({ command: 'log', level: 'debug', text: '[App] No deleted classes detected' });
-                return prev
-            }
-
-
-            postMessage({ command: 'log', level: 'debug', text: '[App] Detected deleted classes: ' + deletedClassIds.join(', ') });
-            // 削除されたクラスをコンポーネントから除去
-            const next = prev.map(comp => ({
-                ...comp,
-                classIds: comp.classIds.filter(id => currentClassIds.has(id))
-            })).filter(comp => {
-                // classIds が空になった component を削除するかは要件次第
-                // ここでは保持する
-                return comp.kind !== 'component' || comp.classIds.length > 0 || comp.childComponentIds.length > 0
-            })
-
-            postMessage({ command: 'log', level: 'debug', text: '[App] Updated componentNodes next: ' + JSON.stringify(next) });
-            postMessage({ command: 'log', level: 'debug', text: '[App] Updated componentNodes prev: ' + JSON.stringify(prev) });
-
-            return next
-        })
-    }, [classes])
-
-    const commitComponentChanges = useCallback(() => {
-        // ── コンポーネント変更を .diagram フォルダに反映 ──
-        // componentNodes と componentRels の状態を保存する必要がある場合、
-        // ここで postMessage を送信して拡張機能に通知する。
-        // 例：
-        // postMessage({
-        //   command: 'syncComponentModel',
-        //   payload: { components: componentNodes, relationships: componentRels }
-        // })
-        setComponentRefreshToken(t => t + 1)
-    }, [])
 
     const handleLanguageChange = useCallback((lang: string) => {
         setLanguage(lang); changePrimitiveTypes(lang)
@@ -614,106 +339,6 @@ export function App({ service, componentService }: { service: ClassDiagramServic
         window.addEventListener('keydown', h)
         return () => window.removeEventListener('keydown', h)
     }, [handleUndo, handleRedo])
-
-    useEffect(() => {
-        const cleanup = onMessage((msg) => {
-            if (msg.command === 'componentListJsonLoaded') {
-                const rawComponents = Array.isArray(msg.payload?.components) ? msg.payload.components : []
-                const rawRelationships = Array.isArray(msg.payload?.relationships) ? msg.payload.relationships : []
-                const rawPortConnections = Array.isArray(msg.payload?.portConnections) ? msg.payload.portConnections : []
-                const components = rawComponents as ComponentInfo[]
-                const relationships = rawRelationships as ComponentRelationship[]
-                const pcs = rawPortConnections as PortConnection[]
-                componentListHydratedRef.current = true
-
-                try {
-                    const restoredDomain = ComponentDomainModel.from(components, relationships, pcs)
-                    ; (componentService as any).componentDomain = restoredDomain
-                    setComponentNodes(restoredDomain.getComponents())
-                    setComponentRels(restoredDomain.getRelationships())
-                    setPortConnections(restoredDomain.getPortConnections())
-                    setComponentRefreshToken((prev) => prev + 1)
-                } catch (err) {
-                    console.error('[App] Failed to restore component-list.json:', err)
-                }
-                return
-            }
-
-            if (msg.command === 'diagramFilesLoaded') {
-                const files = Array.isArray(msg.payload?.files) ? msg.payload.files : []
-                const dslFiles = files
-                    .filter((f: unknown): f is { path: string; isDirectory: boolean } => {
-                        return !!f
-                            && typeof (f as any).path === 'string'
-                            && typeof (f as any).isDirectory === 'boolean'
-                    })
-                    .filter((f) => !f.isDirectory)
-                    .map((f) => f.path)
-                    .filter((p) => p.toLowerCase().endsWith('.dsl') || p.toLowerCase().endsWith('.txt'))
-                    .sort((a, b) => a.localeCompare(b, 'en'))
-                setComponentDslFiles(dslFiles)
-                return
-            }
-
-            if (msg.command === 'diagramFilesBulkLoaded') {
-                const files = Array.isArray(msg.payload?.files) ? msg.payload.files : []
-                setDslContentByPath((prev) => {
-                    const next = { ...prev }
-                    for (const file of files) {
-                        const relativePath = (file as any)?.relativePath
-                        const dsl = (file as any)?.dsl
-                        if (typeof relativePath === 'string' && typeof dsl === 'string') {
-                            next[relativePath] = dsl
-                        }
-                    }
-                    return next
-                })
-                return
-            }
-
-            if (msg.command === 'diagramFileLoaded') {
-                const relativePath = (msg.payload as any)?.relativePath
-                const dsl = (msg.payload as any)?.dsl
-                if (typeof relativePath === 'string' && typeof dsl === 'string') {
-                    setDslContentByPath((prev) => ({
-                        ...prev,
-                        [relativePath]: dsl,
-                    }))
-                }
-            }
-        })
-
-        return cleanup
-    }, [componentService])
-
-    useEffect(() => {
-        postMessage({ command: 'requestDiagramFiles' })
-    }, [])
-
-    useEffect(() => {
-        const neededPaths = Array.from(new Set(
-            componentNodes
-                .filter((c) => c.kind === 'component' && typeof c.dslPath === 'string' && c.dslPath.length > 0)
-                .map((c) => c.dslPath as string)
-        ))
-
-        if (neededPaths.length === 0) return
-        const missing = neededPaths.filter((p) => !dslContentByPath[p])
-        if (missing.length === 0) return
-
-        postMessage({ command: 'loadDiagramFilesBulk', payload: { relativePaths: missing } })
-    }, [componentNodes, dslContentByPath])
-
-    useEffect(() => {
-        const saveOnClose = () => saveComponentListJson(true)
-        window.addEventListener('beforeunload', saveOnClose)
-        window.addEventListener('pagehide', saveOnClose)
-        return () => {
-            saveOnClose()
-            window.removeEventListener('beforeunload', saveOnClose)
-            window.removeEventListener('pagehide', saveOnClose)
-        }
-    }, [saveComponentListJson])
 
     return (
         <div className="flex flex-col h-screen w-screen overflow-hidden">
@@ -755,32 +380,32 @@ export function App({ service, componentService }: { service: ClassDiagramServic
                         <>
                             <ComponentEditorContainer
                                 service={componentService}
-                                availableDslFiles={componentDslFiles}
+                                availableDslFiles={cd.componentDslFiles}
                                 selectedId={selectedId}
                                 onSelectComponent={setSelectedId}
-                                setGlobalComponents={setComponentNodes}
-                                setGlobalRelationships={setComponentRels}
-                                refreshToken={componentRefreshToken}
+                                setGlobalComponents={cd.setComponentNodes}
+                                setGlobalRelationships={cd.setComponentRels}
+                                refreshToken={cd.componentRefreshToken}
                             />
                             <div className="flex-1 min-w-0">
                                 <ComponentDiagramCanvas
-                                    components={componentNodes}
-                                    relationships={componentRels}
-                                    classRelationships={componentCanvasClassRelationships}
-                                    classes={componentCanvasClasses}
-                                    dslContentByPath={dslContentByPath}
+                                    components={cd.componentNodes}
+                                    relationships={cd.componentRels}
+                                    classRelationships={cd.componentCanvasClassRelationships}
+                                    classes={cd.componentCanvasClasses}
+                                    dslContentByPath={cd.dslContentByPath}
                                     selectedId={selectedId}
-                                    onSelectComponent={handleSelectComponent}
-                                    onMoveComponent={handleMoveComponent}
-                                    onResizeComponent={handleResizeComponent}
-                                    onAddPort={handleAddPort}
-                                    onDeletePort={handleDeletePort}
-                                    onRenamePort={handleRenamePort}
-                                    onAddRelationship={handleAddRelationship}
-                                    onAddPortConnection={handleAddPortConnection}
-                                    onDeletePortConnection={handleDeletePortConnection}
-                                    portConnections={portConnections}
-                                    onCommit={() => { debouncedSaveComponentDSL(componentNodes) }}
+                                    onSelectComponent={cd.handleSelectComponent}
+                                    onMoveComponent={cd.handleMoveComponent}
+                                    onResizeComponent={cd.handleResizeComponent}
+                                    onAddPort={cd.handleAddPort}
+                                    onDeletePort={cd.handleDeletePort}
+                                    onRenamePort={cd.handleRenamePort}
+                                    onAddRelationship={cd.handleAddRelationship}
+                                    onAddPortConnection={cd.handleAddPortConnection}
+                                    onDeletePortConnection={cd.handleDeletePortConnection}
+                                    portConnections={cd.portConnections}
+                                    onCommit={() => { cd.debouncedSaveComponentDSL() }}
                                 />
                             </div>
                         </>
@@ -817,11 +442,11 @@ export function App({ service, componentService }: { service: ClassDiagramServic
                                         pendingComponentUpdateRef.current = false
                                         console.debug('[App] Executing debounced component update from componentService');
                                         try {
-                                            const components = (componentService as any).componentDomain.getComponents?.()
+                                            const components = componentService.getComponents()
                                             if (components) {
-                                                setComponentNodes(components)
+                                                cd.setComponentNodes(components)
                                                 // ComponentEditorContainer の リスト更新トリガー
-                                                setComponentRefreshToken(prev => prev + 1)
+                                                cd.commitComponentChanges()
                                             }
                                         } catch (e) {
                                             console.error('[App] Error syncing componentNodes:', e)

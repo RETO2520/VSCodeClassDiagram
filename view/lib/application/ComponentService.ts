@@ -14,7 +14,8 @@
  * ------------------------------------------------------------
  * 1. 両モデルをまたぐ操作のみをここに置く
  *    （単一モデルで完結する操作は各モデルに委譲）
- * 2. イミュータブル: 操作は常に新しいモデルペアを返す
+ * 2. ミュータブル: ClassDiagramService と同様に内部状態を直接更新し、
+ *    変更通知を発行する
  * 3. ClassInfo.componentIds の書き込みは
  *    ComponentDomainModel.assignClass / unassignClass 経由のみ
  * 4. React依存を持たない
@@ -25,7 +26,7 @@
 import { ClassInfo } from '../class-diagram-types'
 import { DomainModel } from '../DomainModel'
 import { ComponentDomainModel } from '../ComponentDomainModel'
-import { ComponentKind, ComponentRelationship } from '../component-diagram-types'
+import { ComponentInfo, ComponentKind, ComponentRelationship, PortConnection } from '../component-diagram-types'
 import { DomainError } from '../DomainModel'
 
 // ============================================================
@@ -46,16 +47,270 @@ export interface DeriveRelationshipsResult extends ComponentServiceResult {
     orphaned: Array<{ relationshipId: string; orphanedIds: string[] }>
 }
 
+/** スナップショット */
+export interface ComponentServiceSnapshot {
+    components: ComponentInfo[]
+    relationships: ComponentRelationship[]
+    portConnections: PortConnection[]
+}
+
 // ============================================================
 // ComponentService
 // ============================================================
 
 export class ComponentService {
 
+    private classDomain: DomainModel
+    private componentDomain: ComponentDomainModel
+    private modelChangedListeners: Array<() => void> = []
+
     constructor(
-        private readonly classDomain: DomainModel,
-        private readonly componentDomain: ComponentDomainModel
-    ) { }
+        classDomain: DomainModel,
+        componentDomain: ComponentDomainModel
+    ) {
+        this.classDomain = classDomain
+        this.componentDomain = componentDomain
+    }
+
+    // ------------------------------------------------------------------
+    // 変更通知
+    // ------------------------------------------------------------------
+
+    onModelChanged(listener: () => void): void {
+        this.modelChangedListeners.push(listener)
+    }
+
+    offModelChanged(listener: () => void): void {
+        this.modelChangedListeners = this.modelChangedListeners.filter(l => l !== listener)
+    }
+
+    private notifyModelChanged(): void {
+        for (const l of this.modelChangedListeners) {
+            try { l() } catch (e) { console.error('ComponentService modelChanged listener error:', e) }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Query API (読み取り専用)
+    // ------------------------------------------------------------------
+
+    getComponents(): ComponentInfo[] {
+        return this.componentDomain.getComponents()
+    }
+
+    getComponent(id: string): ComponentInfo | undefined {
+        return this.componentDomain.getComponent(id)
+    }
+
+    getRelationships(): ComponentRelationship[] {
+        return this.componentDomain.getRelationships()
+    }
+
+    getPortConnections(): PortConnection[] {
+        return this.componentDomain.getPortConnections()
+    }
+
+    getSnapshot(): ComponentServiceSnapshot {
+        return {
+            components: this.componentDomain.getComponents(),
+            relationships: this.componentDomain.getRelationships(),
+            portConnections: this.componentDomain.getPortConnections(),
+        }
+    }
+
+    getClassDomain(): DomainModel {
+        return this.classDomain
+    }
+
+    getComponentDomain(): ComponentDomainModel {
+        return this.componentDomain
+    }
+
+    getClasses(): ClassInfo[] {
+        return this.classDomain.getClasses()
+    }
+
+    // ------------------------------------------------------------------
+    // Mutation API — コンポーネント操作
+    // ------------------------------------------------------------------
+
+    addComponentMut(kind: ComponentKind): ComponentInfo {
+        this.componentDomain = this.componentDomain.addComponent(kind)
+        const comps = this.componentDomain.getComponents()
+        const added = comps[comps.length - 1]
+        this.notifyModelChanged()
+        return added
+    }
+
+    updateComponentMut(updated: ComponentInfo): void {
+        this.componentDomain = this.componentDomain.updateComponent(updated)
+        this.notifyModelChanged()
+    }
+
+    removeComponentMut(componentId: string): void {
+        const result = this.removeComponent(componentId)
+        this.classDomain = result.classDomain
+        this.componentDomain = result.componentDomain
+        this.notifyModelChanged()
+    }
+
+    moveComponent(id: string, x: number, y: number): void {
+        this.componentDomain = this.componentDomain.updateComponentPosition(id, x, y)
+        this.notifyModelChanged()
+    }
+
+    resizeComponent(id: string, width: number, height: number): void {
+        this.componentDomain = this.componentDomain.updateComponentSize(id, width, height)
+        this.notifyModelChanged()
+    }
+
+    // ------------------------------------------------------------------
+    // Mutation API — 階層管理
+    // ------------------------------------------------------------------
+
+    addChildComponentMut(parentId: string, childId: string): void {
+        this.componentDomain = this.componentDomain.addChildComponent(parentId, childId)
+        this.notifyModelChanged()
+    }
+
+    removeChildComponentMut(parentId: string, childId: string): void {
+        this.componentDomain = this.componentDomain.removeChildComponent(parentId, childId)
+        this.notifyModelChanged()
+    }
+
+    // ------------------------------------------------------------------
+    // Mutation API — ポート管理
+    // ------------------------------------------------------------------
+
+    addPort(componentId: string, direction: 'input' | 'output'): string {
+        const comp = this.componentDomain.getComponent(componentId)
+        if (!comp) throw new DomainError(`Component not found: ${componentId}`)
+
+        const existing = comp.manualPorts || []
+        const prefix = direction === 'input' ? 'in' : 'out'
+        const used = new Set(existing.map(p => p.name))
+        let nextIndex = existing.filter(p => p.direction === direction).length + 1
+        let portName = `${prefix}-${nextIndex}`
+        while (used.has(portName)) {
+            nextIndex += 1
+            portName = `${prefix}-${nextIndex}`
+        }
+        const id = `manual-${Date.now()}`
+        const updated: ComponentInfo = {
+            ...comp,
+            manualPorts: [...existing, { id, name: portName, direction }]
+        }
+        this.componentDomain = this.componentDomain.updateComponent(updated)
+        this.notifyModelChanged()
+        return id
+    }
+
+    deletePort(componentId: string, portId: string): void {
+        const comp = this.componentDomain.getComponent(componentId)
+        if (!comp) throw new DomainError(`Component not found: ${componentId}`)
+
+        const updated: ComponentInfo = {
+            ...comp,
+            manualPorts: (comp.manualPorts || []).filter(p => p.id !== portId)
+        }
+        this.componentDomain = this.componentDomain.updateComponent(updated)
+        this.notifyModelChanged()
+    }
+
+    renamePort(componentId: string, portId: string, nextName: string): void {
+        const comp = this.componentDomain.getComponent(componentId)
+        if (!comp) throw new DomainError(`Component not found: ${componentId}`)
+
+        const updated: ComponentInfo = {
+            ...comp,
+            manualPorts: (comp.manualPorts || []).map(
+                p => p.id === portId ? { ...p, name: nextName } : p
+            ),
+        }
+        this.componentDomain = this.componentDomain.updateComponent(updated)
+        this.notifyModelChanged()
+    }
+
+    // ------------------------------------------------------------------
+    // Mutation API — リレーション管理
+    // ------------------------------------------------------------------
+
+    addManualRelationship(sourceComponentId: string, targetComponentId: string, label?: string): ComponentRelationship | null {
+        if (sourceComponentId === targetComponentId) return null
+
+        const existing = this.componentDomain.getRelationships()
+        const hasSameManual = existing.some(rel =>
+            rel.sourceComponentId === sourceComponentId
+            && rel.targetComponentId === targetComponentId
+            && (rel.label ?? "") === (label ?? "")
+            && rel.basedOnIds.length === 0
+        )
+        if (hasSameManual) return null
+
+        this.componentDomain = this.componentDomain.addRelationship(sourceComponentId, targetComponentId, label)
+        this.notifyModelChanged()
+
+        const rels = this.componentDomain.getRelationships()
+        return rels[rels.length - 1]
+    }
+
+    addPortConnectionMut(
+        sourceComponentId: string, sourcePortId: string,
+        targetComponentId: string, targetPortId: string,
+        label?: string
+    ): void {
+        this.componentDomain = this.componentDomain.addPortConnection(
+            sourceComponentId, sourcePortId,
+            targetComponentId, targetPortId,
+            label
+        )
+        this.notifyModelChanged()
+    }
+
+    removePortConnectionMut(connectionId: string): void {
+        this.componentDomain = this.componentDomain.removePortConnection(connectionId)
+        this.notifyModelChanged()
+    }
+
+    // ------------------------------------------------------------------
+    // Mutation API — クラス紐付け
+    // ------------------------------------------------------------------
+
+    assignClassMut(classId: string, componentId: string): void {
+        const result = this.assignClassToComponent(classId, componentId)
+        this.classDomain = result.classDomain
+        this.componentDomain = result.componentDomain
+        this.notifyModelChanged()
+    }
+
+    unassignClassMut(classId: string, componentId: string): void {
+        const result = this.unassignClassFromComponent(classId, componentId)
+        this.classDomain = result.classDomain
+        this.componentDomain = result.componentDomain
+        this.notifyModelChanged()
+    }
+
+    // ------------------------------------------------------------------
+    // Mutation API — スナップショット復元・置換
+    // ------------------------------------------------------------------
+
+    replaceFromSnapshot(
+        components: ComponentInfo[],
+        relationships: ComponentRelationship[],
+        portConnections: PortConnection[]
+    ): void {
+        this.componentDomain = ComponentDomainModel.from(components, relationships, portConnections)
+        this.notifyModelChanged()
+    }
+
+    setClassDomain(domain: DomainModel): void {
+        this.classDomain = domain
+    }
+
+    setComponentDomain(domain: ComponentDomainModel): void {
+        this.componentDomain = domain
+        this.notifyModelChanged()
+    }
 
     // ------------------------------------------------------------------
     // Folder-based synchronization
@@ -87,11 +342,8 @@ export class ComponentService {
      */
     syncFromDiagramFiles(files: Array<{ path: string; isDirectory: boolean }>): void {
         const newDomain = ComponentService.buildFromDiagramFiles(files);
-        // mutate underlying domain (the rest of codebase currently relies on
-        // imperatively poking componentDomain).  Keeping the same object
-        // reference allows previously held references to continue working.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (this as any).componentDomain = newDomain;
+        this.componentDomain = newDomain;
+        this.notifyModelChanged();
     }
 
     /**
@@ -179,7 +431,7 @@ export class ComponentService {
     }
 
     // ----------------------------------------------------------
-    // クラスとコンポーネントの紐付け
+    // クラスとコンポーネントの紐付け（immutable 戻り値版 — 既存互換）
     // ----------------------------------------------------------
 
     /**
