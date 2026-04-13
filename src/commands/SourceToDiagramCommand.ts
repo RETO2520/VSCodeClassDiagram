@@ -6,6 +6,13 @@ import { Logger } from '../LoggerComponents/Logger';
 import { ClassInfo } from '../services/sourceToDiagram/types';
 
 /**
+ * スコープ選択用のカスタム QuickPickItem
+ */
+interface ScopeQuickPickItem extends vscode.QuickPickItem {
+    id: 'file' | 'workspace';
+}
+
+/**
  * ソースコードからクラス図（diagram.json）を生成するコマンドクラス
  */
 export class SourceToDiagramCommand {
@@ -37,17 +44,34 @@ export class SourceToDiagramCommand {
 
             let classes: ClassInfo[] = [];
 
-            // 2. 解析実行
-            if (scope === 'file') {
-                const activeEditor = vscode.window.activeTextEditor;
-                if (!activeEditor) {
-                    vscode.window.showErrorMessage('No active editor found.');
-                    return;
+            // 2. 解析実行 (進捗状況を通知領域に表示)
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: "Generating Class Diagram",
+                cancellable: false
+            }, async (progress) => {
+                progress.report({ message: "Analyzing source code..." });
+
+                if (scope === 'file') {
+                    const activeEditor = vscode.window.activeTextEditor;
+                    if (!activeEditor) {
+                        throw new Error('No active editor found. Please open a file to analyze.');
+                    }
+                    classes = await this.analyzer.analyzeFile(activeEditor.document.uri);
+                } else {
+                    // ワークスペースフォルダが開かれているか確認
+                    if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+                        throw new Error('No workspace folder found. Please open a folder to analyze the entire workspace.');
+                    }
+
+                    this.logger.info(`Starting workspace analysis for: ${vscode.workspace.workspaceFolders.map(f => f.name).join(', ')}`);
+                    classes = await this.analyzer.analyzeWorkspace();
+                    this.logger.info(`Analysis complete. Found ${classes.length} classes.`);
                 }
-                classes = await this.analyzer.analyzeFile(activeEditor.document.uri);
-            } else {
-                classes = await this.analyzer.analyzeWorkspace();
-            }
+            });
+
+
+            this.logger.info(`Total classes found: ${classes.length}`);
 
             if (classes.length === 0) {
                 vscode.window.showInformationMessage('No class information found in the selected scope.');
@@ -76,23 +100,23 @@ export class SourceToDiagramCommand {
     }
 
     private async selectScope(): Promise<'file' | 'workspace' | undefined> {
-        const items: vscode.QuickPickItem[] = [
+        const items: ScopeQuickPickItem[] = [
             {
                 label: 'Current File',
                 description: 'Analyze only the active source file',
                 id: 'file'
-            } as any,
+            },
             {
                 label: 'Entire Workspace',
                 description: 'Analyze all supported source files in the workspace',
                 id: 'workspace'
-            } as any
+            }
         ];
 
-        const selection = await vscode.window.showQuickPick(items, {
+        const selection = await vscode.window.showQuickPick<ScopeQuickPickItem>(items, {
             placeHolder: 'Select the scope for source code analysis'
         });
 
-        return selection ? (selection as any).id : undefined;
+        return selection ? selection.id : undefined;
     }
 }

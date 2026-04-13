@@ -50,7 +50,16 @@ async function run() {
         {
             src: 'tree-sitter-rust/tree-sitter-rust.wasm',
             dest: 'tree-sitter-rust.wasm'
+        },
+        {
+            src: 'tree-sitter-javascript/tree-sitter-javascript.wasm',
+            dest: 'tree-sitter-javascript.wasm'
+        },
+        {
+            src: 'tree-sitter-typescript/tree-sitter-typescript.wasm',
+            dest: 'tree-sitter-typescript.wasm'
         }
+
     ];
 
     const outDir = path.join(__dirname, '..', 'out');

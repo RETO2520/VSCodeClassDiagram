@@ -16,12 +16,18 @@ import { AstParserFactory as dslAstParserFactory } from './SourceToDSL/ast/AstPa
 export class SourceAnalyzer {
     private lspProvider: ILspProvider;
     private logger: Logger;
+    private initPromise: Promise<void>;
 
     constructor(lspProvider: ILspProvider, logger: Logger, extensionUri: vscode.Uri) {
         this.lspProvider = lspProvider;
         this.logger = logger;
-        AstParserFactory.initialize(logger, extensionUri);
-        dslAstParserFactory.initialize(logger, extensionUri);
+
+        // 初期化（WASMのロード等）をPromiseとして保持し、実行前に待機できるようにする
+        this.initPromise = (async () => {
+            await AstParserFactory.initialize(logger, extensionUri);
+            await dslAstParserFactory.initialize(logger, extensionUri);
+            logger.info("AST Parser factories initialized successfully.");
+        })();
     }
 
     /**
@@ -30,6 +36,9 @@ export class SourceAnalyzer {
      */
     public async analyzeFile(uri: vscode.Uri): Promise<ClassInfo[]> {
         this.logger.info(`Analyzing file: ${uri.fsPath}`);
+
+        // 解析前に必ず初期化の完了を待機する
+        await this.initPromise;
 
         let lspClasses: ClassInfo[] = [];
         const languageId = await this.getLanguageId(uri);
@@ -58,11 +67,19 @@ export class SourceAnalyzer {
         if (astParser) {
             try {
                 const content = await this.readFileContent(uri);
+                this.logger.info(`Executing AST parse for: ${uri.fsPath} (Language: ${languageId}, Size: ${content.length})`);
                 astClasses = await astParser.parse(uri, content);
+                if (astClasses.length === 0 && content.length > 0) {
+                    this.logger.warn(`AST parser returned empty result for non-empty file: ${uri.fsPath}. Check Tree-sitter queries or grammar support.`);
+                }
             } catch (error) {
                 this.logger.error(`AST analysis failed for ${uri.fsPath}: ${error}`);
             }
+        } else {
+            this.logger.warn(`No registered AST parser for languageId: ${languageId} (File: ${uri.fsPath})`);
         }
+
+        this.logger.info(`LSP classes found: ${lspClasses.length}, AST classes found: ${astClasses.length}`);
 
         // 3. 結果を統合
         return this.mergeResults(lspClasses, astClasses);
@@ -72,7 +89,7 @@ export class SourceAnalyzer {
      * ワークスペース全体を解析する
      */
     public async analyzeWorkspace(options?: AnalyzeOptions): Promise<ClassInfo[]> {
-        const includePattern = options?.includePatterns?.[0] || '**/*.{ts,js,cs,java,rs,cpp,hpp}';
+        const includePattern = options?.includePatterns?.[0] || '**/*.{ts,tsx,js,jsx,cs,java,rs,cpp,hpp}';
         const excludePattern = options?.excludePatterns?.[0] || '**/node_modules/**';
 
         const files = await vscode.workspace.findFiles(includePattern, excludePattern, options?.maxFiles);

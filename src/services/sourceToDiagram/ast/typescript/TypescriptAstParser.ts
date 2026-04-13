@@ -1,35 +1,73 @@
 import * as vscode from 'vscode';
+import * as Parser from 'web-tree-sitter';
 import { IAstParser } from '../IAstParser';
 import { ClassInfo, OperationInfo, AttributeInfo, ParameterInfo } from '../../types';
 import { Logger } from '../../../../LoggerComponents/Logger';
 
+type Node = Parser.Node;
+
 /**
  * TypeScriptおよびJavaScript用のASTパーサー
- * @typescript-eslint/parserを使用してASTを構築し、クラス情報を抽出する
+ * web-tree-sitterを使用してASTを構築し、クラス情報を抽出する
  */
 export class TypeScriptAstParser implements IAstParser {
-    private logger: Logger;
+    private readonly logger: Logger;
+    private readonly extensionUri: vscode.Uri;
     private parser: any = null;
+    private tsLanguage: any = null;
+    private jsLanguage: any = null;
+    private isInitialized = false;
 
-    constructor(logger: Logger) {
+    constructor(logger: Logger, extensionUri: vscode.Uri) {
         this.logger = logger;
+        this.extensionUri = extensionUri;
     }
 
     /**
-     * @typescript-eslint/parserを動的にロードする
+     * web-tree-sitterおよび言語モジュールを初期化する
      */
-    private async loadParser(): Promise<boolean> {
-        return false;
-        if (this.parser) return true;
-        // try {
-        //     // タスク8.1: loadParserの不適切な早期リターンを修正（以前の実装では不完全だった可能性がある）
-        //     const parser = await import('@typescript-eslint/parser');
-        //     this.parser = parser;
-        //     return true;
-        // } catch (error) {
-        //     this.logger.warn(`Failed to load @typescript-eslint/parser: ${error}. AST parsing for TS/JS will be disabled.`);
-        //     return false;
-        // }
+    private async initParser(languageId: string): Promise<boolean> {
+        if (this.isInitialized && this.parser) {
+            this.updateLanguage(languageId);
+            return true;
+        }
+
+        try {
+            const ParserClass = (Parser as any).Parser;
+            const LanguageClass = (Parser as any).Language;
+
+            const wasmBaseDir = vscode.Uri.joinPath(this.extensionUri, 'out');
+
+            await ParserClass.init({
+                locateFile: (file: string) => {
+                    if (file === 'web-tree-sitter.wasm') {
+                        return vscode.Uri.joinPath(wasmBaseDir, 'web-tree-sitter.wasm').fsPath;
+                    }
+                    return file;
+                }
+            });
+
+            const tsWasmPath = vscode.Uri.joinPath(wasmBaseDir, 'tree-sitter-typescript.wasm').fsPath;
+            const jsxWasmPath = vscode.Uri.joinPath(wasmBaseDir, 'tree-sitter-javascript.wasm').fsPath;
+
+            this.tsLanguage = await LanguageClass.load(tsWasmPath);
+            this.jsLanguage = await LanguageClass.load(jsxWasmPath);
+
+            this.parser = new ParserClass();
+            this.updateLanguage(languageId);
+
+            this.isInitialized = true;
+            return true;
+        } catch (error) {
+            this.logger.error(`Failed to initialize web-tree-sitter for TypeScript: ${error}`);
+            return false;
+        }
+    }
+
+    private updateLanguage(languageId: string): void {
+        if (!this.parser) return;
+        const isJs = languageId === 'javascript' || languageId === 'javascriptreact';
+        this.parser.setLanguage(isJs ? this.jsLanguage : this.tsLanguage);
     }
 
     public supports(languageId: string): boolean {
@@ -38,74 +76,83 @@ export class TypeScriptAstParser implements IAstParser {
     }
 
     public async parse(uri: vscode.Uri, content: string): Promise<ClassInfo[]> {
-        if (!(await this.loadParser())) return [];
+        const languageId = await this.detectLanguageId(uri);
+        if (!(await this.initParser(languageId)) || !this.parser) return [];
 
         try {
-            const ast = this.parser.parse(content, {
-                range: true,
-                loc: true,
-                tokens: true,
-                comment: true,
-                ecmaFeatures: {
-                    jsx: true
-                }
-            });
+            const tree = this.parser.parse(content);
+            if (!tree) return [];
 
             const classes: ClassInfo[] = [];
-            this.visitNode(ast, uri, classes);
+            this.visitNode(tree.rootNode, uri, classes);
             return classes;
         } catch (error) {
-            this.logger.error(`Error parsing AST for ${uri.fsPath}: ${error}`);
+            this.logger.error(`Error parsing TypeScript AST for ${uri.fsPath}: ${error}`);
             return [];
         }
     }
 
-    private visitNode(node: any, uri: vscode.Uri, classes: ClassInfo[]): void {
-        if (!node) return;
-
-        if (node.type === 'ClassDeclaration' || node.type === 'ClassExpression' || node.type === 'TSEnumDeclaration') {
-            classes.push(this.extractClassInfo(node, uri));
-        } else if (node.type === 'TSInterfaceDeclaration') {
-            classes.push(this.extractInterfaceInfo(node, uri));
-        }
-
-        // 再帰的に子ノードを探索
-        for (const key in node) {
-            const child = node[key];
-            if (Array.isArray(child)) {
-                child.forEach(c => {
-                    if (c && typeof c.type === 'string') this.visitNode(c, uri, classes);
-                });
-            } else if (child && typeof child.type === 'string') {
-                this.visitNode(child, uri, classes);
-            }
+    private async detectLanguageId(uri: vscode.Uri): Promise<string> {
+        try {
+            const doc = await vscode.workspace.openTextDocument(uri);
+            return doc.languageId;
+        } catch {
+            return uri.fsPath.endsWith('tsx') ? 'typescriptreact' : 'typescript';
         }
     }
 
-    private extractClassInfo(node: any, uri: vscode.Uri): ClassInfo {
+    private visitNode(node: Node, uri: vscode.Uri, classes: ClassInfo[]): void {
+        if (!node) return;
+
+        if (node.type === 'class_declaration' || node.type === 'class_expression' || node.type === 'enum_declaration') {
+            classes.push(this.extractClassInfo(node, uri));
+        } else if (node.type === 'interface_declaration') {
+            classes.push(this.extractInterfaceInfo(node, uri));
+        }
+
+        for (let i = 0; i < node.childCount; i++) {
+            const child = node.child(i);
+            if (child) this.visitNode(child, uri, classes);
+        }
+    }
+
+    private extractClassInfo(node: Node, uri: vscode.Uri): ClassInfo {
+        const nameNode = node.childForFieldName('name');
+        const isAbstract = node.children.some(c => c.text === 'abstract');
+
         const classInfo: ClassInfo = {
-            name: node.id ? node.id.name : 'AnonymousClass',
-            kind: node.abstract ? 'abstract' : 'class',
+            name: nameNode ? nameNode.text : 'AnonymousClass',
+            kind: isAbstract ? 'abstract' : 'class',
             interfaces: [],
             location: {
                 uri: uri,
-                range: this.convertRange(node.loc)
+                range: this.convertRange(node)
             },
             attributes: [],
             operations: []
         };
 
-        if (node.superClass) {
-            classInfo.baseClass = this.resolveName(node.superClass);
+        const heritage = node.children.find(c => c.type === 'class_heritage');
+        if (heritage) {
+            const extendsClause = heritage.children.find(c => c.type === 'extends_clause');
+            if (extendsClause) {
+                const baseType = extendsClause.children.find(c => c.type === 'type_identifier' || c.type === 'identifier');
+                if (baseType) classInfo.baseClass = baseType.text;
+            }
+
+            const implementsClause = heritage.children.find(c => c.type === 'implements_clause');
+            if (implementsClause) {
+                classInfo.interfaces = implementsClause.children
+                    .filter(c => c.type === 'type_identifier' || c.type === 'identifier')
+                    .map(c => c.text);
+            }
         }
 
-        if (node.implements) {
-            classInfo.interfaces = node.implements.map((imp: any) => this.resolveName(imp.expression));
-        }
-
-        if (node.body && node.body.body) {
-            for (const member of node.body.body) {
-                if (member.type === 'PropertyDefinition' || member.type === 'MethodDefinition' || member.type === 'TSAbstractMethodDefinition' || member.type === 'TSAbstractPropertyDefinition') {
+        const body = node.childForFieldName('body');
+        if (body) {
+            for (let i = 0; i < body.childCount; i++) {
+                const member = body.child(i);
+                if (member && (member.type === 'method_definition' || member.type === 'public_field_definition')) {
                     this.extractMemberInfo(member, classInfo);
                 }
             }
@@ -114,28 +161,28 @@ export class TypeScriptAstParser implements IAstParser {
         return classInfo;
     }
 
-    private extractInterfaceInfo(node: any, uri: vscode.Uri): ClassInfo {
+    private extractInterfaceInfo(node: Node, uri: vscode.Uri): ClassInfo {
+        const nameNode = node.childForFieldName('name');
         const classInfo: ClassInfo = {
-            name: node.id.name,
+            name: nameNode ? nameNode.text : 'UnknownInterface',
             kind: 'interface',
             interfaces: [],
             location: {
                 uri: uri,
-                range: this.convertRange(node.loc)
+                range: this.convertRange(node)
             },
             attributes: [],
             operations: []
         };
 
-        if (node.extends) {
-            classInfo.interfaces = node.extends.map((ext: any) => this.resolveName(ext.expression));
-        }
-
-        if (node.body && node.body.body) {
-            for (const member of node.body.body) {
-                if (member.type === 'TSPropertySignature') {
+        const body = node.childForFieldName('body');
+        if (body) {
+            for (let i = 0; i < body.childCount; i++) {
+                const member = body.child(i);
+                if (!member) continue;
+                if (member.type === 'property_signature') {
                     classInfo.attributes.push(this.extractAttributeInfo(member));
-                } else if (member.type === 'TSMethodSignature') {
+                } else if (member.type === 'method_signature') {
                     classInfo.operations.push(this.extractOperationInfo(member));
                 }
             }
@@ -144,103 +191,77 @@ export class TypeScriptAstParser implements IAstParser {
         return classInfo;
     }
 
-    private extractMemberInfo(node: any, classInfo: ClassInfo): void {
-        const isMethod = node.type === 'MethodDefinition' || node.type === 'TSAbstractMethodDefinition';
-        const isProperty = node.type === 'PropertyDefinition' || node.type === 'TSAbstractPropertyDefinition';
-
-        if (isMethod) {
+    private extractMemberInfo(node: Node, classInfo: ClassInfo): void {
+        if (node.type === 'method_definition') {
             classInfo.operations.push(this.extractOperationInfo(node));
-        } else if (isProperty) {
+        } else if (node.type === 'public_field_definition') {
             classInfo.attributes.push(this.extractAttributeInfo(node));
         }
     }
 
-    private extractOperationInfo(node: any): OperationInfo {
-        const key = node.key || node;
-        const name = key.name || 'anonymous';
+    private extractOperationInfo(node: Node): OperationInfo {
+        const nameNode = node.childForFieldName('name');
+        const accessibility = node.children.find(c => c.type === 'accessibility_modifier');
 
         return {
-            name: name,
-            returnType: this.extractTypeName(node.value?.returnType || node.returnType),
-            parameters: this.extractParameters(node.value || node),
-            visibility: node.accessibility || 'public',
+            name: nameNode ? nameNode.text : 'anonymous',
+            returnType: this.extractTypeName(node.childForFieldName('return_type')),
+            parameters: this.extractParameters(node.childForFieldName('parameters')),
+            visibility: (accessibility ? accessibility.text : 'public') as any,
             modifiers: this.extractModifiers(node),
-            location: this.convertRange(node.loc)
+            location: this.convertRange(node)
         };
     }
 
-    private extractAttributeInfo(node: any): AttributeInfo {
-        const key = node.key || node;
-        const name = key.name || 'anonymous';
+    private extractAttributeInfo(node: Node): AttributeInfo {
+        const nameNode = node.childForFieldName('name');
+        const accessibility = node.children.find(c => c.type === 'accessibility_modifier');
 
         return {
-            name: name,
-            type: this.extractTypeName(node.typeAnnotation),
-            visibility: node.accessibility || 'public',
+            name: nameNode ? nameNode.text : 'anonymous',
+            type: this.extractTypeName(node.childForFieldName('type')),
+            visibility: (accessibility ? accessibility.text : 'public') as any,
             modifiers: this.extractModifiers(node),
-            location: this.convertRange(node.loc)
+            location: this.convertRange(node)
         };
     }
 
-    private extractParameters(node: any): ParameterInfo[] {
-        if (!node.params) return [];
-        return node.params.map((p: any) => ({
-            name: p.name || (p.left ? p.left.name : 'param'),
-            type: this.extractTypeName(p.typeAnnotation),
-            isOptional: p.optional || false
-        }));
-    }
-
-    private extractTypeName(typeAnnot: any): string {
-        if (!typeAnnot || !typeAnnot.typeAnnotation) return 'any';
-        const type = typeAnnot.typeAnnotation;
-        if (type.type === 'TSTypeReference' && type.typeName) {
-            return type.typeName.name;
+    private extractParameters(node: Node | null): ParameterInfo[] {
+        if (!node) return [];
+        const params: ParameterInfo[] = [];
+        for (let i = 0; i < node.childCount; i++) {
+            const p = node.child(i);
+            if (p && (p.type === 'required_parameter' || p.type === 'optional_parameter')) {
+                const nameNode = p.childForFieldName('pattern');
+                params.push({
+                    name: nameNode ? nameNode.text : 'param',
+                    type: this.extractTypeName(p.childForFieldName('type')),
+                    isOptional: p.type === 'optional_parameter'
+                });
+            }
         }
-        if (type.type === 'TSNumberKeyword') return 'number';
-        if (type.type === 'TSStringKeyword') return 'string';
-        if (type.type === 'TSBooleanKeyword') return 'boolean';
-        if (type.type === 'TSVoidKeyword') return 'void';
-        return 'any';
+        return params;
     }
 
-    private extractModifiers(node: any): string[] {
+    private extractTypeName(node: Node | null): string {
+        if (!node) return 'any';
+        return node.text.replace(/^:/, '').trim();
+    }
+
+    private extractModifiers(node: Node): string[] {
         const mods: string[] = [];
-        if (node.static) mods.push('static');
-        if (node.readonly) mods.push('readonly');
-        if (node.type === 'TSAbstractMethodDefinition' || node.type === 'TSAbstractPropertyDefinition' || node.abstract) {
-            mods.push('abstract');
-        }
+        if (node.children.some(c => c.text === 'static')) mods.push('static');
+        if (node.children.some(c => c.text === 'readonly')) mods.push('readonly');
+        if (node.children.some(c => c.text === 'abstract')) mods.push('abstract');
         return mods;
     }
 
-    /**
-     * 名前を解決する（MemberExpressionなどの複雑な名前に対応）
-     * タスク8.2: メンバアクセス式などの複雑な名前にも対応
-     */
-    private resolveName(node: any): string {
-        if (!node) return 'Unknown';
-        if (node.type === 'Identifier') {
-            return node.name;
-        } else if (node.type === 'MemberExpression') {
-            const object = this.resolveName(node.object);
-            const property = this.resolveName(node.property);
-            return `${object}.${property}`;
-        } else if (node.type === 'TSQualifiedName') {
-            const left = this.resolveName(node.left);
-            const right = this.resolveName(node.right);
-            return `${left}.${right}`;
-        }
-        return 'Unknown';
-    }
-
-    private convertRange(loc: any): vscode.Range {
-        if (!loc) return new vscode.Range(0, 0, 0, 0);
+    private convertRange(node: Node): vscode.Range {
         return new vscode.Range(
-            loc.start.line - 1,
-            loc.start.column,
-            loc.end.line - 1,
-            loc.end.column
+            node.startPosition.row,
+            node.startPosition.column,
+            node.endPosition.row,
+            node.endPosition.column
         );
     }
 }

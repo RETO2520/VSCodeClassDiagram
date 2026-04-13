@@ -20,7 +20,7 @@ export class AstParserFactory {
      */
     public static initialize(logger: Logger, extensionUri: vscode.Uri): void {
         if (this.parsers.length === 0) {
-            this.parsers.push(new TypeScriptAstParser(logger));
+            this.parsers.push(new TypeScriptAstParser(logger, extensionUri));
             this.parsers.push(new CsharpAstParser(logger, extensionUri));
             this.parsers.push(new JavaAstParser(logger, extensionUri));
             this.parsers.push(new RustAstParser(logger, extensionUri));
