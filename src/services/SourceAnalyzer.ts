@@ -89,8 +89,15 @@ export class SourceAnalyzer {
      * ワークスペース全体を解析する
      */
     public async analyzeWorkspace(options?: AnalyzeOptions): Promise<ClassInfo[]> {
-        const includePattern = options?.includePatterns?.[0] || '**/*.{ts,tsx,js,jsx,cs,java,rs,cpp,hpp}';
-        const excludePattern = options?.excludePatterns?.[0] || '**/node_modules/**';
+        const includes = options?.includePatterns?.filter(p => !!p) || [];
+        const includePattern = includes.length > 0
+            ? (includes.length > 1 ? `{${includes.join(',')}}` : includes[0])
+            : '**/*.{ts,tsx,js,jsx,cs,java,rs,cpp,hpp}';
+
+        const excludes = options?.excludePatterns?.filter(p => !!p) || [];
+        const excludePattern = excludes.length > 0
+            ? (excludes.length > 1 ? `{${excludes.join(',')}}` : excludes[0])
+            : '**/node_modules/**';
 
         const files = await vscode.workspace.findFiles(includePattern, excludePattern, options?.maxFiles);
         this.logger.info(`Found ${files.length} files to analyze.`);

@@ -1,0 +1,15 @@
+{
+  "classDiagram.excludePatterns": [
+    "**/.cursor/**",
+    "**/scripts/**",
+    "**/out/**",
+    "**/.vscode/**",
+    "**/.vscode-test/**",
+    "**/.spec-workflow/**",
+    "**/.diagram/**",
+    "**/node_modules/**",
+    "**/frontend/dist/**",
+    "**/frontend/node_modules/**",
+    "**/view/node_modules/**",
+  ]
+}

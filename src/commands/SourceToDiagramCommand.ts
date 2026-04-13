@@ -65,7 +65,14 @@ export class SourceToDiagramCommand {
                     }
 
                     this.logger.info(`Starting workspace analysis for: ${vscode.workspace.workspaceFolders.map(f => f.name).join(', ')}`);
-                    classes = await this.analyzer.analyzeWorkspace();
+
+                    // VS Codeの設定から除外パターンを取得
+                    const config = vscode.workspace.getConfiguration('classDiagram');
+                    const excludePatterns = config.get<string[]>('excludePatterns') || [];
+
+                    classes = await this.analyzer.analyzeWorkspace({
+                        excludePatterns: excludePatterns
+                    });
                     this.logger.info(`Analysis complete. Found ${classes.length} classes.`);
                 }
             });
