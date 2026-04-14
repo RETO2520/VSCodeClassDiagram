@@ -65,6 +65,12 @@
 | L-12 | ComponentService の位置・サイズ操作 API | 未実装 | `updateComponentPosition()`, `updateComponentSize()` が ComponentService に未定義。App.tsx が `(componentService as any).componentDomain` を直接操作している |
 | L-13 | ComponentService のポート管理 API | 未実装 | ポートの追加・削除・リネームが App.tsx 内で `componentNodes` state を直接書き換えており、ComponentService / ComponentDomainModel を経由していない |
 
+### 2e. クラス図/ワークフロー図/コンポーネント図の描画部分の最適化
+
+| ID | 機能名 | 状態 | 内容 |
+| :--- | :--- | :--- | :--- |
+| L-14 | 描画最適化 | 未対応 | 大量のノード、エッジを描画時、性能が実用に耐えないレベルで遥かに悪くなっている。これを改善する |
+
 ## 3. 将来的に対応する機能 (Milestones/Future)
 
 | ID | 機能名 | 内容 |

@@ -6,14 +6,14 @@ import { Logger } from '../LoggerComponents/Logger';
 import { ClassInfo } from '../services/sourceToDiagram/types';
 
 /**
- * スコープ選択用のカスタム QuickPickItem
+ * Scope selection item for source analysis
  */
 interface ScopeQuickPickItem extends vscode.QuickPickItem {
     id: 'file' | 'workspace';
 }
 
 /**
- * ソースコードからクラス図（diagram.json）を生成するコマンドクラス
+ * Command to analyze source code and generate diagram DSL
  */
 export class SourceToDiagramCommand {
     private analyzer: SourceAnalyzer;
@@ -34,23 +34,23 @@ export class SourceToDiagramCommand {
     }
 
     /**
-     * コマンドを実行する
+     * Execute command
      */
     public async execute(): Promise<void> {
         try {
-            // 1. 解析対象を選択
+            // 1. Select analysis scope
             const scope = await this.selectScope();
             if (!scope) return;
 
             let classes: ClassInfo[] = [];
 
-            // 2. 解析実行 (進捗状況を通知領域に表示)
+            // 2. Analyze source
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: "Generating Class Diagram",
+                title: 'Generating Class Diagram DSL',
                 cancellable: false
             }, async (progress) => {
-                progress.report({ message: "Analyzing source code..." });
+                progress.report({ message: 'Analyzing source code...' });
 
                 if (scope === 'file') {
                     const activeEditor = vscode.window.activeTextEditor;
@@ -59,24 +59,21 @@ export class SourceToDiagramCommand {
                     }
                     classes = await this.analyzer.analyzeFile(activeEditor.document.uri);
                 } else {
-                    // ワークスペースフォルダが開かれているか確認
                     if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
                         throw new Error('No workspace folder found. Please open a folder to analyze the entire workspace.');
                     }
 
                     this.logger.info(`Starting workspace analysis for: ${vscode.workspace.workspaceFolders.map(f => f.name).join(', ')}`);
 
-                    // VS Codeの設定から除外パターンを取得
                     const config = vscode.workspace.getConfiguration('classDiagram');
                     const excludePatterns = config.get<string[]>('excludePatterns') || [];
 
                     classes = await this.analyzer.analyzeWorkspace({
-                        excludePatterns: excludePatterns
+                        excludePatterns
                     });
                     this.logger.info(`Analysis complete. Found ${classes.length} classes.`);
                 }
             });
-
 
             this.logger.info(`Total classes found: ${classes.length}`);
 
@@ -85,24 +82,28 @@ export class SourceToDiagramCommand {
                 return;
             }
 
-            // 3. 変換と保存
-            const model = this.converter.convert(classes);
-            const saveResult = await this.fileService.saveJson(model, {
-                saveLabel: 'Generate Diagram'
+            // 3. Source class info -> DomainModel -> DSL
+            const domainModel = this.analyzer.toDomainModel(classes);
+            const dsl = domainModel.toDSL();
+            const saveResult = await this.fileService.saveDsl({
+                dsl,
+                fileName: 'diagram.dsl'
+            }, {
+                saveLabel: 'Generate DSL'
             });
 
             if (saveResult) {
                 const action = await vscode.window.showInformationMessage(
-                    `Successfully generated diagram: ${saveResult.filePath}`,
-                    'Open Diagram'
+                    `Successfully generated DSL: ${saveResult.filePath}`,
+                    'Open DSL'
                 );
-                if (action === 'Open Diagram') {
-                    await vscode.commands.executeCommand('classDiagram.open', saveResult.uri);
+                if (action === 'Open DSL') {
+                    await vscode.window.showTextDocument(saveResult.uri);
                 }
             }
         } catch (error) {
             this.logger.error(`Command execution failed: ${error}`);
-            vscode.window.showErrorMessage(`Failed to generate diagram: ${error}`);
+            vscode.window.showErrorMessage(`Failed to generate DSL: ${error}`);
         }
     }
 
