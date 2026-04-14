@@ -33,6 +33,7 @@ export class SourceAnalyzer {
     /**
      * 単一ファイルを解析する
      * LSPを優先し、利用できない場合や不十分な場合はAST解析で補完する
+     * 現時点では、LSPは利用していない
      */
     public async analyzeFile(uri: vscode.Uri): Promise<ClassInfo[]> {
         this.logger.info(`Analyzing file: ${uri.fsPath}`);
