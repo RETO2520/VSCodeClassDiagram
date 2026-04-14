@@ -18,7 +18,13 @@ import React, {
     useCallback,
     useEffect,
     useState,
+    useMemo,
 } from 'react'
+import {
+    createWorldViewport,
+    polylineIntersectsViewport,
+    rectIntersectsViewport,
+} from '@/lib/viewport-culling'
 
 // ============================================================
 // Types
@@ -312,6 +318,7 @@ const STYLE: Record<NodeType, { fill: string; stroke: string; text: string }> = 
     how: { fill: '#0f172a', stroke: '#1d4ed8', text: '#93c5fd' },
 }
 const ACCENT = '#3b82f6'
+const VIEWPORT_CULL_PADDING = 140
 
 // ============================================================
 // Gherkin系ノード用ヘルパー
@@ -755,12 +762,27 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
         return () => service.offModelChanged(loadFromService)
     }, [service, loadFromService])
 
-    const nodeMap = new Map(wf.nodes.map(n => [n.id, n]))
+    const nodeMap = useMemo(() => new Map(wf.nodes.map(n => [n.id, n])), [wf.nodes])
 
     // ── pan / zoom state ──
     const [zoom, setZoom] = useState(1)
     const [pan, setPan] = useState({ x: 0, y: 0 })
+    const [viewSize, setViewSize] = useState({ width: 0, height: 0 })
     const canvasDrag = useRef<{ ptId: number; sx: number; sy: number; px: number; py: number } | null>(null)
+
+    useEffect(() => {
+        const svg = svgRef.current
+        if (!svg) return
+        const syncSize = () => {
+            const rect = svg.getBoundingClientRect()
+            setViewSize({ width: rect.width, height: rect.height })
+        }
+        syncSize()
+
+        const observer = new ResizeObserver(() => syncSize())
+        observer.observe(svg)
+        return () => observer.disconnect()
+    }, [])
 
     const clampZoom = (z: number) => Math.min(3, Math.max(0.2, z))
 
@@ -1065,6 +1087,38 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
         })
     }, [])
 
+    const worldViewport = useMemo(
+        () => createWorldViewport(viewSize.width, viewSize.height, zoom, pan, VIEWPORT_CULL_PADDING),
+        [viewSize.width, viewSize.height, zoom, pan],
+    )
+
+    const visibleNodeIds = useMemo(() => {
+        const ids = new Set<string>()
+        for (const node of wf.nodes) {
+            const { w, h } = nodeSizeWithMeta(node)
+            if (rectIntersectsViewport(node.x - w / 2, node.y - h / 2, w, h, worldViewport)) {
+                ids.add(node.id)
+            }
+        }
+        return ids
+    }, [wf.nodes, worldViewport])
+
+    const visibleNodes = useMemo(
+        () => wf.nodes.filter((node) => visibleNodeIds.has(node.id)),
+        [wf.nodes, visibleNodeIds],
+    )
+
+    const visibleEdges = useMemo(
+        () =>
+            wf.edges.filter((edge) => {
+                const points = getEdgePoints(edge, nodeMap)
+                if (!points) return false
+                if (visibleNodeIds.has(edge.from) || visibleNodeIds.has(edge.to)) return true
+                return polylineIntersectsViewport(points, worldViewport)
+            }),
+        [wf.edges, nodeMap, visibleNodeIds, worldViewport],
+    )
+
     // ============================================================
     // Render
     // ============================================================
@@ -1177,7 +1231,7 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                     {/* pan/zoom transform をノード・エッジ全体にかける */}
                     <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
                         {/* Edges */}
-                        {wf.edges.map((edge, i) => (
+                        {visibleEdges.map((edge, i) => (
                             <EdgeShape key={`${edgeKey(edge)}-${i}`}
                                 edge={edge} nodeMap={nodeMap}
                                 isSelected={selEdge === edgeKey(edge)}
@@ -1187,7 +1241,7 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                         ))}
 
                         {/* Nodes */}
-                        {wf.nodes.map(node => (
+                        {visibleNodes.map(node => (
                             <NodeShape key={node.id} node={node} isSelected={false}
                                 onPointerDown={onNodePD}
                                 onHandlePointerDown={onHandlePD}

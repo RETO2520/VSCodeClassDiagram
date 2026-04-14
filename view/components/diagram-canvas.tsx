@@ -14,6 +14,11 @@ import {
   visibilitySymbol,
   classKindStereotype,
 } from "@/lib/class-diagram-types"
+import {
+  createWorldViewport,
+  lineIntersectsViewport,
+  rectIntersectsViewport,
+} from "@/lib/viewport-culling"
 
 // ==============================
 // Constants
@@ -31,6 +36,7 @@ const MONO_FONT = '"SF Mono", "Cascadia Code", "Fira Code", monospace'
 const MIN_ZOOM = 0.2
 const MAX_ZOOM = 3
 const ZOOM_STEP = 0.15
+const VIEWPORT_CULL_PADDING = 140
 
 // ==============================
 // Colors
@@ -310,14 +316,16 @@ function drawClassBox(
 function drawRelationship(
   ctx: CanvasRenderingContext2D,
   rel: Relationship,
-  classes: ClassInfo[],
+  classById: Map<string, ClassInfo>,
+  dimsByClassId: Map<string, ReturnType<typeof calculateClassDimensions>>,
 ) {
-  const source = classes.find((c) => c.id === rel.sourceId)
-  const target = classes.find((c) => c.id === rel.targetId)
+  const source = classById.get(rel.sourceId)
+  const target = classById.get(rel.targetId)
   if (!source || !target) return
 
-  const sDims = calculateClassDimensions(ctx, source)
-  const tDims = calculateClassDimensions(ctx, target)
+  const sDims = dimsByClassId.get(source.id)
+  const tDims = dimsByClassId.get(target.id)
+  if (!sDims || !tDims) return
 
   const sCx = source.x + sDims.width / 2
   const sCy = source.y + sDims.height / 2
@@ -727,11 +735,51 @@ export function DiagramCanvas({
     ctx.translate(panOffset.x, panOffset.y)
     ctx.scale(zoom, zoom)
 
+    const worldViewport = createWorldViewport(
+      rect.width,
+      rect.height,
+      zoom,
+      panOffset,
+      VIEWPORT_CULL_PADDING,
+    )
+    const classById = new Map(classes.map((c) => [c.id, c]))
+    const dimsByClassId = new Map(
+      classes.map((cls) => [cls.id, calculateClassDimensions(ctx, cls)]),
+    )
+    const visibleClassIds = new Set(
+      classes
+        .filter((cls) => {
+          const dims = dimsByClassId.get(cls.id)
+          return dims
+            ? rectIntersectsViewport(cls.x, cls.y, dims.width, dims.height, worldViewport)
+            : false
+        })
+        .map((cls) => cls.id),
+    )
+
     for (const rel of relationships) {
-      drawRelationship(ctx, rel, classes)
+      const source = classById.get(rel.sourceId)
+      const target = classById.get(rel.targetId)
+      if (!source || !target) continue
+
+      const sourceVisible = visibleClassIds.has(source.id)
+      const targetVisible = visibleClassIds.has(target.id)
+      if (!sourceVisible && !targetVisible) {
+        const sDims = dimsByClassId.get(source.id)
+        const tDims = dimsByClassId.get(target.id)
+        if (!sDims || !tDims) continue
+        const sCx = source.x + sDims.width / 2
+        const sCy = source.y + sDims.height / 2
+        const tCx = target.x + tDims.width / 2
+        const tCy = target.y + tDims.height / 2
+        if (!lineIntersectsViewport(sCx, sCy, tCx, tCy, worldViewport)) continue
+      }
+
+      drawRelationship(ctx, rel, classById, dimsByClassId)
     }
 
     for (const cls of classes) {
+      if (!visibleClassIds.has(cls.id)) continue
       drawClassBox(ctx, cls, cls.id === selectedId)
     }
 

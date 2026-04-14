@@ -8,6 +8,12 @@ import { ZoomIn, ZoomOut, Maximize2, Maximize } from "lucide-react"
 import type { ComponentInfo, ComponentKind, ComponentRelationship, PortConnection } from "@/lib/component-diagram-types"
 import type { ClassInfo, Relationship as ClassRelationship } from "@/lib/class-diagram-types"
 import { postMessage } from "../../frontend/src/bridge/vscode-bridge"
+import {
+  createWorldViewport,
+  lineIntersectsViewport,
+  polylineIntersectsViewport,
+  rectIntersectsViewport,
+} from "@/lib/viewport-culling"
 
 // ==============================
 // Types
@@ -77,6 +83,7 @@ const SOCKET_HIT_RADIUS = 10
 const MIN_ZOOM = 0.2
 const MAX_ZOOM = 3
 const ZOOM_STEP = 0.15
+const VIEWPORT_CULL_PADDING = 180
 
 const MONO_FONT = '"SF Mono", "Cascadia Code", "Fira Code", monospace'
 
@@ -1186,6 +1193,7 @@ export function ComponentDiagramCanvas({
 
   const [zoom, setZoom] = useState(1)
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
+  const [viewSize, setViewSize] = useState({ width: 0, height: 0 })
   const [showComponentHeatmap, setShowComponentHeatmap] = useState(true)
   const [showClassHeatmap, setShowClassHeatmap] = useState(true)
   const [heatTooltip, setHeatTooltip] = useState<HeatTooltipState | null>(null)
@@ -1242,11 +1250,42 @@ export function ComponentDiagramCanvas({
     return result
   }, [dslContentByPath])
 
+  const componentById = useMemo(() => {
+    const result = new Map<string, ComponentInfo>()
+    for (const comp of components) result.set(comp.id, comp)
+    return result
+  }, [components])
+
   const componentNameById = useMemo(() => {
     const result = new Map<string, string>()
     for (const comp of components) result.set(comp.id, comp.name)
     return result
   }, [components])
+
+  const worldViewport = useMemo(
+    () =>
+      createWorldViewport(
+        viewSize.width,
+        viewSize.height,
+        zoom,
+        panOffset,
+        VIEWPORT_CULL_PADDING,
+      ),
+    [viewSize.width, viewSize.height, zoom, panOffset],
+  )
+
+  const visibleComponents = useMemo(
+    () =>
+      components.filter((comp) =>
+        rectIntersectsViewport(comp.x, comp.y, comp.width, comp.height, worldViewport),
+      ),
+    [components, worldViewport],
+  )
+
+  const visibleComponentIds = useMemo(
+    () => new Set(visibleComponents.map((comp) => comp.id)),
+    [visibleComponents],
+  )
 
   const relationshipById = useMemo(() => {
     const result = new Map<string, ComponentRelationship>()
@@ -1463,18 +1502,47 @@ export function ComponentDiagramCanvas({
     ctx.scale(zoom, zoom)
 
     for (const comp of components) {
+      const parentVisible = visibleComponentIds.has(comp.id)
       for (const childId of comp.childComponentIds) {
-        const child = components.find((c) => c.id === childId)
+        const child = componentById.get(childId)
         if (child) {
+          const childVisible = visibleComponentIds.has(child.id)
+          if (!parentVisible && !childVisible) {
+            const parentCx = comp.x + comp.width / 2
+            const parentCy = comp.y + comp.height / 2
+            const childCx = child.x + child.width / 2
+            const childCy = child.y + child.height / 2
+            if (!lineIntersectsViewport(parentCx, parentCy, childCx, childCy, worldViewport)) {
+              continue
+            }
+          }
           drawParentRelationship(ctx, comp, child)
         }
       }
     }
 
     for (const rel of relationships) {
+      const source = componentById.get(rel.sourceComponentId)
+      const target = componentById.get(rel.targetComponentId)
+      if (!source || !target) continue
+
+      const sourceVisible = visibleComponentIds.has(source.id)
+      const targetVisible = visibleComponentIds.has(target.id)
+      if (!sourceVisible && !targetVisible) {
+        const route = getRelationshipRoute(rel, components)
+        if (!route || !polylineIntersectsViewport(route.points, worldViewport)) continue
+      }
       drawComponentRelationship(ctx, rel, components)
     }
     for (const pc of portConnections) {
+      const srcPorts = componentPorts.get(pc.sourceComponentId)
+      const tgtPorts = componentPorts.get(pc.targetComponentId)
+      const srcPort = srcPorts?.outputs.find((p) => p.id === pc.sourcePortId)
+      const tgtPort = tgtPorts?.inputs.find((p) => p.id === pc.targetPortId)
+      if (!srcPort || !tgtPort) continue
+      if (!lineIntersectsViewport(srcPort.worldX, srcPort.worldY, tgtPort.worldX, tgtPort.worldY, worldViewport)) {
+        continue
+      }
       drawPortConnection(ctx, pc, componentPorts)
     }
     // Component boxes are rendered as React nodes overlaying the canvas.
@@ -1519,12 +1587,28 @@ export function ComponentDiagramCanvas({
     showClassHeatmap,
     componentPorts,
     connecting,
+    componentById,
+    visibleComponentIds,
+    worldViewport,
   ])
 
   useEffect(() => {
     draw()
-    const resizeObserver = new ResizeObserver(() => draw())
-    if (containerRef.current) resizeObserver.observe(containerRef.current)
+    const resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (entry) {
+        setViewSize({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height,
+        })
+      }
+      draw()
+    })
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect()
+      setViewSize({ width: rect.width, height: rect.height })
+      resizeObserver.observe(containerRef.current)
+    }
     return () => resizeObserver.disconnect()
   }, [draw])
 
@@ -2299,7 +2383,7 @@ export function ComponentDiagramCanvas({
           transformOrigin: "top left",
         }}
       >
-        {components.map((comp) => {
+        {visibleComponents.map((comp) => {
           const ports = componentPorts.get(comp.id) || { inputs: [], outputs: [] }
           const heat = heatMetricsByComponentId[comp.id]
           const validPortNames = validPortNamesByComponentId.get(comp.id)

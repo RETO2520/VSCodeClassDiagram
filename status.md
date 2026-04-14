@@ -69,7 +69,11 @@
 
 | ID | 機能名 | 状態 | 内容 |
 | :--- | :--- | :--- | :--- |
-| L-14 | 描画最適化 | 未対応 | 大量のノード、エッジを描画時、性能が実用に耐えないレベルで遥かに悪くなっている。これを改善する |
+| L-14 | 描画最適化（全体方針） | 進行中 | 大量ノード/エッジ時の描画負荷を段階的に削減する。優先順位は `Viewport Culling` → `描画基盤のreact-konva化` → `イベント処理最適化` |
+| L-15 | Viewport Culling 共通基盤 | 完了 | `view/lib/viewport-culling.ts` を追加。画面座標⇔ワールド座標変換、矩形/線分/ポリラインの可視判定を共通化 |
+| L-16 | クラス図 Canvas の Culling + Konva対応 | 部分的 | `diagram-canvas.tsx` のクラス/リレーション描画に可視範囲判定を実装済み（表示外をスキップ）。Konva本体への描画移行は未着手 |
+| L-17 | ワークフロー図 SVG の Culling + Konva対応 | 部分的 | `WorkflowEditorPanel.tsx` のノード/エッジ描画を可視範囲判定で間引き済み。Konva本体への描画移行は未着手 |
+| L-18 | コンポーネント図 Canvas の Culling + Konva対応 | 部分的 | `component-diagram-canvas.tsx` のコンポーネント/依存線/ポート接続/DOMオーバーレイに可視範囲判定を実装済み。Konva本体への描画移行は未着手 |
 
 ## 3. 将来的に対応する機能 (Milestones/Future)
 
