@@ -234,6 +234,7 @@ export class DomainModel {
 
         // ---- alias 宣言 ----
         if (aliasMap && aliasMap.size > 0) {
+            lines.push("// エイリアス宣言");
             for (const [alias, realName] of aliasMap.entries()) {
                 lines.push(`alias "${alias}" as "${realName}"`);
             }
@@ -241,8 +242,40 @@ export class DomainModel {
         }
 
         // ---- クラスブロック ----
-        for (const cls of classes) {
-            lines.push(...this.renderClassDsl(cls, this));
+        // 抽象クラス
+        const abstractClasses = classes.filter(c => c.isAbstract);
+        if (abstractClasses.length > 0) {
+            lines.push("// 抽象クラス");
+            for (const cls of abstractClasses) {
+                lines.push(...this.renderClassDsl(cls, this));
+            }
+        }
+
+        // ドメインクラス
+        const domainClasses = classes.filter(c => c.kind === 'class' && !c.isAbstract);
+        if (domainClasses.length > 0) {
+            lines.push("// ドメインクラス");
+            for (const cls of domainClasses) {
+                lines.push(...this.renderClassDsl(cls, this));
+            }
+        }
+
+        // インターフェース
+        const interfaces = classes.filter(c => c.kind === 'interface');
+        if (interfaces.length > 0) {
+            lines.push("// インターフェース");
+            for (const cls of interfaces) {
+                lines.push(...this.renderClassDsl(cls, this));
+            }
+        }
+
+        // その他の構造
+        const others = classes.filter(c => c.kind !== 'class' && c.kind !== 'interface');
+        if (others.length > 0) {
+            lines.push("// その他の構造");
+            for (const cls of others) {
+                lines.push(...this.renderClassDsl(cls, this));
+            }
         }
 
         // ---- エンドポイントブロック ----
@@ -256,8 +289,7 @@ export class DomainModel {
 
         // ---- 明示リレーション ----
         if (relationships.length > 0) {
-            lines.push("# Relations");
-            lines.push("");
+            lines.push("// リレーション（needsに統一）");
             for (const rel of relationships) {
                 lines.push(this.renderRelationDsl(rel, this));
             }
@@ -373,8 +405,8 @@ export class DomainModel {
 
                 // node.typeからキーワードを復元、fallbackとしてlabelから分離
                 const TYPE_TO_KEYWORD: Record<string, string> = {
-                    given: '前提', when: 'もし', then: 'ならば', how: 'How',
-                    process: 'かつ', decision: 'かつ', loop: 'かつ', call: 'かつ',
+                    given: 'Given', when: 'When', then: 'Then', how: 'How',
+                    process: 'And', decision: 'And', loop: 'And', call: 'And',
                 };
                 const keywordFromType = TYPE_TO_KEYWORD[node.type];
                 let keyword: string;

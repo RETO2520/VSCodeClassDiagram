@@ -220,7 +220,8 @@ export class SourceAnalyzer {
                     isAbstract: !!a.isAbstract || (a.modifiers ?? []).includes('abstract'),
                     relationship: 'auto',
                     sourceMultiplicity: '1',
-                    targetMultiplicity: '1'
+                    targetMultiplicity: '1',
+                    needs: (a as any).needs
                 })),
                 operations: (sc.operations ?? []).map(o => ({
                     id: cdt.createId(),

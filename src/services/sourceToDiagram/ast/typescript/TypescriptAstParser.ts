@@ -4,6 +4,7 @@ import { IAstParser } from '../IAstParser';
 import { ClassInfo, OperationInfo, AttributeInfo, ParameterInfo } from '../../types';
 import { Logger } from '../../../../LoggerComponents/Logger';
 import * as cdt from '../../../../../view/lib/class-diagram-types';
+import { CommentParser } from '../CommentParser';
 
 type Node = Parser.Node;
 
@@ -12,6 +13,7 @@ type Node = Parser.Node;
  * web-tree-sitterを使用してASTを構築し、クラス情報を抽出する
  */
 export class TypeScriptAstParser implements IAstParser {
+    /** @needs "ASTを構築し、クラス情報を抽出する" */
     private readonly logger: Logger;
     private readonly extensionUri: vscode.Uri;
     private parser: any = null;
@@ -27,6 +29,14 @@ export class TypeScriptAstParser implements IAstParser {
     /**
      * web-tree-sitterおよび言語モジュールを初期化する
      */
+    /**
+     * @scenario web-tree-sitterおよび言語モジュールを初期化する
+     * @given web-tree-sitterおよび言語モジュールが初期化されていないこと
+     * @when initParser()を呼び出す
+     * @how web-tree-sitterおよび言語モジュールを初期化すること
+     * @then web-tree-sitterおよび言語モジュールが初期化されること
+     * @why web-tree-sitterおよび言語モジュールが初期化されていないとASTを構築できないため
+    */
     private async initParser(languageId: string): Promise<boolean> {
         if (this.isInitialized && this.parser) {
             this.updateLanguage(languageId);
@@ -159,7 +169,25 @@ export class TypeScriptAstParser implements IAstParser {
             }
         }
 
+        const classComment = this.extractPrecedingComments(node);
+        if (classComment) {
+            const parsedComment = CommentParser.parseClassComments(classComment);
+            // 現在の仕様ではClassInfoの段階でaliasを持たせる場所がないため、
+            // DSL生成側(DomainModel.toDSL等)が参照できるようにメタデータ等に含めるなどが必要ですが、
+            // 取り急ぎ抽出のみ行います。 (alias適用は後続タスクで対応可能)
+        }
+
         return classInfo;
+    }
+
+    private extractPrecedingComments(node: Node): string {
+        let text = '';
+        let prev = node.previousSibling;
+        while (prev && prev.type === 'comment') {
+            text = prev.text + '\n' + text;
+            prev = prev.previousSibling;
+        }
+        return text;
     }
 
     private extractInterfaceInfo(node: Node, uri: vscode.Uri): ClassInfo {
@@ -206,6 +234,11 @@ export class TypeScriptAstParser implements IAstParser {
         const bodyNode = node.childForFieldName('body');
         this.logger.debug(`Extracting operation: ${nameNode ? nameNode.text : 'anonymous'} with accessibility: ${accessibility ? accessibility.text : 'public'}`);
         this.logger.debug(`Operation body: ${bodyNode ? bodyNode.text : 'No body'}`);
+
+        let workflowAst = bodyNode ? this.extractWorkflow(bodyNode) : undefined;
+        const commentText = this.extractPrecedingComments(node);
+        const commentWorkflow = CommentParser.parseOperationComments(commentText);
+
         return {
             name: nameNode ? nameNode.text : 'anonymous',
             returnType: this.extractTypeName(node.childForFieldName('return_type')),
@@ -213,8 +246,8 @@ export class TypeScriptAstParser implements IAstParser {
             visibility: (accessibility ? accessibility.text : 'public') as any,
             modifiers: this.extractModifiers(node),
             location: this.convertRange(node),
-            // @ts-ignore: OperationInfo に workflow プロパティを追加することを想定
-            workflow: bodyNode ? this.extractWorkflow(bodyNode) : undefined
+            // コメント側のワークフロー定義（@scenarioなど）があれば AST 実装解析より優先する
+            workflow: commentWorkflow || workflowAst
         };
     }
 
@@ -269,19 +302,19 @@ export class TypeScriptAstParser implements IAstParser {
     private mapStatementToWorkflowNode(node: Node): { type: string, label: string } | null {
         switch (node.type) {
             case 'if_statement':
-                return { type: 'when', label: 'もし: ' + (node.childForFieldName('condition')?.text || '条件') };
+                return { type: 'when', label: 'When: ' + (node.childForFieldName('condition')?.text || '条件') };
             case 'while_statement':
             case 'for_statement':
             case 'for_in_statement':
             case 'for_of_statement':
                 return { type: 'loop', label: 'ループ' };
             case 'expression_statement':
-                return { type: 'process', label: '処理: ' + node.text.trim().split('\n')[0] };
+                return { type: 'process', label: 'Process: ' + node.text.trim().split('\n')[0] };
             case 'return_statement':
-                return { type: 'then', label: 'ならば: (戻す) ' + node.text.trim().split('\n')[0] };
+                return { type: 'then', label: 'Then: ' + node.text.trim().split('\n')[0] };
             case 'variable_declaration':
             case 'lexical_declaration':
-                return { type: 'process', label: '宣言: ' + node.text.trim().split('\n')[0] };
+                return { type: 'process', label: 'Process: ' + node.text.trim().split('\n')[0] };
             default:
                 return null;
         }
@@ -291,13 +324,23 @@ export class TypeScriptAstParser implements IAstParser {
         const nameNode = node.childForFieldName('name');
         const accessibility = node.children.find(c => c.type === 'accessibility_modifier');
 
-        return {
+        const attributeInfo: AttributeInfo = {
             name: nameNode ? nameNode.text : 'anonymous',
             type: this.extractTypeName(node.childForFieldName('type')),
             visibility: (accessibility ? accessibility.text : 'public') as any,
             modifiers: this.extractModifiers(node),
             location: this.convertRange(node)
         };
+
+        const commentText = this.extractPrecedingComments(node);
+        const needs = CommentParser.parseMemberComments(commentText);
+        if (needs) {
+            // AttributeInfoにneedsが含まれていないためanyキャスト等で保持させるか、
+            // interface自体を拡張する形になります。ここではany拡張で保持します。
+            (attributeInfo as any).needs = needs;
+        }
+
+        return attributeInfo;
     }
 
     private extractParameters(node: Node | null): ParameterInfo[] {
