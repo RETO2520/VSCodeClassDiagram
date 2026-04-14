@@ -3,6 +3,7 @@ import * as Parser from 'web-tree-sitter';
 import { IAstParser } from '../IAstParser';
 import { ClassInfo, OperationInfo, AttributeInfo, ParameterInfo } from '../../types';
 import { Logger } from '../../../../LoggerComponents/Logger';
+import * as cdt from '../../../../../view/lib/class-diagram-types';
 
 type Node = Parser.Node;
 
@@ -202,15 +203,88 @@ export class TypeScriptAstParser implements IAstParser {
     private extractOperationInfo(node: Node): OperationInfo {
         const nameNode = node.childForFieldName('name');
         const accessibility = node.children.find(c => c.type === 'accessibility_modifier');
-
+        const bodyNode = node.childForFieldName('body');
+        this.logger.debug(`Extracting operation: ${nameNode ? nameNode.text : 'anonymous'} with accessibility: ${accessibility ? accessibility.text : 'public'}`);
+        this.logger.debug(`Operation body: ${bodyNode ? bodyNode.text : 'No body'}`);
         return {
             name: nameNode ? nameNode.text : 'anonymous',
             returnType: this.extractTypeName(node.childForFieldName('return_type')),
             parameters: this.extractParameters(node.childForFieldName('parameters')),
             visibility: (accessibility ? accessibility.text : 'public') as any,
             modifiers: this.extractModifiers(node),
-            location: this.convertRange(node)
+            location: this.convertRange(node),
+            // @ts-ignore: OperationInfo に workflow プロパティを追加することを想定
+            workflow: bodyNode ? this.extractWorkflow(bodyNode) : undefined
         };
+    }
+
+    /**
+     * メソッド本体のASTからワークフロー情報を抽出する
+     */
+    private extractWorkflow(bodyNode: Node): { nodes: any[], edges: any[] } | undefined {
+        if (!bodyNode || bodyNode.childCount === 0) return undefined;
+
+        const nodes: any[] = [];
+        const edges: any[] = [];
+
+        // 1. Startノード
+        const startId = cdt.createId();
+        nodes.push({ id: startId, type: 'start', label: 'Start', x: 200, y: 50 });
+
+        let currentY = 150;
+        let lastNodeId = startId;
+
+        // 2. ステートメントを解析してノード化
+        for (let i = 0; i < bodyNode.childCount; i++) {
+            const child = bodyNode.child(i);
+            if (!child || child.type === '{' || child.type === '}') continue;
+
+            const wfNodeData = this.mapStatementToWorkflowNode(child);
+            if (wfNodeData) {
+                const nodeId = cdt.createId();
+                nodes.push({
+                    id: nodeId,
+                    type: wfNodeData.type,
+                    label: wfNodeData.label,
+                    x: 200,
+                    y: currentY
+                });
+                edges.push({
+                    from: lastNodeId,
+                    to: nodeId
+                });
+                lastNodeId = nodeId;
+                currentY += 100;
+            }
+        }
+
+        // 3. Endノード
+        const endId = cdt.createId();
+        nodes.push({ id: endId, type: 'end', label: 'End', x: 200, y: currentY });
+        edges.push({ from: lastNodeId, to: endId });
+
+        return { nodes, edges };
+    }
+
+    private mapStatementToWorkflowNode(node: Node): { type: string, label: string } | null {
+        switch (node.type) {
+            case 'if_statement':
+                return { type: 'when', label: 'もし: ' + (node.childForFieldName('condition')?.text || '条件') };
+            case 'while_statement':
+            case 'for_statement':
+            case 'for_in_statement':
+            case 'for_of_statement':
+                return { type: 'loop', label: 'ループ' };
+            case 'expression_statement':
+                return { type: 'process', label: '処理: ' + node.text.trim().split('\n')[0] };
+            case 'return_statement':
+                return { type: 'then', label: 'ならば: (戻す) ' + node.text.trim().split('\n')[0] };
+            case 'variable_declaration':
+            case 'lexical_declaration':
+                return { type: 'process', label: '宣言: ' + node.text.trim().split('\n')[0] };
+            default:
+                return null;
+        }
     }
 
     private extractAttributeInfo(node: Node): AttributeInfo {

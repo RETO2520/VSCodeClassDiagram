@@ -69,6 +69,11 @@ export interface OperationInfo {
     modifiers: string[];
     /** メソッドが定義されている場所の範囲 */
     location: vscode.Range;
+    /** ワークフロー情報 */
+    workflow?: {
+        nodes: any[];
+        edges: any[];
+    };
 }
 
 /**

@@ -323,20 +323,34 @@ export class DomainModel {
      */
     renderWorkflowDsl(workflow: NonNullable<ClassOperation['workflow']>): string[] {
         const lines: string[] = [];
-        const { nodes, edges } = workflow;
+        const nodes = workflow.nodes ?? [];
+        const edges = workflow.edges ?? [];
+
+        if (nodes.length === 0) return lines;
 
         // id → node のマップ
-        const nodeMap = new Map(nodes.map(n => [n.id, n]));
+        const nodeMap = new Map((nodes ?? []).map(n => [n.id, n]));
 
         // シナリオ開始エッジ（condition が設定されているエッジ）を x 座標でソートして
         // 複数シナリオを左→右の記述順で再現する
-        const scenarioEdges = edges
-            .filter(e => e.condition != null)
+        let scenarioEdges = (edges ?? [])
+            .filter(e => e && e.condition != null)
             .sort((a, b) => {
                 const ax = nodeMap.get(a.to)?.x ?? 0;
                 const bx = nodeMap.get(b.to)?.x ?? 0;
                 return ax - bx;
             });
+
+        // condition を持つエッジが1つもない（ASTから抽出されたなど）場合は、
+        // startノードから出ているエッジをデフォルトのシナリオとして扱う
+        if (scenarioEdges.length === 0) {
+            const startNodeId = nodes.find(n => n.type === 'start')?.id;
+            if (startNodeId) {
+                scenarioEdges = (edges ?? [])
+                    .filter(e => e.from === startNodeId)
+                    .map(e => ({ ...e, condition: '振る舞い' }));
+            }
+        }
 
         for (const startEdge of scenarioEdges) {
             // ── Scenario ヘッダ行 ──
@@ -359,8 +373,8 @@ export class DomainModel {
 
                 // node.typeからキーワードを復元、fallbackとしてlabelから分離
                 const TYPE_TO_KEYWORD: Record<string, string> = {
-                    given: 'Given', when: 'When', then: 'Then', how: 'How',
-                    process: '', decision: '', loop: '', call: '',
+                    given: '前提', when: 'もし', then: 'ならば', how: 'How',
+                    process: 'かつ', decision: 'かつ', loop: 'かつ', call: 'かつ',
                 };
                 const keywordFromType = TYPE_TO_KEYWORD[node.type];
                 let keyword: string;
@@ -368,8 +382,14 @@ export class DomainModel {
 
                 if (keywordFromType !== undefined) {
                     // typeベースで復元（ラベルにプレフィックスがあれば除去）
-                    keyword = keywordFromType || node.label.split(': ')[0];
+                    keyword = keywordFromType;
+                    // 'ならば: (戻す)' や '処理: ' などをそのまま残しても parse 側は構わないが、
+                    // keyword に吸収するものは削除しておく
                     text = node.label.replace(/^(Given|When|Then|How|And|But|前提|もし|ならば|かつ|しかし):\s*/i, '');
+                    // コロン始まりの余分なprefixを除去除く (例: 'ならば: (戻す) ' -> '(戻す)')
+                    if (text.startsWith(node.label.split(':')[0] + ': ')) {
+                        text = text.split(':').slice(1).join(':').trim();
+                    }
                 } else {
                     // フォールバック: label の "keyword: text" 形式
                     const colonIdx = node.label.indexOf(': ');

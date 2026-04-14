@@ -158,29 +158,30 @@ export class SourceAnalyzer {
                 }
 
                 // 属性情報の補完 (型がanyの場合や、可視性がデフォルトの場合にASTの情報を使用)
-                lspClass.attributes = lspClass.attributes.map(lspAttr => {
-                    const astAttr = astClass.attributes.find(aa => aa.name === lspAttr.name);
+                lspClass.attributes = (lspClass.attributes ?? []).map(lspAttr => {
+                    const astAttr = (astClass.attributes ?? []).find(aa => aa.name === lspAttr.name);
                     if (astAttr) {
                         return {
                             ...lspAttr,
                             type: astAttr.type,
                             visibility: lspAttr.visibility === 'public' && astAttr.visibility !== 'public' ? astAttr.visibility : lspAttr.visibility,
-                            modifiers: lspAttr.modifiers.length === 0 ? astAttr.modifiers : lspAttr.modifiers
+                            modifiers: (lspAttr.modifiers?.length ?? 0) === 0 ? astAttr.modifiers : lspAttr.modifiers
                         };
                     }
                     return lspAttr;
                 });
 
                 // 操作情報の補完
-                lspClass.operations = lspClass.operations.map(lspOp => {
-                    const astOp = astClass.operations.find(ao => ao.name === lspOp.name);
+                lspClass.operations = (lspClass.operations ?? []).map(lspOp => {
+                    const astOp = (astClass.operations ?? []).find(ao => ao.name === lspOp.name);
                     if (astOp) {
                         return {
                             ...lspOp,
                             returnType: lspOp.returnType === 'void' || lspOp.returnType === 'any' ? astOp.returnType : lspOp.returnType,
                             visibility: lspOp.visibility === 'public' && astOp.visibility !== 'public' ? astOp.visibility : lspOp.visibility,
-                            parameters: lspOp.parameters.length === 0 ? astOp.parameters : lspOp.parameters,
-                            modifiers: lspOp.modifiers.length === 0 ? astOp.modifiers : lspOp.modifiers
+                            parameters: (lspOp.parameters?.length ?? 0) === 0 ? astOp.parameters : lspOp.parameters,
+                            modifiers: (lspOp.modifiers?.length ?? 0) === 0 ? astOp.modifiers : lspOp.modifiers,
+                            workflow: astOp.workflow
                         };
                     }
                     return lspOp;
@@ -210,31 +211,32 @@ export class SourceAnalyzer {
                 name: sc.name,
                 kind: kind,
                 isAbstract: sc.kind === 'abstract',
-                members: sc.attributes.map(a => ({
+                members: (sc.attributes ?? []).map(a => ({
                     id: cdt.createId(),
                     name: a.name,
                     type: a.type,
                     visibility: (a.visibility === 'internal' ? 'package' : a.visibility) as any,
-                    isStatic: a.modifiers.includes('static'),
-                    isAbstract: !!a.isAbstract,
+                    isStatic: (a.modifiers ?? []).includes('static'),
+                    isAbstract: !!a.isAbstract || (a.modifiers ?? []).includes('abstract'),
                     relationship: 'auto',
                     sourceMultiplicity: '1',
                     targetMultiplicity: '1'
                 })),
-                operations: sc.operations.map(o => ({
+                operations: (sc.operations ?? []).map(o => ({
                     id: cdt.createId(),
                     name: o.name,
                     returnType: o.returnType,
                     visibility: (o.visibility === 'internal' ? 'package' : o.visibility) as any,
-                    isStatic: o.modifiers.includes('static'),
-                    isAbstract: o.modifiers.includes('abstract'),
-                    parameters: o.parameters.map(p => ({
+                    isStatic: (o.modifiers ?? []).includes('static'),
+                    isAbstract: (o.modifiers ?? []).includes('abstract'),
+                    parameters: (o.parameters ?? []).map(p => ({
                         id: cdt.createId(),
                         name: p.name,
                         type: p.type
-                    }))
+                    })),
+                    workflow: o.workflow
                 })),
-                interfaces: sc.interfaces.map(i => idMap.get(i) || i),
+                interfaces: (sc.interfaces ?? []).map(i => idMap.get(i) || i),
                 baseClassId: sc.baseClass ? (idMap.get(sc.baseClass) || sc.baseClass) : null,
                 x: 0,
                 y: 0,
