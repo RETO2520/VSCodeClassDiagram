@@ -299,72 +299,370 @@ export class TypeScriptAstParser implements IAstParser {
     }
 
     /**
-     * メソッド本体のASTからワークフロー情報を抽出する
+     * メソッド本体のASTからワークフロー情報を抽出する。
+     *
+     * 改善点:
+     *   1. 先頭の変数宣言群を「Given: 初期変数を準備する」に集約してノード数を削減
+     *   2. 末尾の return 文を「Then: xxx を返す」に集約
+     *   3. 中間のステートメントは意図ベースで And: / When: / But: に変換
+     *   4. 全ステートメントがスキップされた場合は undefined を返す（空ワークフローを防ぐ）
      */
     private extractWorkflow(bodyNode: Node): { nodes: any[], edges: any[] } | undefined {
         if (!bodyNode || bodyNode.childCount === 0) return undefined;
 
-        const nodes: any[] = [];
-        const edges: any[] = [];
-
-        // 1. Startノード
-        const startId = cdt.createId();
-        nodes.push({ id: startId, type: 'start', label: 'Start', x: 200, y: 50 });
-
-        let currentY = 150;
-        let lastNodeId = startId;
-
-        // 2. ステートメントを解析してノード化
+        // ボディのステートメント一覧（括弧・空白を除外）
+        const stmts: Node[] = [];
         for (let i = 0; i < bodyNode.childCount; i++) {
             const child = bodyNode.child(i);
             if (!child || child.type === '{' || child.type === '}') continue;
+            stmts.push(child);
+        }
+        if (stmts.length === 0) return undefined;
 
-            const wfNodeData = this.mapStatementToWorkflowNode(child);
-            if (wfNodeData) {
-                const nodeId = cdt.createId();
-                nodes.push({
-                    id: nodeId,
-                    type: wfNodeData.type,
-                    label: wfNodeData.label,
-                    x: 200,
-                    y: currentY
-                });
-                edges.push({
-                    from: lastNodeId,
-                    to: nodeId
-                });
-                lastNodeId = nodeId;
-                currentY += 100;
-            }
+        // ── 先頭の変数宣言群を Given ブロックとして集約 ──────────────
+        let givenEnd = 0;
+        while (
+            givenEnd < stmts.length &&
+            (stmts[givenEnd].type === 'lexical_declaration' ||
+                stmts[givenEnd].type === 'variable_declaration')
+        ) {
+            givenEnd++;
         }
 
-        // 3. Endノード
+        // ── 末尾の return 文を特定 ─────────────────────────────────
+        const lastStmt = stmts[stmts.length - 1];
+        const hasReturn = lastStmt?.type === 'return_statement';
+        const middleStmts = stmts.slice(givenEnd, hasReturn ? stmts.length - 1 : stmts.length);
+
+        // ── 有意なノードが1つも生成されないメソッドは省略 ──────────
+        const hasGiven = givenEnd > 0;
+        const middleNodes = middleStmts
+            .map(s => this.mapStatementToWorkflowNode(s))
+            .filter(Boolean);
+        if (!hasGiven && !hasReturn && middleNodes.length === 0) return undefined;
+
+        // ── ノード・エッジ構築 ──────────────────────────────────────
+        const nodes: any[] = [];
+        const edges: any[] = [];
+
+        const startId = cdt.createId();
+        nodes.push({ id: startId, type: 'start', label: '開始', x: 200, y: 50 });
+        let currentY = 150;
+        let lastNodeId = startId;
+
+        const push = (type: string, label: string) => {
+            const id = cdt.createId();
+            nodes.push({ id, type, label, x: 200, y: currentY });
+            edges.push({ from: lastNodeId, to: id, condition: lastNodeId === startId ? '振る舞い' : undefined });
+            lastNodeId = id;
+            currentY += 100;
+        };
+
+        // Given 集約ブロック
+        if (hasGiven) {
+            // 宣言している変数名を最大3つ収集してラベルに含める
+            const varNames = stmts.slice(0, givenEnd).flatMap(s => {
+                const names: string[] = [];
+                for (let i = 0; i < s.childCount; i++) {
+                    const c = s.child(i);
+                    if (c?.type === 'variable_declarator') {
+                        const n = c.childForFieldName('name');
+                        if (n) names.push(n.text);
+                    }
+                }
+                return names;
+            }).slice(0, 3);
+
+            const label = varNames.length > 0
+                ? `Given: ${varNames.join(', ')} を初期化する`
+                : 'Given: 変数を初期化する';
+            push('given', label);
+        }
+
+        // 中間ステートメント
+        for (const mapped of middleNodes) {
+            if (mapped) push(mapped.type, mapped.label);
+        }
+
+        // Then: return
+        if (hasReturn) {
+            const retExpr = lastStmt.children.find(c => c.type !== 'return' && c.type !== ';');
+            const summary = retExpr ? this.summarizeReturnExpr(retExpr) : '結果';
+            push('then', `Then: ${summary}を返す`);
+        }
+
+        // Endノード
         const endId = cdt.createId();
-        nodes.push({ id: endId, type: 'end', label: 'End', x: 200, y: currentY });
+        nodes.push({ id: endId, type: 'end', label: '終了', x: 200, y: currentY });
         edges.push({ from: lastNodeId, to: endId });
 
         return { nodes, edges };
     }
 
+    /**
+     * ASTステートメントノードをワークフローノードの「意図記述」にマッピングする。
+     *
+     * 設計方針:
+     *   - コードの「HOW（実装詳細）」ではなく「WHAT（意図・目的）」を出力する
+     *   - 変数宣言は原則スキップ（Given集約ブロックで別途扱う）
+     *   - ループは「何を繰り返すか」をASTから読み取って記述する
+     *   - ガード節（early return / throw）は But: として表現する
+     *   - return は Then: として表現する
+     *   - 副作用のある式文（メソッド呼び出し・代入）のみ And: として出力する
+     */
     private mapStatementToWorkflowNode(node: Node): { type: string, label: string } | null {
         switch (node.type) {
-            case 'if_statement':
-                return { type: 'when', label: 'When: ' + (node.childForFieldName('condition')?.text || '条件') };
-            case 'while_statement':
-            case 'for_statement':
+
+            // ── 条件分岐 ──────────────────────────────────────────────
+            case 'if_statement': {
+                const condText = node.childForFieldName('condition')?.text ?? '';
+                const consequence = node.childForFieldName('consequence');
+
+                // ガード節判定: 本体が return / throw / break のみで構成されている
+                const isGuard = consequence ? this.isGuardBody(consequence) : false;
+
+                if (isGuard) {
+                    // ガード節 → But: （前提を満たさない場合のアーリーリターン）
+                    const reason = this.summarizeCondition(condText);
+                    return { type: 'process', label: `But: ${reason}の場合は早期終了` };
+                } else {
+                    // 通常の分岐 → When:
+                    const summary = this.summarizeCondition(condText);
+                    return { type: 'when', label: `When: ${summary}` };
+                }
+            }
+
+            // ── ループ ────────────────────────────────────────────────
+            case 'while_statement': {
+                const cond = node.childForFieldName('condition')?.text ?? '';
+                const summary = this.summarizeCondition(cond);
+                return { type: 'loop', label: `And: ${summary}の間、繰り返す` };
+            }
+            case 'for_statement': {
+                // 初期化から繰り返し対象を推測する
+                const init = node.childForFieldName('initializer')?.text ?? '';
+                const target = this.extractLoopTarget(init);
+                return { type: 'loop', label: `And: ${target}をカウントアップしながら繰り返す` };
+            }
             case 'for_in_statement':
-            case 'for_of_statement':
-                return { type: 'loop', label: 'ループ' };
-            case 'expression_statement':
-                return { type: 'process', label: 'Process: ' + node.text.trim().split('\n')[0] };
-            case 'return_statement':
-                return { type: 'then', label: 'Then: ' + node.text.trim().split('\n')[0] };
+            case 'for_of_statement': {
+                // for (x of collection) → "collection を走査する"
+                const right = node.childForFieldName('right')?.text
+                    ?? node.child(node.childCount - 2)?.text
+                    ?? '';
+                const left = node.childForFieldName('left')?.text
+                    ?? node.child(1)?.text
+                    ?? '';
+                const collection = this.summarizeIdentifier(right);
+                const item = this.summarizeIdentifier(left.replace(/^(const|let|var)\s+/, ''));
+                return { type: 'loop', label: `And: ${collection}の各${item}を処理する` };
+            }
+
+            // ── return 文 ─────────────────────────────────────────────
+            case 'return_statement': {
+                const retExpr = node.children.find(c =>
+                    c.type !== 'return' && c.type !== ';'
+                );
+                if (!retExpr) {
+                    return { type: 'then', label: 'Then: 処理を終了する' };
+                }
+                const summary = this.summarizeReturnExpr(retExpr);
+                return { type: 'then', label: `Then: ${summary}を返す` };
+            }
+
+            // ── throw 文 ─────────────────────────────────────────────
+            case 'throw_statement': {
+                const errExpr = node.children.find(c => c.type !== 'throw' && c.type !== ';');
+                const errText = errExpr ? this.summarizeIdentifier(errExpr.text) : 'エラー';
+                return { type: 'process', label: `But: ${errText}をスローする` };
+            }
+
+            // ── 式文（副作用のある呼び出し・代入）────────────────────
+            case 'expression_statement': {
+                const exprNode = node.firstChild;
+                if (!exprNode) return null;
+
+                // 代入式
+                if (exprNode.type === 'assignment_expression') {
+                    const left = exprNode.childForFieldName('left')?.text ?? '';
+                    const right = exprNode.childForFieldName('right')?.text ?? '';
+                    const leftSummary = this.summarizeIdentifier(left);
+                    const rightSummary = this.summarizeIdentifier(right);
+                    return { type: 'process', label: `And: ${leftSummary}に${rightSummary}を設定する` };
+                }
+
+                // 呼び出し式（メソッド呼び出し）
+                if (exprNode.type === 'call_expression' || exprNode.type === 'await_expression') {
+                    const callNode = exprNode.type === 'await_expression'
+                        ? exprNode.firstChild
+                        : exprNode;
+                    if (!callNode) return null;
+                    const funcNode = callNode.childForFieldName?.('function') ?? callNode.firstChild;
+                    const funcName = funcNode?.text ?? '';
+                    const summary = this.summarizeCallExpression(funcName);
+                    return { type: 'process', label: `And: ${summary}` };
+                }
+
+                // その他の式（インクリメント等）はスキップ
+                return null;
+            }
+
+            // ── 変数宣言はスキップ（Given集約ブロックで扱う）────────
             case 'variable_declaration':
             case 'lexical_declaration':
-                return { type: 'process', label: 'Process: ' + node.text.trim().split('\n')[0] };
+                return null;
+
             default:
                 return null;
         }
+    }
+
+    /**
+     * ブロック本体がガード節（early return / throw のみ）か判定する。
+     */
+    private isGuardBody(node: Node): boolean {
+        const stmts = node.children.filter(c => c.type !== '{' && c.type !== '}' && c.type.trim() !== '');
+        if (stmts.length === 0) return false;
+        return stmts.every(s =>
+            s.type === 'return_statement' ||
+            s.type === 'throw_statement' ||
+            s.type === 'break_statement' ||
+            s.type === 'continue_statement'
+        );
+    }
+
+    /**
+     * 条件式テキストを「何を確認しているか」の自然文に変換する。
+     * 例: "!m" → "mが未設定", "classes.length === 0" → "classesが空"
+     */
+    private summarizeCondition(raw: string): string {
+        const t = raw.trim();
+
+        // 否定パターン: !x, !x.y
+        const notMatch = t.match(/^!([\w.]+)$/);
+        if (notMatch) {
+            return `${this.summarizeIdentifier(notMatch[1])}が未設定`;
+        }
+
+        // length === 0 / length < 1
+        const emptyMatch = t.match(/([\w.]+)\.length\s*(?:===?\s*0|<\s*1)/);
+        if (emptyMatch) {
+            return `${this.summarizeIdentifier(emptyMatch[1])}が空`;
+        }
+
+        // null/undefined チェック: x === null, x == null, x === undefined
+        const nullMatch = t.match(/([\w.]+)\s*(?:===?|!==?)\s*(?:null|undefined)/);
+        if (nullMatch) {
+            return `${this.summarizeIdentifier(nullMatch[1])}がnull`;
+        }
+
+        // 正規表現マッチ: x.match(...)  / regex.test(x)
+        const matchExpr = t.match(/([\w.]+)\.match\(/);
+        if (matchExpr) {
+            return `${this.summarizeIdentifier(matchExpr[1])}がパターンに一致`;
+        }
+
+        // 識別子だけ（真偽値チェック）
+        const identOnly = t.match(/^([\w.]+)$/);
+        if (identOnly) {
+            return `${this.summarizeIdentifier(identOnly[1])}が有効`;
+        }
+
+        // その他: 長すぎる場合は左辺のみ抽出
+        const lhsMatch = t.match(/^([\w.]+)\s*[=!<>]/);
+        if (lhsMatch) {
+            return this.summarizeIdentifier(lhsMatch[1]);
+        }
+
+        // フォールバック: 先頭40文字
+        return t.length > 40 ? t.slice(0, 40) + '…' : t;
+    }
+
+    /**
+     * for文の初期化節からループ対象を推測する。
+     * 例: "let i = 0" → "i"
+     */
+    private extractLoopTarget(init: string): string {
+        const m = init.match(/(?:let|const|var)\s+(\w+)/);
+        return m ? m[1] : 'インデックス';
+    }
+
+    /**
+     * 識別子名を「LLMにとって読みやすい」形に整形する。
+     * - キャメルケース/スネークケースを分解して日本語向けに読みやすくする
+     * - this.xxx → xxx
+     * - 長すぎる式は省略する
+     */
+    private summarizeIdentifier(raw: string): string {
+        if (!raw) return '値';
+        let t = raw.trim();
+
+        // this. を除去
+        t = t.replace(/^this\./, '');
+
+        // メソッド呼び出し括弧以降を除去
+        t = t.replace(/\([^)]*\).*$/, '');
+
+        // 配列アクセス省略
+        t = t.replace(/\[.*\]/, '');
+
+        // プロパティチェーンは末尾2段まで
+        const parts = t.split('.');
+        t = parts.slice(-2).join('.');
+
+        // 長すぎる場合は先頭30文字
+        if (t.length > 30) t = t.slice(0, 30) + '…';
+
+        return t;
+    }
+
+    /**
+     * return式を「何を返しているか」の要約に変換する。
+     * 例: "{ classes, relations }" → "classes, relations"
+     *     "new Map(this.aliases)" → "Map(aliases)"
+     */
+    private summarizeReturnExpr(node: Node): string {
+        const raw = node.text.trim();
+
+        // オブジェクトリテラル: { a, b, c } → "a, b, c"
+        const objMatch = raw.match(/^\{([^}]+)\}$/);
+        if (objMatch) {
+            return objMatch[1].split(',').map(s => s.trim()).slice(0, 3).join(', ');
+        }
+
+        // new XxxClass(...) → "XxxClass"
+        const newMatch = raw.match(/^new\s+([\w<>]+)/);
+        if (newMatch) {
+            return newMatch[1];
+        }
+
+        // 配列リテラル
+        if (raw.startsWith('[')) {
+            return '配列';
+        }
+
+        // null / undefined
+        if (raw === 'null' || raw === 'undefined') {
+            return 'null';
+        }
+
+        return this.summarizeIdentifier(raw);
+    }
+
+    /**
+     * 呼び出し式の関数名から「何をしているか」の要約に変換する。
+     * 例: "service.applyAddType" → "applyAddType を呼び出す"
+     *     "this.parseGherkinToWorkflow" → "parseGherkinToWorkflow を呼び出す"
+     */
+    private summarizeCallExpression(funcName: string): string {
+        const cleaned = funcName.replace(/^this\./, '');
+        const parts = cleaned.split('.');
+        const method = parts[parts.length - 1];
+        const receiver = parts.length > 1 ? parts[parts.length - 2] : '';
+        if (receiver) {
+            return `${this.summarizeIdentifier(receiver)} の ${method} を呼び出す`;
+        }
+        return `${method} を呼び出す`;
     }
 
     private extractAttributeInfo(node: Node): AttributeInfo {
