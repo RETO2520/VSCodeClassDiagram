@@ -67,8 +67,10 @@ export class CommentParser {
 
         const startId = cdt.createId();
         nodes.push({ id: startId, type: 'start', label: '開始', x: 200, y: 50 });
+        let currentX = -50;
         let currentY = 150;
         let lastNodeId = startId;
+        const scenarioEnds: string[] = [];
 
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
@@ -76,7 +78,14 @@ export class CommentParser {
             const scenarioMatch = line.match(/^@scenario\s+(.+)$/i);
             if (scenarioMatch) {
                 hasScenario = true;
+                // もし既に直前のシナリオのノードが作られていれば終端リストに追加する
+                if (lastNodeId !== startId) {
+                    scenarioEnds.push(lastNodeId);
+                }
                 scenarioName = scenarioMatch[1].trim();
+                lastNodeId = startId;
+                currentX += 250; // 横に並べる
+                currentY = 150;
                 continue;
             }
 
@@ -136,7 +145,7 @@ export class CommentParser {
                     id: newId,
                     type: nodeType,
                     label: labelPrefix + text,
-                    x: 200,
+                    x: currentX < 0 ? 200 : currentX, // 初期値
                     y: currentY
                 });
 
@@ -155,9 +164,18 @@ export class CommentParser {
             return undefined;
         }
 
+        if (lastNodeId !== startId) {
+            scenarioEnds.push(lastNodeId);
+        }
+
         const endId = cdt.createId();
-        nodes.push({ id: endId, type: 'end', label: '終了', x: 200, y: currentY });
-        edges.push({ from: lastNodeId, to: endId });
+        // 終了ノードのY座標は、複数シナリオの最大値に合わせて概算する
+        const maxY = nodes.length > 0 ? Math.max(...nodes.map(n => n.y)) + 150 : currentY;
+        nodes.push({ id: endId, type: 'end', label: '終了', x: 200, y: maxY });
+        
+        for (const endNode of scenarioEnds) {
+            edges.push({ from: endNode, to: endId });
+        }
 
         return { nodes, edges };
     }

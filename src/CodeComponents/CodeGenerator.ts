@@ -43,6 +43,43 @@ export interface IOperationModel {
     parameters: IParameterModel[];
     workflow?: IWorkflowModel;
     workflowAst?: WorkflowAst; // 新しく追加
+    additionalInfo?: {
+        stableId?: string; // AI生成用の安定ID
+        /** メソッドがオーバーライドしているかどうか */
+        isOverride?: boolean;
+        /** メソッドが実装しているインターフェースの名前 */
+        implementedInterface?: string;
+        /** メソッドのシグネチャ（例: 'void DoSomething(int x, string y)'） */
+        signature?: string;
+        /** メソッドのドキュメントコメント */
+        documentation?: string;
+        /** メソッドの呼び出し元の情報（例: 呼び出し元のクラス名とメソッド名） */
+        callers?: { className: string; methodName: string }[];
+        /** メソッドの呼び出し先の情報（例: 呼び出し先のクラス名とメソッド名） */
+        callees?: { className: string; methodName: string }[];
+        /** メソッドが属するクラスの名前 */
+        className?: string;
+        /** メソッドが属するクラスの種類（class, interface, abstractなど） */
+        classKind?: string;
+        /** メソッドが属するクラスのジェネリック型パラメータ（例: ['T', 'U']） */
+        classGenericParameters?: string[];
+        /** メソッドが属するクラスの基底クラス名（継承がある場合） */
+        classBaseClass?: string;
+        /** メソッドが属するクラスの実装しているインターフェース名の配列 */
+        classInterfaces?: string[];
+        /** メソッドが属するクラスの属性（フィールド、プロパティ）の配列 */
+        //classAttributes?: AttributeInfo[];
+        /** メソッドが属するクラスの操作（メソッド）の配列 */
+        //classOperations?: OperationInfo[];
+        /** メソッドのシグネチャに含まれるジェネリック型パラメータの配列（例: ['T', 'U']） */
+        methodGenericParameters?: string[];
+        /** メソッドのシグネチャに含まれるジェネリック型パラメータの制約情報（例: { T: 'where T : class', U: 'where U : struct' }） */
+        methodGenericParameterConstraints?: { [param: string]: string };
+        /** メソッドのシグネチャに含まれるジェネリック型パラメータのデフォルト値の情報（例: { T: 'string', U: 'int' }） */
+        methodDefaultValues?: { [param: string]: string };
+        /** Gherkin形式の生データ */
+        gherkinRaw?: string;
+    }; // AI生成用のメタデータ
 }
 
 export interface IWorkflowModel {
@@ -92,6 +129,8 @@ export type WfAstNode =
 export interface IActionNode {
     type: 'action';
     statement: string; // 例: "count = count + 1"
+    /** アクションの種類 (comment: コメント, code: 生コード, instruction: 実装指示) */
+    kind?: 'comment' | 'code' | 'instruction';
 }
 
 export interface IIfNode {
@@ -246,7 +285,7 @@ function scenarioStepsToActions(
     }
 
     // スタブ: 実装が必要であることを示す
-    nodes.push({ type: 'action', statement: 'throw new NotImplementedException();' });
+    nodes.push({ type: 'action', statement: 'UNIMPLEMENTED_LOGIC', kind: 'instruction' });
     return nodes;
 }
 
@@ -428,7 +467,7 @@ export function workflowToAst(workflow: IWorkflowModel): WorkflowAst {
             // 先頭 N-1 本: 独立した if として並べる。空行で区切るためダミーの空コメントを後置
             body.push({
                 type: 'if',
-                condition: `/* ${scenarioName}${srcSuffix} */`,
+                condition: `true /* ${scenarioName}${srcSuffix} */`,
                 then: steps,
             } as IIfNode);
             body.push({ type: 'action', statement: '' }); // 空行

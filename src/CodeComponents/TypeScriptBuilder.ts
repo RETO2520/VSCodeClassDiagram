@@ -144,12 +144,18 @@ export class TypeScriptBuilder extends CodeBuilder {
         lines.push(...this.buildWfNodes(ast.body, 1));
         return lines;
     }
-
-    protected generateAction(node: any, indent: number): string[] {
-        return [`${this.getIndent(indent)}${node.statement};`];
+    protected generateAction(node: IActionNode, indent: number): string[] {
+        const stmt = node.statement.trim();
+        if (stmt === 'UNIMPLEMENTED_LOGIC') {
+            return [`${this.getIndent(indent)}throw new Error('Not implemented');`];
+        }
+        if (stmt.startsWith('//') || node.kind === 'comment') {
+            return [`${this.getIndent(indent)}${stmt}`];
+        }
+        const suffix = (stmt.endsWith(';') || stmt.endsWith('}')) ? '' : ';';
+        return [`${this.getIndent(indent)}${stmt}${suffix}`];
     }
-
-    protected generateIf(node: any, indent: number): string[] {
+    protected generateIf(node: IIfNode, indent: number): string[] {
         const lines: string[] = [];
         lines.push(`${this.getIndent(indent)}if (${node.condition}) {`);
         lines.push(...this.buildWfNodes(node.then, indent + 1));
@@ -160,16 +166,14 @@ export class TypeScriptBuilder extends CodeBuilder {
         lines.push(`${this.getIndent(indent)}}`);
         return lines;
     }
-
-    protected generateWhile(node: any, indent: number): string[] {
+    protected generateWhile(node: IWhileNode, indent: number): string[] {
         const lines: string[] = [];
         lines.push(`${this.getIndent(indent)}while (${node.condition}) {`);
         lines.push(...this.buildWfNodes(node.body, indent + 1));
         lines.push(`${this.getIndent(indent)}}`);
         return lines;
     }
-
-    protected generateReturn(node: any, indent: number): string[] {
+    protected generateReturn(node: IReturnNode, indent: number): string[] {
         const val = node.value ? ` ${node.value}` : '';
         return [`${this.getIndent(indent)}return${val};`];
     }
@@ -313,15 +317,34 @@ export class TypeScriptBuilder extends CodeBuilder {
             } else if (cls.isInterface) {
                 sb.owns.push(`  ${method}(${paramsStr}): ${ret};`);
             } else {
+                // JSDoc形式でGherkin仕様を出力する
+                if (o.additionalInfo?.gherkinRaw) {
+                    sb.owns.push('  /**');
+                    if (o.additionalInfo?.stableId) {
+                        sb.owns.push(`   * @id ${o.additionalInfo.stableId}`);
+                    }
+                    const lines = o.additionalInfo.gherkinRaw.split('\n');
+                    for (const line of lines) {
+                        sb.owns.push(`   * ${line}`);
+                    }
+                    sb.owns.push('   */');
+                }
+
                 sb.owns.push(`  ${vis} ${modOp}${method}(${paramsStr}): ${ret} {`);
+
+                // ワークフローASTがある場合は、その構造に基づいたボイラープレートを生成
                 if (o.workflowAst) {
                     const wfLines = this.generateWorkflow(o.workflowAst);
                     for (const l of wfLines) {
                         sb.owns.push(`  ${l}`);
                     }
                 } else {
-                    if (ret !== 'void') sb.owns.push(`    throw new Error('Not implemented');`);
-                    else sb.owns.push(`    // TODO`);
+                    // 実装がない場合は、AIへの明確な指示コメントを残す
+                    if (ret !== 'void') {
+                        sb.owns.push(`    throw new Error('Not implemented: Implement logic based on the Gherkin spec above.');`);
+                    } else {
+                        sb.owns.push(`    // TODO: Implement logic based on the Gherkin spec above.`);
+                    }
                 }
                 sb.owns.push('  }');
             }

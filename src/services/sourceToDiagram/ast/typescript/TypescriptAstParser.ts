@@ -11,11 +11,14 @@ type Node = Parser.Node;
 /**
  * TypeScriptおよびJavaScript用のASTパーサー
  * web-tree-sitterを使用してASTを構築し、クラス情報を抽出する
+ * 
+ * @alias "TS用ASTパーサー" as "TypeScriptAstParser"
  */
 export class TypeScriptAstParser implements IAstParser {
     /** @needs "ASTを構築し、クラス情報を抽出する" */
     private readonly logger: Logger;
     private readonly extensionUri: vscode.Uri;
+    /** @needs "パース済みのツリー構造データを保持するための実体" */
     private parser: any = null;
     private tsLanguage: any = null;
     private jsLanguage: any = null;
@@ -86,6 +89,15 @@ export class TypeScriptAstParser implements IAstParser {
             languageId === 'typescriptreact' || languageId === 'javascriptreact';
     }
 
+    /**
+     * @scenario ASTをパースしてクラス情報を抽出する
+     * @given コードの文字列とURIが与えられていること
+     * @when tree-sitterでパースを実行する
+     * @how "指定された言語でWASMをロードしツリーを生成する"
+     * @how "visitNodeを用いてASTを再帰的に走査し、クラスやメソッドを抽出する"
+     * @then ClassInfo配列が生成されること
+     * @why "クラス図として可視化するための基礎データ構造を作るため"
+     */
     public async parse(uri: vscode.Uri, content: string): Promise<ClassInfo[]> {
         const languageId = await this.detectLanguageId(uri);
         if (!(await this.initParser(languageId)) || !this.parser) return [];
@@ -127,6 +139,24 @@ export class TypeScriptAstParser implements IAstParser {
         }
     }
 
+    /**
+     * @scenario クラス宣言を抽出する（通常）
+     * @given class_declaration ノードが渡されたこと
+     * @when extractClassInfo() を呼び出す
+     * @then nameと attributes をもつ ClassInfo が返ること
+     * @why 通常クラスの構造をグラフィカルに表現するため
+     * 
+     * @scenario 抽象クラスを抽出する
+     * @given abstract 修飾子を持つノードが渡されたこと
+     * @when extractClassInfo() を呼び出す
+     * @then kind が "abstract" に設定されること
+     * 
+     * @scenario 継承とインターフェースのマッピング
+     * @given extends や implements を持つノードであること
+     * @when extractClassInfo() を呼び出す
+     * @how "class_heritage を解析して baseClass と interfaces を特定する"
+     * @then ClassInfo 内の依存関係が正しく設定されること
+     */
     private extractClassInfo(node: Node, uri: vscode.Uri): ClassInfo {
         const nameNode = node.childForFieldName('name');
         const isAbstract = node.children.some(c => c.text === 'abstract');
@@ -239,6 +269,18 @@ export class TypeScriptAstParser implements IAstParser {
         const commentText = this.extractPrecedingComments(node);
         const commentWorkflow = CommentParser.parseOperationComments(commentText);
 
+        // @id タグやハッシュをコメントから抽出して再現性を高める
+        const idMatch = commentText.match(/@id\s+([^\s\*]+)/);
+        const stableId = idMatch ? idMatch[1] : undefined;
+
+        // AI生成用にGherkinタグが含まれる行だけを抽出して軽量化する
+        const gherkinLines = commentText.split('\n')
+            .filter(line => /@scenario|@given|@when|@how|@then|@why/.test(line))
+            .map(line => line.trim().replace(/^\*+/g, '').trim())
+            .join('\n');
+
+        // commentText から @given/@when/@then の生テキストを抽出し、
+        // 生成AIへのヒントとして利用可能な形で保持する
         return {
             name: nameNode ? nameNode.text : 'anonymous',
             returnType: this.extractTypeName(node.childForFieldName('return_type')),
@@ -247,7 +289,12 @@ export class TypeScriptAstParser implements IAstParser {
             modifiers: this.extractModifiers(node),
             location: this.convertRange(node),
             // コメント側のワークフロー定義（@scenarioなど）があれば AST 実装解析より優先する
-            workflow: commentWorkflow || workflowAst
+            workflow: commentWorkflow || workflowAst,
+            // AI生成用の最小限のヒントを保持
+            additionalInfo: {
+                gherkinRaw: gherkinLines,
+                stableId: stableId
+            } as any
         };
     }
 
