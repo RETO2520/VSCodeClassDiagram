@@ -424,6 +424,7 @@ export class SpecDslParser {
                                     classId: c.id,
                                     operationId: op.id,
                                     workflow: result.workflow,
+                                    workflowAst: result.workflowAst,
                                 });
                                 break;
                             }
@@ -655,10 +656,12 @@ export class SpecDslParser {
 
     private parseGherkinToWorkflow(lines: string[], startIndex: number, context?: any): {
         workflow: ClassOperation['workflow'],
+        workflowAst?: ClassOperation['workflowAst'],
         endIndex: number
     } {
         const nodes: NonNullable<ClassOperation['workflow']>['nodes'] = [];
         const edges: NonNullable<ClassOperation['workflow']>['edges'] = [];
+        let workflowAst: ClassOperation['workflowAst'] | undefined;
 
         const STEP_Y = 100;
         let currentY = 50;
@@ -707,6 +710,15 @@ export class SpecDslParser {
                 currentY = 150;
                 currentX += SCENARIO_WIDTH;
                 i++;
+                continue;
+            }
+
+            if (/^Flow\s*:\s*$/i.test(trimmed)) {
+                const flowResult = this.parseFlowBlockToWorkflowAst(lines, i + 1);
+                if (!workflowAst && this.hasWorkflowAstContent(flowResult.workflowAst)) {
+                    workflowAst = flowResult.workflowAst;
+                }
+                i = flowResult.endIndex + 1;
                 continue;
             }
 
@@ -845,8 +857,151 @@ export class SpecDslParser {
 
         return {
             workflow: { nodes, edges },
+            workflowAst,
             endIndex: i - 1,
         };
+    }
+
+    private hasWorkflowAstContent(ast: ClassOperation['workflowAst'] | undefined): boolean {
+        if (!ast) return false;
+        return (ast.variables?.length ?? 0) > 0 || (ast.body?.length ?? 0) > 0;
+    }
+
+    private parseFlowBlockToWorkflowAst(
+        lines: string[],
+        startIndex: number
+    ): {
+        workflowAst: ClassOperation['workflowAst'],
+        endIndex: number
+    } {
+        type MutableWfNode = {
+            type: string;
+            [key: string]: any;
+        };
+        type Frame = {
+            kind: 'root' | 'if' | 'while';
+            nodes: MutableWfNode[];
+            ifNode?: MutableWfNode;
+        };
+
+        const variables: Array<{ name: string; type: string; initialValue?: string }> = [];
+        const body: MutableWfNode[] = [];
+        const stack: Frame[] = [{ kind: 'root', nodes: body }];
+        const currentNodes = (): MutableWfNode[] => stack[stack.length - 1].nodes;
+
+        let i = startIndex;
+        for (; i < lines.length; i++) {
+            const raw = lines[i];
+            const line = raw.trim();
+
+            if (!line) continue;
+            if (this.isFlowBoundary(line)) break;
+
+            if (/^end$/i.test(line)) {
+                if (stack.length === 1) {
+                    i++;
+                    break;
+                }
+                stack.pop();
+                continue;
+            }
+
+            if (/^else$/i.test(line)) {
+                const top = stack[stack.length - 1];
+                if (top.kind === 'if' && top.ifNode) {
+                    top.ifNode.else = top.ifNode.else ?? [];
+                    top.nodes = top.ifNode.else;
+                }
+                continue;
+            }
+
+            const varMatch = line.match(/^var\s+([A-Za-z_]\w*)\s*:\s*([^=]+?)(?:\s*=\s*(.+))?$/i);
+            if (varMatch) {
+                variables.push({
+                    name: varMatch[1],
+                    type: varMatch[2].trim(),
+                    initialValue: varMatch[3]?.trim(),
+                });
+                continue;
+            }
+
+            const ifMatch = line.match(/^if\s+(.+)$/i);
+            if (ifMatch) {
+                const ifNode: MutableWfNode = {
+                    type: 'if',
+                    condition: ifMatch[1].trim(),
+                    then: [],
+                };
+                currentNodes().push(ifNode);
+                stack.push({ kind: 'if', nodes: ifNode.then, ifNode });
+                continue;
+            }
+
+            const whileMatch = line.match(/^while\s+(.+)$/i);
+            if (whileMatch) {
+                const whileNode: MutableWfNode = {
+                    type: 'while',
+                    condition: whileMatch[1].trim(),
+                    body: [],
+                };
+                currentNodes().push(whileNode);
+                stack.push({ kind: 'while', nodes: whileNode.body });
+                continue;
+            }
+
+            const returnMatch = line.match(/^return(?:\s+(.+))?$/i);
+            if (returnMatch) {
+                currentNodes().push({
+                    type: 'return',
+                    value: returnMatch[1]?.trim(),
+                });
+                continue;
+            }
+
+            const doMatch = line.match(/^do\s+(.+)$/i);
+            if (doMatch) {
+                currentNodes().push({
+                    type: 'action',
+                    kind: 'code',
+                    statement: doMatch[1].trim(),
+                });
+                continue;
+            }
+
+            const commentMatch = raw.trimStart().match(/^(?:\/\/|#)\s*(.+)$/);
+            if (commentMatch) {
+                currentNodes().push({
+                    type: 'action',
+                    kind: 'comment',
+                    statement: `// ${commentMatch[1].trim()}`,
+                });
+                continue;
+            }
+
+            currentNodes().push({
+                type: 'action',
+                kind: 'instruction',
+                statement: line,
+            });
+        }
+
+        return {
+            workflowAst: {
+                variables,
+                body,
+            },
+            endIndex: i - 1,
+        };
+    }
+
+    private isFlowBoundary(trimmedLine: string): boolean {
+        if (/^(?:Scenario|シナリオ):/i.test(trimmedLine)) return true;
+        if (/^(?:Given|When|Then|And|But|How|Why|前提|もし|ならば|かつ|しかし)\s/i.test(trimmedLine)) return true;
+        if (/^(abstract\s+)?(class|interface|struct)\b/.test(trimmedLine)) return true;
+        if (/^[+\-#~]/.test(trimmedLine)) return true;
+        if (/^endpoint\s+/i.test(trimmedLine)) return true;
+        if (['->', '+>', '*>', '>|', '>/', '-/>', 'o>'].some(sym => trimmedLine.includes(sym))) return true;
+        return false;
     }
 
     private resolveIdentifiers(text: string, context?: any): string[] {
