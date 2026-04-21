@@ -14,6 +14,9 @@ export function initDrawing(params) {
   helpers.createRect = params.createRect;
   helpers.createEllipse = params.createEllipse;
   helpers.createDiamond = params.createDiamond;
+  helpers.createHexagon = params.createHexagon;
+  helpers.createPentagon = params.createPentagon;
+  helpers.createTrapezoid = params.createTrapezoid;
 }
 
 export function clearAllNodes() { nodesLayer.innerHTML = ''; state.nodeMap.clear(); }
@@ -43,15 +46,29 @@ export function drawNode(node) {
     width = 100;
     height = 50;
     shape = helpers.createEllipse(svgNs, width / 2, height / 2);
+  } else if (node.type === 'foreach' || node.type === 'forrange') {
+    // 六角形: コレクション/範囲ループ
+    width = 150;
+    height = 50;
+    shape = helpers.createHexagon(svgNs, width, height);
+  } else if (node.type === 'switch') {
+    // 五角形(家型): switch分岐
+    width = 140;
+    height = 60;
+    shape = helpers.createPentagon(svgNs, width, height);
+  } else if (node.type === 'break' || node.type === 'continue') {
+    // 台形: ループ制御
+    width = 120;
+    height = 40;
+    shape = helpers.createTrapezoid(svgNs, width, height);
   } else {
-    // Default or unknown type
     shape = helpers.createRect(svgNs, width, height);
   }
 
   shape.setAttribute('class', 'shape');
   const text = document.createElementNS(svgNs, 'text');
   text.setAttribute('x', 0);
-  text.setAttribute('y', 4); // Approximately center vertically
+  text.setAttribute('y', 4);
   text.setAttribute('text-anchor', 'middle');
   text.textContent = node.label;
 
@@ -76,15 +93,12 @@ export function drawNode(node) {
 
 /**
  * Computes the points for an edge (start, mid, end) based on terminal nodes and optional midpoint.
- * @param {Object} edge 
- * @returns {Array<{x:number, y:number}> | null}
  */
 function getEdgePoints(edge) {
   const from = state.nodeMap.get(edge.from);
   const to = state.nodeMap.get(edge.to);
   if (!from || !to) return null;
 
-  // If there's a midpoint, start/end boundary points should point toward it.
   const startTarget = edge.mid ? edge.mid : to;
   const endTarget = edge.mid ? edge.mid : from;
 

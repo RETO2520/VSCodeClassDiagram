@@ -10,6 +10,10 @@
  *   workflow.draw.js         → NodeShape / EdgeShape コンポーネント
  *   workflow.interactions.js → React Pointer イベントハンドラ
  *   workflow.api.js          → onDiagramChange コールバック
+ *
+ * Phase 2 追加 (2026-04-21):
+ *   NodeType に foreach / forrange / switch / break / continue を追加
+ *   各型に形状 (六角形 / 五角形 / 台形) と convertToAst 変換を実装
  */
 
 import React, {
@@ -30,8 +34,15 @@ import {
 // Types
 // ============================================================
 
-export type NodeType = 'start' | 'end' | 'process' | 'decision' | 'loop' | 'call'
+export type NodeType =
+    | 'start' | 'end' | 'process' | 'decision' | 'loop' | 'call'
     | 'given' | 'when' | 'then' | 'how'
+    // ── Phase 2: DSL拡張ノード ──────────────────────────────────
+    | 'foreach'   // for v in collection ... end
+    | 'forrange'  // for v from n to m ... end
+    | 'switch'    // switch expr / case / default ... end
+    | 'break'     // break (ループ脱出)
+    | 'continue'  // continue (次反復スキップ)
 
 export interface WFNode {
     id: string
@@ -61,47 +72,32 @@ export interface WFWorkflow {
 }
 
 export interface WFOpRef {
-    /** diagram.classes 配列上のインデックス（workflowDiagram への参照に使用） */
     classIndex: number
-    /** そのクラス内での operation のインデックス */
     opIndex: number
-    /** ClassInfo.id — DomainModel / Service への直接参照に使用 */
     classId: string
-    /** ClassOperation.id — DomainModel / Service への直接参照に使用 */
     operationId: string
-    /** 表示用ラベル ("ClassName.methodName()") */
     label: string
 }
 
 export interface WorkflowEditorPanelProps {
     opRef: WFOpRef | null
-    /**
-     * ワークフロー図の初期データ読み込み用。
-     * ClassInfo の operations[].workflow を参照するためだけに使用する（読み取り専用）。
-     * 書き込みは service.applyUpdateOperationWorkflow() 経由で行う。
-     */
     diagram: { classes: any[] }
-    /** ワークフロー保存に使用する ClassDiagramService インスタンス */
     service: import('@/lib/application/ClassDiagramService').ClassDiagramService
 }
 
 // ============================================================
-// Node geometry (workflow.draw.js に合わせた寸法)
+// Node geometry
 // ============================================================
 
-const HOW_ITEM_H = 16  // Howステップ1行の高さ
-const HOW_PADDING = 8  // Howブロック上下パディング
+const HOW_ITEM_H = 16
+const HOW_PADDING = 8
 
 function nodeSizeWithMeta(node: WFNode): { w: number; h: number } {
     const base = nodeSize(node.type)
     if (node.type !== 'how' && node.type !== 'when' && node.type !== 'then') return base
-
-    // How展開分を加算
     const howSteps = node.metadata?.howSteps ?? []
     const whyReason = node.metadata?.whyReason
-    const howH = howSteps.length > 0
-        ? HOW_PADDING + howSteps.length * HOW_ITEM_H + HOW_PADDING
-        : 0
+    const howH = howSteps.length > 0 ? HOW_PADDING + howSteps.length * HOW_ITEM_H + HOW_PADDING : 0
     const whyH = whyReason ? HOW_ITEM_H + 4 : 0
     return { w: base.w, h: base.h + howH + whyH }
 }
@@ -113,11 +109,15 @@ function nodeSize(type: NodeType): { w: number; h: number } {
     if (type === 'when') return { w: 160, h: 40 }
     if (type === 'then') return { w: 160, h: 40 }
     if (type === 'how') return { w: 160, h: 40 }
+    // Phase 2
+    if (type === 'foreach' || type === 'forrange') return { w: 160, h: 50 }
+    if (type === 'switch') return { w: 150, h: 60 }
+    if (type === 'break' || type === 'continue') return { w: 120, h: 38 }
     return { w: 140, h: 40 }
 }
 
 // ============================================================
-// Utils (workflow.utils.js を TypeScript で移植)
+// Utils
 // ============================================================
 
 function getSvgPoint(svg: SVGSVGElement, clientX: number, clientY: number) {
@@ -152,24 +152,28 @@ function boundaryPointTowards(node: WFNode, target: { x: number; y: number }) {
     const cx = node.x, cy = node.y
     const dx = target.x - cx, dy = target.y - cy
     if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return { x: cx, y: cy }
-    // Gherkin系はHow/Why展開込みの実サイズで計算
     const { w, h } = GHERKIN_KEYWORDS.includes(node.type as any)
         ? nodeSizeWithMeta(node)
         : nodeSize(node.type)
 
-    if (node.type === 'process' || node.type === 'loop' || node.type === 'call'
-        || GHERKIN_KEYWORDS.includes(node.type as any)) {
+    // 矩形系（ rect ベース境界）
+    const RECT_TYPES: NodeType[] = [
+        'process', 'loop', 'call',
+        'given', 'when', 'then', 'how',
+        'foreach', 'forrange',         // 六角形も概算はRectで十分
+        'break', 'continue',           // 台形も同様
+    ]
+    if (RECT_TYPES.includes(node.type)) {
         const sx = dx === 0 ? Infinity : (w / 2) / Math.abs(dx)
         const sy = dy === 0 ? Infinity : (h / 2) / Math.abs(dy)
-        const s = Math.min(sx, sy)
-        return { x: cx + dx * s, y: cy + dy * s }
+        return { x: cx + dx * Math.min(sx, sy), y: cy + dy * Math.min(sx, sy) }
     }
-    if (node.type === 'decision') {
+    if (node.type === 'decision' || node.type === 'switch') {
         const denom = Math.abs(dx) * 2 / w + Math.abs(dy) * 2 / h
         const t = denom === 0 ? 0 : 1 / denom
         return { x: cx + dx * t, y: cy + dy * t }
     }
-    // ellipse
+    // ellipse (start / end)
     const rx = w / 2, ry = h / 2
     const sq = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry)
     const t = sq === 0 ? 0 : 1 / Math.sqrt(sq)
@@ -180,7 +184,6 @@ function getEdgePoints(edge: WFEdge, nodeMap: Map<string, WFNode>) {
     const from = nodeMap.get(edge.from)
     const to = nodeMap.get(edge.to)
     if (!from || !to) return null
-
     const startTarget = edge.mid ?? to
     const endTarget = edge.mid ?? from
     const start = boundaryPointTowards(from, startTarget)
@@ -188,15 +191,17 @@ function getEdgePoints(edge: WFEdge, nodeMap: Map<string, WFNode>) {
     const mid = edge.mid
         ? { x: edge.mid.x, y: edge.mid.y }
         : { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }
-
     return [start, mid, end] as const
 }
 
 function capitalize(s: string) { return s.charAt(0).toUpperCase() + s.slice(1) }
-
 function generateId(prefix: string) {
     return `${prefix}_${Date.now().toString(36)}_${Math.floor(Math.random() * 1000)}`
 }
+
+// ============================================================
+// convertToAst — Phase 2 拡張
+// ============================================================
 
 export function convertToAst(wf: WFWorkflow) {
     const { nodes, edges } = wf
@@ -224,8 +229,8 @@ export function convertToAst(wf: WFWorkflow) {
         while (q.length) {
             const c = q.pop()!
             if (!c || c === stop || s.has(c)) continue
-            s.add(c)
-                ; (outEdges.get(c) || []).forEach(e => q.push(e.to))
+            s.add(c);
+            (outEdges.get(c) || []).forEach(e => q.push(e.to))
         }
         return s
     }
@@ -244,13 +249,22 @@ export function convertToAst(wf: WFWorkflow) {
         if (!n) return []
         const outs = outEdges.get(id) || []
 
-        if (n.type === 'end') return [{ type: 'return', value: (n.label && n.label !== 'End') ? n.label : undefined }]
-        if (n.type === 'process' || n.type === 'call') return [{ type: 'action', statement: n.label }, ...walk(outs[0]?.to, stop)]
+        // ── 既存ノード ──────────────────────────────────────────
+        if (n.type === 'end') {
+            return [{ type: 'return', value: (n.label && n.label !== 'End') ? n.label : undefined }]
+        }
+        if (n.type === 'process' || n.type === 'call') {
+            return [{ type: 'action', statement: n.label }, ...walk(outs[0]?.to, stop)]
+        }
         if (n.type === 'decision') {
             const te = outs.find(e => String(e.condition).toLowerCase() === 'true')
             const fe = outs.find(e => String(e.condition).toLowerCase() === 'false')
             const mp = mergePoint(te?.to, fe?.to)
-            const res: any[] = [{ type: 'if', condition: n.label, then: walk(te?.to, mp), else: walk(fe?.to, mp) || undefined }]
+            const res: any[] = [{
+                type: 'if', condition: n.label,
+                then: walk(te?.to, mp),
+                else: walk(fe?.to, mp) || undefined,
+            }]
             if (mp && mp !== stop) res.push(...walk(mp, stop))
             return res
         }
@@ -261,6 +275,73 @@ export function convertToAst(wf: WFWorkflow) {
             if (fe?.to && fe.to !== stop) res.push(...walk(fe.to, stop))
             return res
         }
+
+        // ── Phase 2: forEach ────────────────────────────────────
+        // エッジ条件: 'body' → ループ本体, それ以外 → ループ後続
+        if (n.type === 'foreach') {
+            const bodyEdge = outs.find(e => String(e.condition ?? '').toLowerCase() === 'body')
+            const nextEdge = outs.find(e => String(e.condition ?? '').toLowerCase() !== 'body') ?? outs[0]
+            // label 形式: "for item in this.items" を解析
+            const m = n.label.match(/^for\s+(\S+)\s+in\s+(.+)$/i)
+            const variable = m?.[1] ?? n.label
+            const collection = m?.[2] ?? ''
+            const res: any[] = [{
+                type: 'forEach',
+                variable,
+                collection,
+                body: walk(bodyEdge?.to, id),
+            }]
+            if (nextEdge?.to && nextEdge.to !== stop) res.push(...walk(nextEdge.to, stop))
+            return res
+        }
+
+        // ── Phase 2: forRange ───────────────────────────────────
+        if (n.type === 'forrange') {
+            const bodyEdge = outs.find(e => String(e.condition ?? '').toLowerCase() === 'body')
+            const nextEdge = outs.find(e => String(e.condition ?? '').toLowerCase() !== 'body') ?? outs[0]
+            // label 形式: "for i from 0 to 10"
+            const m = n.label.match(/^for\s+(\S+)\s+from\s+(\S+)\s+to\s+(\S+)$/i)
+            const variable = m?.[1] ?? n.label
+            const from = m?.[2] ?? '0'
+            const to = m?.[3] ?? '0'
+            const res: any[] = [{
+                type: 'forRange',
+                variable,
+                from,
+                to,
+                body: walk(bodyEdge?.to, id),
+            }]
+            if (nextEdge?.to && nextEdge.to !== stop) res.push(...walk(nextEdge.to, stop))
+            return res
+        }
+
+        // ── Phase 2: switch ─────────────────────────────────────
+        // エッジ条件: 各 case 値文字列 または "default"
+        if (n.type === 'switch') {
+            const caseEdges = outs.filter(e => String(e.condition ?? '').toLowerCase() !== 'default' && e.condition != null)
+            const defaultEdge = outs.find(e => String(e.condition ?? '').toLowerCase() === 'default')
+            // 全caseのマージポイントを探す
+            const allTos = outs.map(e => e.to).filter(Boolean)
+            const mp = allTos.reduce<string | null>((acc, id) => mergePoint(acc ?? undefined, id), null)
+            const cases = caseEdges.map(e => ({
+                value: String(e.condition),
+                body: walk(e.to, mp ?? undefined),
+            }))
+            const res: any[] = [{
+                type: 'switch',
+                expression: n.label,
+                cases,
+                default: defaultEdge ? walk(defaultEdge.to, mp ?? undefined) : undefined,
+            }]
+            if (mp && mp !== stop) res.push(...walk(mp, stop))
+            return res
+        }
+
+        // ── Phase 2: break / continue ───────────────────────────
+        if (n.type === 'break') return [{ type: 'break' }]
+        if (n.type === 'continue') return [{ type: 'continue' }]
+
+        // Gherkin / その他 → 次ノードへ続行
         if (outs.length > 0) return walk(outs[0].to, stop)
         return []
     }
@@ -301,22 +382,28 @@ function wfReducer(s: WFWorkflow, a: WFAction): WFWorkflow {
 }
 
 // ============================================================
-// Design tokens — VSCode dark に準じたシック&シャープな配色
+// Design tokens
 // ============================================================
 
 const STYLE: Record<NodeType, { fill: string; stroke: string; text: string }> = {
-    start: { fill: '#14532d', stroke: '#4ade80', text: '#bbf7d0' },
-    end: { fill: '#7f1d1d', stroke: '#f87171', text: '#fecaca' },
-    process: { fill: '#1e293b', stroke: '#64748b', text: '#e2e8f0' },
+    start:    { fill: '#14532d', stroke: '#4ade80', text: '#bbf7d0' },
+    end:      { fill: '#7f1d1d', stroke: '#f87171', text: '#fecaca' },
+    process:  { fill: '#1e293b', stroke: '#64748b', text: '#e2e8f0' },
     decision: { fill: '#2e1065', stroke: '#c084fc', text: '#f3e8ff' },
-    loop: { fill: '#0c2a4a', stroke: '#38bdf8', text: '#e0f2fe' },
-    call: { fill: '#431407', stroke: '#fb923c', text: '#ffedd5' },
-    // Gherkin系 — Given:緑, When:紫, Then:青, How:紺
-    given: { fill: '#052e16', stroke: '#22c55e', text: '#bbf7d0' },
-    when: { fill: '#2e1065', stroke: '#a855f7', text: '#f3e8ff' },
-    then: { fill: '#0c1a4a', stroke: '#60a5fa', text: '#dbeafe' },
-    how: { fill: '#0f172a', stroke: '#1d4ed8', text: '#93c5fd' },
+    loop:     { fill: '#0c2a4a', stroke: '#38bdf8', text: '#e0f2fe' },
+    call:     { fill: '#431407', stroke: '#fb923c', text: '#ffedd5' },
+    given:    { fill: '#052e16', stroke: '#22c55e', text: '#bbf7d0' },
+    when:     { fill: '#2e1065', stroke: '#a855f7', text: '#f3e8ff' },
+    then:     { fill: '#0c1a4a', stroke: '#60a5fa', text: '#dbeafe' },
+    how:      { fill: '#0f172a', stroke: '#1d4ed8', text: '#93c5fd' },
+    // Phase 2 ─────────────────────────────────────────────────
+    foreach:  { fill: '#0d2b2b', stroke: '#2dd4bf', text: '#99f6e4' },  // teal: コレクションループ
+    forrange: { fill: '#0a2323', stroke: '#14b8a6', text: '#5eead4' },  // teal暗め: 範囲ループ
+    switch:   { fill: '#2c1a00', stroke: '#f59e0b', text: '#fde68a' },  // amber: 分岐ハブ
+    break:    { fill: '#2d0a0a', stroke: '#f87171', text: '#fecaca' },  // red: 脱出
+    continue: { fill: '#1c0d2b', stroke: '#a78bfa', text: '#ede9fe' },  // violet: スキップ
 }
+
 const ACCENT = '#3b82f6'
 const VIEWPORT_CULL_PADDING = 140
 
@@ -329,9 +416,51 @@ const KEYWORD_LABEL: Record<string, string> = {
     given: 'Given', when: 'When', then: 'Then', how: 'How'
 }
 
-/** ラベルからキーワードプレフィックスを除去して本文だけ返す */
 function stripKeyword(label: string): string {
     return label.replace(/^(Given|When|Then|How|And|But|前提|もし|ならば|かつ|しかし):\s*/i, '')
+}
+
+// ============================================================
+// SVG shape helpers for Phase 2 nodes
+// ============================================================
+
+/** 六角形 (foreach / forrange) — 左右を斜めにカットした横長六角 */
+function hexagonPoints(w: number, h: number): string {
+    const cx = w / 2, cy = h / 2
+    const indent = h * 0.28  // 左右の切り込み幅
+    return [
+        [-cx + indent, -cy],
+        [cx - indent,  -cy],
+        [cx,            0],
+        [cx - indent,   cy],
+        [-cx + indent,  cy],
+        [-cx,           0],
+    ].map(p => p.join(',')).join(' ')
+}
+
+/** 五角形・家型 (switch) — 上に三角の屋根を持つ形 */
+function pentagonPoints(w: number, h: number): string {
+    const cx = w / 2, cy = h / 2
+    const roofH = h * 0.32
+    return [
+        [0,   -cy],           // 頂点（屋根）
+        [cx,  -cy + roofH],   // 右肩
+        [cx,   cy],           // 右下
+        [-cx,  cy],           // 左下
+        [-cx, -cy + roofH],   // 左肩
+    ].map(p => p.join(',')).join(' ')
+}
+
+/** 台形 (break / continue) — 上辺が短い台形 */
+function trapezoidPoints(w: number, h: number): string {
+    const cx = w / 2, cy = h / 2
+    const topInset = w * 0.18  // 上辺の内側への引き込み量
+    return [
+        [-cx + topInset, -cy],
+        [ cx - topInset, -cy],
+        [ cx,             cy],
+        [-cx,             cy],
+    ].map(p => p.join(',')).join(' ')
 }
 
 // ============================================================
@@ -358,23 +487,135 @@ function NodeShape({ node, isSelected, onPointerDown, onHandlePointerDown, onDou
 
     const bodyProps = { fill: st.fill, stroke, strokeWidth: sw, filter: `url(#${fid})` }
 
+    // ── Phase 2: foreach / forrange ──────────────────────────────
+    if (node.type === 'foreach' || node.type === 'forrange') {
+        const pts = hexagonPoints(w, baseH)
+        const badge = node.type === 'foreach' ? 'for…in' : 'for…to'
+        return (
+            <g transform={`translate(${node.x},${node.y})`}
+                style={{ cursor: 'move', userSelect: 'none' }}
+                onPointerDown={e => onPointerDown(e, node.id)}
+                onDoubleClick={e => onDoubleClick(e, node)}
+                onContextMenu={e => onContextMenu(e, node)}
+            >
+                <defs>
+                    <filter id={fid} x="-40%" y="-40%" width="180%" height="180%">
+                        <feDropShadow dx="0" dy="2" stdDeviation="3"
+                            floodColor={isSelected ? '#3b82f650' : '#00000060'} />
+                    </filter>
+                </defs>
+                <polygon points={pts} {...bodyProps} />
+                {/* 右側にループ矢印マーク */}
+                <text x={w / 2 - 12} y={0}
+                    textAnchor="middle" dominantBaseline="central"
+                    fontSize={10} fill={st.stroke} pointerEvents="none" opacity={0.7}>↻</text>
+                {/* バッジ */}
+                <text x={-w / 2 + 28} y={-baseH / 2 + 9}
+                    textAnchor="middle" dominantBaseline="central"
+                    fontSize={7} fontWeight="700" fill={st.stroke} opacity={0.8}
+                    fontFamily='"Cascadia Code","SF Mono",monospace' pointerEvents="none">
+                    {badge}
+                </text>
+                {/* ラベル本文 */}
+                <text x={-4} y={2}
+                    textAnchor="middle" dominantBaseline="central"
+                    fontSize={10} fill={st.text}
+                    fontFamily='"Cascadia Code","SF Mono",monospace' pointerEvents="none">
+                    {node.label.length > 20 ? node.label.slice(0, 19) + '…' : node.label}
+                </text>
+                <circle cx={w / 2 + 9} cy={0} r={5.5}
+                    fill={ACCENT} stroke="#0f172a" strokeWidth={1.5}
+                    style={{ cursor: 'crosshair' }}
+                    onPointerDown={e => { e.stopPropagation(); onHandlePointerDown(e, node) }} />
+            </g>
+        )
+    }
+
+    // ── Phase 2: switch ──────────────────────────────────────────
+    if (node.type === 'switch') {
+        const pts = pentagonPoints(w, baseH)
+        return (
+            <g transform={`translate(${node.x},${node.y})`}
+                style={{ cursor: 'move', userSelect: 'none' }}
+                onPointerDown={e => onPointerDown(e, node.id)}
+                onDoubleClick={e => onDoubleClick(e, node)}
+                onContextMenu={e => onContextMenu(e, node)}
+            >
+                <defs>
+                    <filter id={fid} x="-40%" y="-40%" width="180%" height="180%">
+                        <feDropShadow dx="0" dy="2" stdDeviation="3"
+                            floodColor={isSelected ? '#3b82f650' : '#00000060'} />
+                    </filter>
+                </defs>
+                <polygon points={pts} {...bodyProps} />
+                {/* "SW" ラベル */}
+                <text x={0} y={-baseH / 2 + baseH * 0.22}
+                    textAnchor="middle" dominantBaseline="central"
+                    fontSize={7} fontWeight="700" fill={st.stroke} opacity={0.85}
+                    fontFamily='"Cascadia Code","SF Mono",monospace' pointerEvents="none">
+                    switch
+                </text>
+                <text x={0} y={baseH * 0.15}
+                    textAnchor="middle" dominantBaseline="central"
+                    fontSize={10} fill={st.text}
+                    fontFamily='"Cascadia Code","SF Mono",monospace' pointerEvents="none">
+                    {node.label.length > 18 ? node.label.slice(0, 17) + '…' : node.label}
+                </text>
+                <circle cx={w / 2 + 9} cy={0} r={5.5}
+                    fill={ACCENT} stroke="#0f172a" strokeWidth={1.5}
+                    style={{ cursor: 'crosshair' }}
+                    onPointerDown={e => { e.stopPropagation(); onHandlePointerDown(e, node) }} />
+            </g>
+        )
+    }
+
+    // ── Phase 2: break / continue ────────────────────────────────
+    if (node.type === 'break' || node.type === 'continue') {
+        const pts = trapezoidPoints(w, baseH)
+        const icon = node.type === 'break' ? '⏹' : '⏭'
+        return (
+            <g transform={`translate(${node.x},${node.y})`}
+                style={{ cursor: 'move', userSelect: 'none' }}
+                onPointerDown={e => onPointerDown(e, node.id)}
+                onDoubleClick={e => onDoubleClick(e, node)}
+                onContextMenu={e => onContextMenu(e, node)}
+            >
+                <defs>
+                    <filter id={fid} x="-40%" y="-40%" width="180%" height="180%">
+                        <feDropShadow dx="0" dy="2" stdDeviation="3"
+                            floodColor={isSelected ? '#3b82f650' : '#00000060'} />
+                    </filter>
+                </defs>
+                <polygon points={pts} {...bodyProps} />
+                <text x={-w / 2 + 20} y={1}
+                    textAnchor="middle" dominantBaseline="central"
+                    fontSize={11} fill={st.stroke} pointerEvents="none">{icon}</text>
+                <text x={10} y={1}
+                    textAnchor="middle" dominantBaseline="central"
+                    fontSize={10} fill={st.text} fontWeight="600"
+                    fontFamily='"Cascadia Code","SF Mono",monospace' pointerEvents="none">
+                    {node.label}
+                </text>
+                <circle cx={w / 2 + 9} cy={0} r={5.5}
+                    fill={ACCENT} stroke="#0f172a" strokeWidth={1.5}
+                    style={{ cursor: 'crosshair' }}
+                    onPointerDown={e => { e.stopPropagation(); onHandlePointerDown(e, node) }} />
+            </g>
+        )
+    }
+
     // ── Gherkin系ノード ──────────────────────────────────────────
     if (isGherkin) {
         const howSteps = node.metadata?.howSteps ?? []
         const whyReason = node.metadata?.whyReason
         const keyword = KEYWORD_LABEL[node.type] ?? node.type
         const bodyText = stripKeyword(node.label)
-
-        // How展開ブロックの高さ
-        const howH = howSteps.length > 0
-            ? HOW_PADDING + howSteps.length * HOW_ITEM_H + HOW_PADDING
-            : 0
+        const howH = howSteps.length > 0 ? HOW_PADDING + howSteps.length * HOW_ITEM_H + HOW_PADDING : 0
         const whyH = whyReason ? HOW_ITEM_H + 4 : 0
         const expandH = howH + whyH
 
         return (
-            <g
-                transform={`translate(${node.x},${node.y})`}
+            <g transform={`translate(${node.x},${node.y})`}
                 style={{ cursor: 'move', userSelect: 'none' }}
                 onPointerDown={e => onPointerDown(e, node.id)}
                 onDoubleClick={e => onDoubleClick(e, node)}
@@ -386,106 +627,62 @@ function NodeShape({ node, isSelected, onPointerDown, onHandlePointerDown, onDou
                             floodColor={isSelected ? '#3b82f650' : '#00000060'} />
                     </filter>
                 </defs>
-
-                {/* メインボディ */}
-                <rect x={-w / 2} y={-totalH / 2} width={w} height={totalH}
-                    rx={6} {...bodyProps} />
-
-                {/* キーワードバッジ（左上） */}
-                <rect x={-w / 2 + 4} y={-totalH / 2 + 4} width={34} height={14}
-                    rx={3} fill={st.stroke} opacity={0.25} pointerEvents="none" />
-                <text
-                    x={-w / 2 + 21} y={-totalH / 2 + 11}
+                <rect x={-w / 2} y={-totalH / 2} width={w} height={totalH} rx={6} {...bodyProps} />
+                <rect x={-w / 2 + 4} y={-totalH / 2 + 4} width={34} height={14} rx={3}
+                    fill={st.stroke} opacity={0.25} pointerEvents="none" />
+                <text x={-w / 2 + 21} y={-totalH / 2 + 11}
                     textAnchor="middle" dominantBaseline="central"
                     fontSize={8} fontWeight="700" fill={st.stroke}
-                    fontFamily='"Cascadia Code","SF Mono",monospace'
-                    pointerEvents="none"
-                >
+                    fontFamily='"Cascadia Code","SF Mono",monospace' pointerEvents="none">
                     {keyword}
                 </text>
-
-                {/* 本文テキスト */}
-                <text
-                    x={0} y={-totalH / 2 + baseH / 2 + 2}
+                <text x={0} y={-totalH / 2 + baseH / 2 + 2}
                     textAnchor="middle" dominantBaseline="central"
                     fontSize={10} fill={st.text}
-                    fontFamily='"Cascadia Code","SF Mono","Fira Code",monospace'
-                    pointerEvents="none"
-                >
+                    fontFamily='"Cascadia Code","SF Mono","Fira Code",monospace' pointerEvents="none">
                     {bodyText.length > 20 ? bodyText.slice(0, 19) + '…' : bodyText}
                 </text>
-
-                {/* How展開ブロック */}
                 {howSteps.length > 0 && (
                     <g pointerEvents="none">
-                        {/* 区切り線 */}
-                        <line
-                            x1={-w / 2 + 8} y1={-totalH / 2 + baseH}
-                            x2={w / 2 - 8} y2={-totalH / 2 + baseH}
-                            stroke={st.stroke} strokeWidth={0.5} opacity={0.4}
-                        />
-                        {/* How ラベル */}
-                        <text
-                            x={-w / 2 + 8} y={-totalH / 2 + baseH + HOW_PADDING - 2}
+                        <line x1={-w / 2 + 8} y1={-totalH / 2 + baseH} x2={w / 2 - 8} y2={-totalH / 2 + baseH}
+                            stroke={st.stroke} strokeWidth={0.5} opacity={0.4} />
+                        <text x={-w / 2 + 8} y={-totalH / 2 + baseH + HOW_PADDING - 2}
                             fontSize={7} fontWeight="700" fill="#93c5fd"
-                            fontFamily='"Cascadia Code","SF Mono",monospace'
-                        >
-                            How
-                        </text>
-                        {/* ステップ行 */}
+                            fontFamily='"Cascadia Code","SF Mono",monospace'>How</text>
                         {howSteps.map((step, i) => (
-                            <text
-                                key={i}
-                                x={-w / 2 + 10}
+                            <text key={i} x={-w / 2 + 10}
                                 y={-totalH / 2 + baseH + HOW_PADDING + i * HOW_ITEM_H + 10}
                                 fontSize={8} fill="#bfdbfe"
-                                fontFamily='"Cascadia Code","SF Mono",monospace'
-                            >
+                                fontFamily='"Cascadia Code","SF Mono",monospace'>
                                 {`${i + 1}. ${step.length > 17 ? step.slice(0, 16) + '…' : step}`}
                             </text>
                         ))}
                     </g>
                 )}
-
-                {/* Why行 */}
                 {whyReason && (
                     <g pointerEvents="none">
-                        <line
-                            x1={-w / 2 + 8} y1={-totalH / 2 + baseH + howH}
+                        <line x1={-w / 2 + 8} y1={-totalH / 2 + baseH + howH}
                             x2={w / 2 - 8} y2={-totalH / 2 + baseH + howH}
-                            stroke="#a78bfa" strokeWidth={0.5} opacity={0.4}
-                        />
-                        <text
-                            x={-w / 2 + 8}
-                            y={-totalH / 2 + baseH + howH + HOW_ITEM_H / 2 + 2}
+                            stroke="#a78bfa" strokeWidth={0.5} opacity={0.4} />
+                        <text x={-w / 2 + 8} y={-totalH / 2 + baseH + howH + HOW_ITEM_H / 2 + 2}
                             fontSize={7} fontWeight="700" fill="#a78bfa"
-                            fontFamily='"Cascadia Code","SF Mono",monospace'
-                        >
-                            Why
-                        </text>
-                        <text
-                            x={-w / 2 + 28}
-                            y={-totalH / 2 + baseH + howH + HOW_ITEM_H / 2 + 2}
+                            fontFamily='"Cascadia Code","SF Mono",monospace'>Why</text>
+                        <text x={-w / 2 + 28} y={-totalH / 2 + baseH + howH + HOW_ITEM_H / 2 + 2}
                             fontSize={8} fill="#c4b5fd"
-                            fontFamily='"Cascadia Code","SF Mono",monospace'
-                        >
+                            fontFamily='"Cascadia Code","SF Mono",monospace'>
                             {whyReason.length > 15 ? whyReason.slice(0, 14) + '…' : whyReason}
                         </text>
                     </g>
                 )}
-
-                {/* エッジ作成ハンドル */}
-                <circle
-                    cx={w / 2 + 9} cy={0} r={5.5}
+                <circle cx={w / 2 + 9} cy={0} r={5.5}
                     fill={ACCENT} stroke="#0f172a" strokeWidth={1.5}
                     style={{ cursor: 'crosshair' }}
-                    onPointerDown={e => { e.stopPropagation(); onHandlePointerDown(e, node) }}
-                />
+                    onPointerDown={e => { e.stopPropagation(); onHandlePointerDown(e, node) }} />
             </g>
         )
     }
 
-    // ── 従来ノード ───────────────────────────────────────────────
+    // ── 従来ノード (start / end / process / decision / loop / call) ──
     let body: React.ReactNode
     if (node.type === 'start' || node.type === 'end') {
         body = <ellipse cx={0} cy={0} rx={w / 2} ry={baseH / 2} {...bodyProps} />
@@ -497,8 +694,7 @@ function NodeShape({ node, isSelected, onPointerDown, onHandlePointerDown, onDou
     }
 
     return (
-        <g
-            transform={`translate(${node.x},${node.y})`}
+        <g transform={`translate(${node.x},${node.y})`}
             style={{ cursor: 'move', userSelect: 'none' }}
             onPointerDown={e => onPointerDown(e, node.id)}
             onDoubleClick={e => onDoubleClick(e, node)}
@@ -510,37 +706,28 @@ function NodeShape({ node, isSelected, onPointerDown, onHandlePointerDown, onDou
                         floodColor={isSelected ? '#3b82f650' : '#00000070'} />
                 </filter>
             </defs>
-
             {body}
-
             {node.type === 'loop' && <>
                 <path d={`M${-w / 2 + 10},${-baseH / 2 + 6} L${-w / 2 + 4},0 L${-w / 2 + 10},${baseH / 2 - 6}`}
                     fill="none" stroke={st.text} strokeWidth={1.2} opacity={0.5} pointerEvents="none" />
                 <path d={`M${w / 2 - 10},${-baseH / 2 + 6} L${w / 2 - 4},0 L${w / 2 - 10},${baseH / 2 - 6}`}
                     fill="none" stroke={st.text} strokeWidth={1.2} opacity={0.5} pointerEvents="none" />
             </>}
-
             {node.type === 'call' && <>
                 <line x1={-w / 2 + 12} y1={-baseH / 2 + 4} x2={-w / 2 + 12} y2={baseH / 2 - 4} stroke={st.text} strokeWidth={1.2} opacity={0.5} pointerEvents="none" />
                 <line x1={w / 2 - 12} y1={-baseH / 2 + 4} x2={w / 2 - 12} y2={baseH / 2 - 4} stroke={st.text} strokeWidth={1.2} opacity={0.5} pointerEvents="none" />
             </>}
-
-            <text
-                textAnchor="middle" dominantBaseline="central"
+            <text textAnchor="middle" dominantBaseline="central"
                 fill={st.text} fontSize={11}
                 fontFamily='"Cascadia Code","SF Mono","Fira Code",monospace'
                 fontWeight={node.type === 'start' || node.type === 'end' ? '700' : '400'}
-                pointerEvents="none"
-            >
+                pointerEvents="none">
                 {node.label.length > 17 ? node.label.slice(0, 16) + '…' : node.label}
             </text>
-
-            <circle
-                cx={w / 2 + 9} cy={0} r={5.5}
+            <circle cx={w / 2 + 9} cy={0} r={5.5}
                 fill={ACCENT} stroke="#0f172a" strokeWidth={1.5}
                 style={{ cursor: 'crosshair' }}
-                onPointerDown={e => { e.stopPropagation(); onHandlePointerDown(e, node) }}
-            />
+                onPointerDown={e => { e.stopPropagation(); onHandlePointerDown(e, node) }} />
         </g>
     )
 }
@@ -563,45 +750,35 @@ function EdgeShape({ edge, nodeMap, isSelected, onMidPointerDown, onContextMenu 
     const [s, m, e_] = pts
     const d = `M${s.x},${s.y} L${m.x},${m.y} L${e_.x},${e_.y}`
     const lp = computePolylineMidpoint([s, m, e_])
-
-    // Scenario境界エッジ（conditionあり）は破線＋強調色
     const isScenarioBoundary = edge.condition != null
     const col = isSelected ? ACCENT : isScenarioBoundary ? '#a78bfa' : '#64748b'
     const strokeDash = isScenarioBoundary ? '6 3' : undefined
 
     return (
         <g onContextMenu={ev => { ev.preventDefault(); onContextMenu(ev, edge) }}>
-            {/* ヒット領域 */}
             <path d={d} fill="none" stroke="transparent" strokeWidth={14} style={{ cursor: 'context-menu' }} />
-            {/* エッジ本体 */}
             <path d={d} fill="none" stroke={col}
-                strokeWidth={isSelected ? 2 : isScenarioBoundary ? 1.5 : 1.5}
+                strokeWidth={isSelected ? 2 : 1.5}
                 strokeDasharray={strokeDash}
                 markerEnd="url(#wf-arrow)" />
-            {/* Scenario境界ラベル */}
             {isScenarioBoundary && (
                 <g pointerEvents="none">
-                    <rect
-                        x={lp.x - 54} y={lp.y - 22}
-                        width={108} height={16} rx={3}
-                        fill="#1e1b4b" stroke="#a78bfa" strokeWidth={0.8} opacity={0.9}
-                    />
+                    <rect x={lp.x - 54} y={lp.y - 22} width={108} height={16} rx={3}
+                        fill="#1e1b4b" stroke="#a78bfa" strokeWidth={0.8} opacity={0.9} />
                     <text x={lp.x} y={lp.y - 14}
                         textAnchor="middle" dominantBaseline="central"
                         fontSize={9} fill="#c4b5fd"
                         fontFamily='"Cascadia Code","SF Mono",monospace'>
-                        Scenario: {String(edge.condition).length > 14
-                            ? String(edge.condition).slice(0, 13) + '…'
+                        {String(edge.condition).length > 18
+                            ? String(edge.condition).slice(0, 17) + '…'
                             : String(edge.condition)}
                     </text>
                 </g>
             )}
-            {/* 中点ドラッグハンドル */}
             <circle cx={m.x} cy={m.y} r={5}
                 fill={isSelected ? ACCENT : '#334155'} stroke="#0f172a" strokeWidth={1.5}
                 style={{ cursor: 'move' }}
-                onPointerDown={ev => { ev.stopPropagation(); onMidPointerDown(ev, edge) }}
-            />
+                onPointerDown={ev => { ev.stopPropagation(); onMidPointerDown(ev, edge) }} />
         </g>
     )
 }
@@ -632,15 +809,24 @@ function InlineEditor({ node, svgRef, onCommit, onCancel }: {
 
     useEffect(() => { ref.current?.focus(); ref.current?.select() }, [])
 
+    // foreach / forrange はラベル構文のヒントをプレースホルダーで案内
+    const placeholder =
+        node.type === 'foreach'  ? 'for item in this.items' :
+        node.type === 'forrange' ? 'for i from 0 to 10' :
+        node.type === 'switch'   ? 'this.status' :
+        undefined
+
     return (
-        <input
-            ref={ref} value={val}
+        <input ref={ref} value={val} placeholder={placeholder}
             onChange={e => setVal(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') onCommit(val.trim() || node.id); if (e.key === 'Escape') onCancel() }}
+            onKeyDown={e => {
+                if (e.key === 'Enter') onCommit(val.trim() || node.id)
+                if (e.key === 'Escape') onCancel()
+            }}
             onBlur={() => onCommit(val.trim() || node.id)}
             style={{
                 position: 'fixed', left: pos.left, top: pos.top,
-                width: 200, zIndex: 500,
+                width: 220, zIndex: 500,
                 background: '#0f172a', color: '#f1f5f9',
                 border: '2px solid #3b82f6', borderRadius: 5,
                 padding: '3px 8px', fontSize: 12,
@@ -656,10 +842,66 @@ function InlineEditor({ node, svgRef, onCommit, onCancel }: {
 
 const NODE_TYPES: NodeType[] = ['start', 'process', 'decision', 'loop', 'call', 'end']
 const GHERKIN_NODE_TYPES: NodeType[] = ['given', 'when', 'then', 'how']
+// Phase 2
+const FLOW_NODE_TYPES: NodeType[] = ['foreach', 'forrange', 'switch', 'break', 'continue']
+
 const NODE_COL: Record<NodeType, string> = {
     start: '#4ade80', end: '#f87171', process: '#94a3b8',
     decision: '#c084fc', loop: '#38bdf8', call: '#fb923c',
     given: '#22c55e', when: '#a855f7', then: '#60a5fa', how: '#1d4ed8',
+    // Phase 2
+    foreach:  '#2dd4bf',
+    forrange: '#14b8a6',
+    switch:   '#f59e0b',
+    break:    '#f87171',
+    continue: '#a78bfa',
+}
+
+const FLOW_NODE_LABEL: Record<string, string> = {
+    foreach:  'ForEach',
+    forrange: 'ForRange',
+    switch:   'Switch',
+    break:    'Break',
+    continue: 'Continue',
+}
+
+// ============================================================
+// エッジ条件自動付与ロジック (Phase 2 拡張)
+// ============================================================
+
+function autoCondition(fromNode: WFNode, existingOuts: WFEdge[]): string | null | undefined {
+    const type = fromNode.type
+
+    // decision / loop: true/false
+    if (type === 'decision' || type === 'loop') {
+        const hasF = existingOuts.some(e => String(e.condition ?? '').toLowerCase() === 'false')
+        const hasT = existingOuts.some(e => String(e.condition ?? '').toLowerCase() === 'true')
+        if (!hasF) return 'false'
+        if (!hasT) return 'true'
+        return null
+    }
+
+    // foreach / forrange: body → それ以外は次続き (undefined = 無条件)
+    if (type === 'foreach' || type === 'forrange') {
+        const hasBody = existingOuts.some(e => String(e.condition ?? '').toLowerCase() === 'body')
+        if (!hasBody) return 'body'
+        return undefined  // 後続エッジは条件なし
+    }
+
+    // switch: case0, case1, ... default の順に自動割り当て
+    if (type === 'switch') {
+        const usedConditions = new Set(existingOuts.map(e => String(e.condition ?? '')))
+        if (!usedConditions.has('default')) {
+            // case0, case1 ... を埋めてから default を割り当て
+            const caseCount = existingOuts.filter(e => String(e.condition ?? '').startsWith('case')).length
+            const nextCase = `case${caseCount}`
+            if (!usedConditions.has(nextCase)) return nextCase
+            return 'default'
+        }
+        return null
+    }
+
+    return undefined  // break / continue / その他: 条件なし
 }
 
 // ============================================================
@@ -670,28 +912,8 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
     const svgRef = useRef<SVGSVGElement>(null)
     const [wf, dispatch] = useReducer(wfReducer, { nodes: [], edges: [] })
 
-    // ── workflow ロード ──────────────────────────────────────────
-    //
-    // 旧実装の問題:
-    //   loadedRef に "classIndex:opIndex" をキャッシュし、同じkeyなら即returnしていた。
-    //   → DSLを編集してworkflowが外部更新されても同じメソッドを表示中なら
-    //     永遠にスキップされ、リアルタイム更新が反映されなかった。
-    //
-    // 新実装:
-    //   1. opRefが切り替わったとき → 強制ロード
-    //   2. service.onModelChanged → 外部更新（SpecEditorPanel等）を検知して再ロード
-    //   3. ロード内容が現在の表示と同じならスキップ（編集中の状態を保護）
-
-    // 最後にロードした workflow の JSON（差分検知用）
     const lastLoadedJson = useRef<string>('')
-    // 現在表示中の opRef キー（切り替え検知用）
     const currentOpKey = useRef<string>('')
-
-    // opRef と service を ref で保持する。
-    // これにより loadFromService を deps なしの安定した関数にでき、
-    // onModelChanged に登録した関数が常に最新の opRef/service を参照できる。
-    // （useCallback([opRef, service]) にすると opRef 変化のたびに新インスタンスが生成され、
-    //   古い関数が subscription に残って stale closure になる）
     const opRefRef = useRef(opRef)
     const serviceRef = useRef(service)
     useEffect(() => { opRefRef.current = opRef }, [opRef])
@@ -700,15 +922,9 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
     const loadFromService = useCallback(() => {
         const currentOpRef = opRefRef.current
         if (!currentOpRef) return
-
         const model = serviceRef.current.getModel()
-
-        // まず classId / operationId で直接検索（通常ケース）
         let cls = model.findClassById(currentOpRef.classId)
         let op = cls?.operations.find(o => o.id === currentOpRef.operationId)
-
-        // IDで見つからない場合（モデルリセット後）は名前ベースでフォールバック検索する。
-        // SpecEditorPanel が setModel(empty) → parse() を行うと新しい ID が振られるため。
         if (!op) {
             const m = currentOpRef.label.match(/^(.+?)\.(.+?)\(/)
             if (m) {
@@ -716,17 +932,11 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                 op = cls?.operations.find(o => o.name === m[2])
             }
         }
-
-        if (!op || !cls) {
-            return
-        }
-
+        if (!op || !cls) return
         const incoming = op.workflow?.nodes?.length ? op.workflow : null
         const incomingJson = JSON.stringify(incoming)
-
         if (incomingJson === lastLoadedJson.current) return
         lastLoadedJson.current = incomingJson
-
         if (incoming) {
             dispatch({ type: 'SET_WF', wf: JSON.parse(incomingJson) })
         } else {
@@ -741,22 +951,16 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                 }
             })
         }
-        // 依存配列は空 — opRef/service は ref 経由で参照するため関数インスタンスが安定する
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
-    // opRef が変わったとき → キャッシュをクリアして強制ロード
     useEffect(() => {
         if (!opRef) return
         const key = `${opRef.classId}:${opRef.operationId}`
-        if (currentOpKey.current !== key) {
-            currentOpKey.current = key
-            lastLoadedJson.current = ''  // 強制再ロード
-        }
+        if (currentOpKey.current !== key) { currentOpKey.current = key; lastLoadedJson.current = '' }
         loadFromService()
     }, [opRef, loadFromService])
 
-    // service のモデル変化を購読（loadFromService が安定しているので張り直し不要）
     useEffect(() => {
         service.onModelChanged(loadFromService)
         return () => service.offModelChanged(loadFromService)
@@ -764,61 +968,43 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
 
     const nodeMap = useMemo(() => new Map(wf.nodes.map(n => [n.id, n])), [wf.nodes])
 
-    // ── pan / zoom state ──
+    // ── pan / zoom ──
     const [zoom, setZoom] = useState(1)
     const [pan, setPan] = useState({ x: 0, y: 0 })
     const [viewSize, setViewSize] = useState({ width: 0, height: 0 })
     const canvasDrag = useRef<{ ptId: number; sx: number; sy: number; px: number; py: number } | null>(null)
 
     useEffect(() => {
-        const svg = svgRef.current
-        if (!svg) return
-        const syncSize = () => {
-            const rect = svg.getBoundingClientRect()
-            setViewSize({ width: rect.width, height: rect.height })
-        }
+        const svg = svgRef.current; if (!svg) return
+        const syncSize = () => { const r = svg.getBoundingClientRect(); setViewSize({ width: r.width, height: r.height }) }
         syncSize()
-
-        const observer = new ResizeObserver(() => syncSize())
-        observer.observe(svg)
-        return () => observer.disconnect()
+        const obs = new ResizeObserver(syncSize); obs.observe(svg)
+        return () => obs.disconnect()
     }, [])
 
     const clampZoom = (z: number) => Math.min(3, Math.max(0.2, z))
 
-    // ホイールでズーム（カーソル位置を中心に）
     const onWheel = useCallback((e: React.WheelEvent) => {
         e.preventDefault()
-        const svg = svgRef.current
-        if (!svg) return
+        const svg = svgRef.current; if (!svg) return
         const rect = svg.getBoundingClientRect()
-        const cx = e.clientX - rect.left
-        const cy = e.clientY - rect.top
+        const cx = e.clientX - rect.left, cy = e.clientY - rect.top
         const delta = e.deltaY < 0 ? 1.12 : 1 / 1.12
         setZoom(z => {
             const nz = clampZoom(z * delta)
-            // ズーム前後でカーソル位置が動かないよう pan を補正
-            setPan(p => ({
-                x: cx - (cx - p.x) * (nz / z),
-                y: cy - (cy - p.y) * (nz / z),
-            }))
+            setPan(p => ({ x: cx - (cx - p.x) * (nz / z), y: cy - (cy - p.y) * (nz / z) }))
             return nz
         })
     }, [])
 
-    // ズームボタン用
     const zoomBy = useCallback((factor: number) => {
         setZoom(z => {
             const nz = clampZoom(z * factor)
-            // 中心基準でズーム
             const svg = svgRef.current
             if (svg) {
                 const { width, height } = svg.getBoundingClientRect()
                 const cx = width / 2, cy = height / 2
-                setPan(p => ({
-                    x: cx - (cx - p.x) * (nz / z),
-                    y: cy - (cy - p.y) * (nz / z),
-                }))
+                setPan(p => ({ x: cx - (cx - p.x) * (nz / z), y: cy - (cy - p.y) * (nz / z) }))
             }
             return nz
         })
@@ -826,10 +1012,10 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
 
     const resetView = useCallback(() => { setZoom(1); setPan({ x: 0, y: 0 }) }, [])
 
-    // ── drag state refs ──
+    // ── drag refs ──
     const nodeDrag = useRef<{ id: string; ox: number; oy: number; ptId: number } | null>(null)
     const edgeDrag = useRef<{ from: WFNode; ptId: number; x: number; y: number } | null>(null)
-    const midDrag = useRef<{ edge: WFEdge; key: string; ox: number; oy: number; ptId: number } | null>(null)
+    const midDrag  = useRef<{ edge: WFEdge; key: string; ox: number; oy: number; ptId: number } | null>(null)
 
     const [tempLine, setTempLine] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
     const [editing, setEditing] = useState<WFNode | null>(null)
@@ -839,14 +1025,9 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
     const svgPt = useCallback((cx: number, cy: number) => {
         const svg = svgRef.current!
         const rect = svg.getBoundingClientRect()
-        // SVG内の生座標（px単位）→ pan/zoom の <g> 内座標に変換
-        return {
-            x: (cx - rect.left - pan.x) / zoom,
-            y: (cy - rect.top - pan.y) / zoom,
-        }
+        return { x: (cx - rect.left - pan.x) / zoom, y: (cy - rect.top - pan.y) / zoom }
     }, [pan, zoom])
 
-    // Node pointer down
     const onNodePD = useCallback((e: React.PointerEvent, id: string) => {
         if (e.button !== 0 || edgeDrag.current) return
         e.preventDefault()
@@ -856,7 +1037,6 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
             ; (e.target as Element).setPointerCapture(e.pointerId)
     }, [nodeMap, svgPt])
 
-    // Handle pointer down (edge create)
     const onHandlePD = useCallback((e: React.PointerEvent, node: WFNode) => {
         e.preventDefault()
         const p = svgPt(e.clientX, e.clientY)
@@ -865,45 +1045,36 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
         setTempLine({ x1: node.x, y1: node.y, x2: p.x, y2: p.y })
     }, [svgPt])
 
-    // Edge mid pointer down
     const onMidPD = useCallback((e: React.PointerEvent, edge: WFEdge) => {
         e.preventDefault()
-        const pts = getEdgePoints(edge, nodeMap)
-        if (!pts) return
+        const pts = getEdgePoints(edge, nodeMap); if (!pts) return
         const [, mid] = pts
         const p = svgPt(e.clientX, e.clientY)
         midDrag.current = { edge, key: edgeKey(edge), ox: p.x - mid.x, oy: p.y - mid.y, ptId: e.pointerId }
             ; (e.target as Element).setPointerCapture(e.pointerId)
     }, [nodeMap, svgPt])
 
-    // SVG pointer move
     const onSvgPM = useCallback((e: React.PointerEvent) => {
         const p = svgPt(e.clientX, e.clientY)
         if (nodeDrag.current && e.pointerId === nodeDrag.current.ptId) {
             const { id, ox, oy } = nodeDrag.current
-            dispatch({ type: 'MOVE_NODE', id, x: p.x - ox, y: p.y - oy })
-            return
+            dispatch({ type: 'MOVE_NODE', id, x: p.x - ox, y: p.y - oy }); return
         }
         if (edgeDrag.current && e.pointerId === edgeDrag.current.ptId) {
             edgeDrag.current.x = p.x; edgeDrag.current.y = p.y
             const f = edgeDrag.current.from
-            setTempLine({ x1: f.x, y1: f.y, x2: p.x, y2: p.y })
-            return
+            setTempLine({ x1: f.x, y1: f.y, x2: p.x, y2: p.y }); return
         }
         if (midDrag.current && e.pointerId === midDrag.current.ptId) {
             const { key, ox, oy } = midDrag.current
-            dispatch({ type: 'SET_EDGE_MID', edgeKey: key, mid: { x: p.x - ox, y: p.y - oy } })
-            return
+            dispatch({ type: 'SET_EDGE_MID', edgeKey: key, mid: { x: p.x - ox, y: p.y - oy } }); return
         }
-        // キャンバスドラッグ → pan
         if (canvasDrag.current && e.pointerId === canvasDrag.current.ptId) {
-            const dx = e.clientX - canvasDrag.current.sx
-            const dy = e.clientY - canvasDrag.current.sy
+            const dx = e.clientX - canvasDrag.current.sx, dy = e.clientY - canvasDrag.current.sy
             setPan({ x: canvasDrag.current.px + dx, y: canvasDrag.current.py + dy })
         }
     }, [svgPt])
 
-    // SVG pointer up
     const onSvgPU = useCallback((e: React.PointerEvent) => {
         if (edgeDrag.current && e.pointerId === edgeDrag.current.ptId) {
             const p = svgPt(e.clientX, e.clientY)
@@ -915,48 +1086,44 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
             })
             if (target) {
                 const ne: WFEdge = { from: from.id, to: target.id }
-                if (from.type === 'decision' || from.type === 'loop') {
-                    const outs = wf.edges.filter(ex => ex.from === from.id)
-                    const hasF = outs.some(ex => String(ex.condition).toLowerCase() === 'false')
-                    const hasT = outs.some(ex => String(ex.condition).toLowerCase() === 'true')
-                    if (!hasF) ne.condition = 'false'; else if (!hasT) ne.condition = 'true'; else ne.condition = null
-                }
+                const existingOuts = wf.edges.filter(ex => ex.from === from.id)
+                const cond = autoCondition(from, existingOuts)
+                if (cond !== undefined) ne.condition = cond
                 dispatch({ type: 'ADD_EDGE', edge: ne })
             }
-            edgeDrag.current = null; setTempLine(null)
-            return
+            edgeDrag.current = null; setTempLine(null); return
         }
-        if (nodeDrag.current && e.pointerId === nodeDrag.current.ptId) { nodeDrag.current = null }
-        if (midDrag.current && e.pointerId === midDrag.current.ptId) { midDrag.current = null }
-        if (canvasDrag.current && e.pointerId === canvasDrag.current.ptId) { canvasDrag.current = null }
+        if (nodeDrag.current && e.pointerId === nodeDrag.current.ptId) nodeDrag.current = null
+        if (midDrag.current && e.pointerId === midDrag.current.ptId) midDrag.current = null
+        if (canvasDrag.current && e.pointerId === canvasDrag.current.ptId) canvasDrag.current = null
     }, [svgPt, wf.nodes, wf.edges])
 
-    // Add node
     const addNode = useCallback((type: NodeType, cx?: number, cy?: number) => {
         const svg = svgRef.current; if (!svg) return
         let p: { x: number; y: number }
-        if (cx !== undefined && cy !== undefined) {
-            p = svgPt(cx, cy)
-        } else {
+        if (cx !== undefined && cy !== undefined) { p = svgPt(cx, cy) }
+        else {
             const r = svg.getBoundingClientRect()
             p = svgPt(r.left + r.width / 2 + (Math.random() - 0.5) * 120, r.top + r.height / 2 + (Math.random() - 0.5) * 80)
         }
-        dispatch({ type: 'ADD_NODE', node: { id: generateId(type), type, label: capitalize(type), x: p.x, y: p.y } })
+        // foreach / forrange はデフォルトラベルを構文ヒント形式にする
+        const defaultLabel =
+            type === 'foreach'  ? 'for item in collection' :
+            type === 'forrange' ? 'for i from 0 to n' :
+            type === 'switch'   ? 'this.status' :
+            capitalize(type)
+        dispatch({ type: 'ADD_NODE', node: { id: generateId(type), type, label: defaultLabel, x: p.x, y: p.y } })
     }, [svgPt])
 
     // Node context menu
     const onNodeCtx = useCallback((e: React.MouseEvent, node: WFNode) => {
         e.preventDefault(); e.stopPropagation()
-
-        // Whenノードのみ How/Why 編集を提供
         const isWhenNode = node.label.startsWith('When')
         const isThenNode = node.label.startsWith('Then')
-
         setCtxMenu({
             x: e.clientX, y: e.clientY,
             items: [
                 { label: 'Edit label', fn: () => setEditing(node) },
-                // How編集（Whenノードのみ）
                 ...(isWhenNode ? [{
                     label: node.metadata?.howSteps?.length
                         ? `Edit How (${node.metadata.howSteps.length}件)`
@@ -967,14 +1134,9 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                         const input = prompt('実装順指針を1行ずつ入力してください:', current)
                         if (input === null) return
                         const howSteps = input.split('\n').map(s => s.trim()).filter(Boolean)
-                        dispatch({
-                            type: 'SET_NODE_METADATA',
-                            id: node.id,
-                            metadata: { ...node.metadata, howSteps },
-                        })
+                        dispatch({ type: 'SET_NODE_METADATA', id: node.id, metadata: { ...node.metadata, howSteps } })
                     },
                 }] : []),
-                // Why編集（Then/Whenノード）
                 ...((isWhenNode || isThenNode) ? [{
                     label: node.metadata?.whyReason ? 'Edit Why（設計意図）' : 'Add Why（設計意図）',
                     col: '#c4b5fd',
@@ -982,29 +1144,34 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                         const current = node.metadata?.whyReason ?? ''
                         const input = prompt('設計意図を入力してください:', current)
                         if (input === null) return
-                        dispatch({
-                            type: 'SET_NODE_METADATA',
-                            id: node.id,
-                            metadata: { ...node.metadata, whyReason: input.trim() || undefined },
-                        })
+                        dispatch({ type: 'SET_NODE_METADATA', id: node.id, metadata: { ...node.metadata, whyReason: input?.trim() || undefined } })
                     },
                 }] : []),
-                ...NODE_TYPES.map(t => ({
+                // 全ノード型への接続追加（Phase 2 型を含む）
+                ...[...NODE_TYPES, ...FLOW_NODE_TYPES].map(t => ({
                     label: `Add ${capitalize(t)} →`,
                     col: NODE_COL[t],
                     fn: () => {
                         const id = generateId(t)
                         const { w } = nodeSize(node.type)
-                        dispatch({ type: 'ADD_NODE', node: { id, type: t, label: capitalize(t), x: node.x + w + 60, y: node.y } })
-                        dispatch({ type: 'ADD_EDGE', edge: { from: node.id, to: id } })
+                        const defaultLabel =
+                            t === 'foreach'  ? 'for item in collection' :
+                            t === 'forrange' ? 'for i from 0 to n' :
+                            t === 'switch'   ? 'this.status' :
+                            capitalize(t)
+                        dispatch({ type: 'ADD_NODE', node: { id, type: t, label: defaultLabel, x: node.x + w + 60, y: node.y } })
+                        const existingOuts = wf.edges.filter(ex => ex.from === node.id)
+                        const ne: WFEdge = { from: node.id, to: id }
+                        const cond = autoCondition(node, existingOuts)
+                        if (cond !== undefined) ne.condition = cond
+                        dispatch({ type: 'ADD_EDGE', edge: ne })
                     },
                 })),
                 { label: 'Delete node', col: '#f87171', fn: () => dispatch({ type: 'DEL_NODE', id: node.id }) },
             ],
         })
-    }, [])
+    }, [wf.edges])
 
-    // Edge context menu
     const onEdgeCtx = useCallback((e: React.MouseEvent, edge: WFEdge) => {
         e.preventDefault(); e.stopPropagation()
         const k = edgeKey(edge)
@@ -1014,27 +1181,27 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
         })
     }, [])
 
-    // SVG right-click (canvas)
     const onSvgCtx = useCallback((e: React.MouseEvent) => {
         e.preventDefault()
         setCtxMenu({
             x: e.clientX, y: e.clientY,
-            items: NODE_TYPES.map(t => ({ label: `Add ${capitalize(t)}`, col: NODE_COL[t], fn: () => addNode(t, e.clientX, e.clientY) })),
+            items: [
+                ...NODE_TYPES.map(t => ({ label: `Add ${capitalize(t)}`, col: NODE_COL[t], fn: () => addNode(t, e.clientX, e.clientY) })),
+                { label: '─ Flow control ─', col: '#475569', fn: () => {} },
+                ...FLOW_NODE_TYPES.map(t => ({ label: `Add ${FLOW_NODE_LABEL[t] ?? capitalize(t)}`, col: NODE_COL[t], fn: () => addNode(t, e.clientX, e.clientY) })),
+            ],
         })
     }, [addNode])
 
-    // SVG背景ポインターダウン → pan 開始（ノード/エッジ上ではない場合のみ）
     const onSvgPD = useCallback((e: React.PointerEvent) => {
         if (e.button !== 0) return
         if (nodeDrag.current || edgeDrag.current) return
-        // ターゲットが SVG 自体か背景 rect/pattern の場合のみ pan 開始
         const tag = (e.target as SVGElement).tagName.toLowerCase()
         if (!['svg', 'rect', 'circle', 'pattern'].includes(tag)) return
         canvasDrag.current = { ptId: e.pointerId, sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y }
             ; (e.currentTarget as Element).setPointerCapture(e.pointerId)
     }, [pan])
 
-    // Close ctx menu on outside click
     useEffect(() => {
         if (!ctxMenu) return
         const h = () => setCtxMenu(null)
@@ -1042,41 +1209,18 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
         return () => window.removeEventListener('pointerdown', h)
     }, [ctxMenu])
 
-    // Save — ClassDiagramService を経由してドメインモデルを正規ルートで更新する
     const save = useCallback(() => {
         if (!opRef) return
-
-        if (!opRef.classId || !opRef.operationId) {
-            console.error('[WorkflowEditorPanel] save: classId or operationId is missing in opRef', opRef)
-            return
-        }
-
+        if (!opRef.classId || !opRef.operationId) { console.error('[WorkflowEditorPanel] save: classId or operationId is missing', opRef); return }
         let workflowAst: ReturnType<typeof convertToAst> | undefined
-        try {
-            workflowAst = convertToAst(wf)
-        } catch (e) {
-            console.error('[WorkflowEditorPanel] AST conversion failed', e)
-        }
-
+        try { workflowAst = convertToAst(wf) } catch (e) { console.error('[WorkflowEditorPanel] AST conversion failed', e) }
         const workflowCopy = JSON.parse(JSON.stringify(wf))
-
         try {
-            service.applyUpdateOperationWorkflow({
-                classId: opRef.classId,
-                operationId: opRef.operationId,
-                workflow: workflowCopy,
-                workflowAst,
-            })
-            // 保存後にキャッシュを更新する。
-            // notifyModelChanged → loadFromService が呼ばれても
-            // 「内容が変わっていない」と判定され、編集中状態が上書きされない。
+            service.applyUpdateOperationWorkflow({ classId: opRef.classId, operationId: opRef.operationId, workflow: workflowCopy, workflowAst })
             lastLoadedJson.current = JSON.stringify(workflowCopy)
-        } catch (e) {
-            console.error('[WorkflowEditorPanel] applyUpdateOperationWorkflow failed', e)
-        }
+        } catch (e) { console.error('[WorkflowEditorPanel] applyUpdateOperationWorkflow failed', e) }
     }, [opRef, wf, service])
 
-    // Reset
     const reset = useCallback(() => {
         const s = generateId('start'), e = generateId('end')
         dispatch({
@@ -1096,26 +1240,18 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
         const ids = new Set<string>()
         for (const node of wf.nodes) {
             const { w, h } = nodeSizeWithMeta(node)
-            if (rectIntersectsViewport(node.x - w / 2, node.y - h / 2, w, h, worldViewport)) {
-                ids.add(node.id)
-            }
+            if (rectIntersectsViewport(node.x - w / 2, node.y - h / 2, w, h, worldViewport)) ids.add(node.id)
         }
         return ids
     }, [wf.nodes, worldViewport])
 
-    const visibleNodes = useMemo(
-        () => wf.nodes.filter((node) => visibleNodeIds.has(node.id)),
-        [wf.nodes, visibleNodeIds],
-    )
-
-    const visibleEdges = useMemo(
-        () =>
-            wf.edges.filter((edge) => {
-                const points = getEdgePoints(edge, nodeMap)
-                if (!points) return false
-                if (visibleNodeIds.has(edge.from) || visibleNodeIds.has(edge.to)) return true
-                return polylineIntersectsViewport(points, worldViewport)
-            }),
+    const visibleNodes = useMemo(() => wf.nodes.filter(n => visibleNodeIds.has(n.id)), [wf.nodes, visibleNodeIds])
+    const visibleEdges = useMemo(() =>
+        wf.edges.filter(edge => {
+            const points = getEdgePoints(edge, nodeMap); if (!points) return false
+            if (visibleNodeIds.has(edge.from) || visibleNodeIds.has(edge.to)) return true
+            return polylineIntersectsViewport(points, worldViewport)
+        }),
         [wf.edges, nodeMap, visibleNodeIds, worldViewport],
     )
 
@@ -1138,62 +1274,54 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                     {opRef ? opRef.label : '— 未選択 —'}
                 </span>
                 <div style={{ width: 1, height: 20, background: '#334155', margin: '0 4px' }} />
+
+                {/* 既存ノード */}
                 {NODE_TYPES.map(t => (
-                    <button key={t} onClick={() => addNode(t)} disabled={!opRef}
-                        style={{
-                            height: 26, padding: '0 10px', borderRadius: 4, border: `1px solid ${NODE_COL[t]}`,
-                            color: NODE_COL[t], background: `${NODE_COL[t]}18`, fontSize: 11,
-                            cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4,
-                        }}>
-                        + {capitalize(t)}
-                    </button>
+                    <button key={t} onClick={() => addNode(t)} disabled={!opRef} style={{
+                        height: 26, padding: '0 10px', borderRadius: 4, border: `1px solid ${NODE_COL[t]}`,
+                        color: NODE_COL[t], background: `${NODE_COL[t]}18`, fontSize: 11,
+                        cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4,
+                    }}>+ {capitalize(t)}</button>
                 ))}
                 <div style={{ width: 1, height: 20, background: '#334155', margin: '0 4px' }} />
-                {/* Gherkin系ノード */}
+
+                {/* Gherkin系 */}
                 {GHERKIN_NODE_TYPES.map(t => (
-                    <button key={t} onClick={() => addNode(t)} disabled={!opRef}
-                        style={{
-                            height: 26, padding: '0 10px', borderRadius: 4, border: `1px solid ${NODE_COL[t]}`,
-                            color: NODE_COL[t], background: `${NODE_COL[t]}18`, fontSize: 11,
-                            cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4,
-                        }}>
-                        + {KEYWORD_LABEL[t]}
-                    </button>
+                    <button key={t} onClick={() => addNode(t)} disabled={!opRef} style={{
+                        height: 26, padding: '0 10px', borderRadius: 4, border: `1px solid ${NODE_COL[t]}`,
+                        color: NODE_COL[t], background: `${NODE_COL[t]}18`, fontSize: 11,
+                        cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4,
+                    }}>+ {KEYWORD_LABEL[t]}</button>
                 ))}
+                <div style={{ width: 1, height: 20, background: '#334155', margin: '0 4px' }} />
+
+                {/* Phase 2: Flow制御ノード */}
+                {FLOW_NODE_TYPES.map(t => (
+                    <button key={t} onClick={() => addNode(t)} disabled={!opRef} style={{
+                        height: 26, padding: '0 10px', borderRadius: 4, border: `1px solid ${NODE_COL[t]}`,
+                        color: NODE_COL[t], background: `${NODE_COL[t]}18`, fontSize: 11,
+                        cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4,
+                    }}>+ {FLOW_NODE_LABEL[t]}</button>
+                ))}
+
                 <div style={{ flex: 1 }} />
+
                 {/* ズームコントロール */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <button onClick={() => zoomBy(1 / 1.25)} title="ズームアウト (Scroll↓)"
-                        style={{ width: 26, height: 26, borderRadius: 4, border: '1px solid #334155', color: '#94a3b8', background: 'transparent', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}>−</button>
-                    <button onClick={resetView} title="ビューをリセット"
-                        style={{ height: 26, padding: '0 8px', borderRadius: 4, border: '1px solid #334155', color: '#64748b', background: 'transparent', fontSize: 10, cursor: 'pointer', minWidth: 44, fontFamily: 'inherit' }}>
-                        {Math.round(zoom * 100)}%
-                    </button>
-                    <button onClick={() => zoomBy(1.25)} title="ズームイン (Scroll↑)"
-                        style={{ width: 26, height: 26, borderRadius: 4, border: '1px solid #334155', color: '#94a3b8', background: 'transparent', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}>＋</button>
+                    <button onClick={() => zoomBy(1 / 1.25)} title="ズームアウト" style={{ width: 26, height: 26, borderRadius: 4, border: '1px solid #334155', color: '#94a3b8', background: 'transparent', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}>−</button>
+                    <button onClick={resetView} title="ビューをリセット" style={{ height: 26, padding: '0 8px', borderRadius: 4, border: '1px solid #334155', color: '#64748b', background: 'transparent', fontSize: 10, cursor: 'pointer', minWidth: 44, fontFamily: 'inherit' }}>
+                        {Math.round(zoom * 100)}%</button>
+                    <button onClick={() => zoomBy(1.25)} title="ズームイン" style={{ width: 26, height: 26, borderRadius: 4, border: '1px solid #334155', color: '#94a3b8', background: 'transparent', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}>＋</button>
                 </div>
                 <div style={{ width: 1, height: 20, background: '#334155', margin: '0 4px' }} />
-                <button onClick={reset} disabled={!opRef} style={{
-                    height: 26, padding: '0 10px', borderRadius: 4,
-                    border: '1px solid #475569', color: '#94a3b8', background: 'transparent',
-                    fontSize: 11, cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4,
-                }}>Reset</button>
-                <button onClick={save} disabled={!opRef} style={{
-                    height: 26, padding: '0 12px', borderRadius: 4,
-                    background: opRef ? '#1d4ed8' : '#1e3a5f', color: '#bfdbfe',
-                    border: '1px solid #2563eb', fontSize: 11,
-                    cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.5,
-                }}>Save Workflow</button>
+                <button onClick={reset} disabled={!opRef} style={{ height: 26, padding: '0 10px', borderRadius: 4, border: '1px solid #475569', color: '#94a3b8', background: 'transparent', fontSize: 11, cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4 }}>Reset</button>
+                <button onClick={save} disabled={!opRef} style={{ height: 26, padding: '0 12px', borderRadius: 4, background: opRef ? '#1d4ed8' : '#1e3a5f', color: '#bfdbfe', border: '1px solid #2563eb', fontSize: 11, cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.5 }}>Save Workflow</button>
             </div>
 
             {/* Canvas */}
             <div className="relative flex-1 min-h-0 overflow-hidden">
                 {!opRef && (
-                    <div style={{
-                        position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-                        alignItems: 'center', justifyContent: 'center', gap: 12,
-                        color: '#475569', zIndex: 10, pointerEvents: 'none',
-                    }}>
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: '#475569', zIndex: 10, pointerEvents: 'none' }}>
                         <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" opacity={0.3}>
                             <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
                         </svg>
@@ -1202,21 +1330,14 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                         </p>
                     </div>
                 )}
-
                 <svg ref={svgRef} style={{ width: '100%', height: '100%', display: 'block', cursor: canvasDrag.current ? 'grabbing' : 'grab' }}
-                    onPointerMove={onSvgPM}
-                    onPointerUp={onSvgPU}
-                    onPointerCancel={onSvgPU}
-                    onPointerDown={onSvgPD}
-                    onContextMenu={onSvgCtx}
-                    onWheel={onWheel}
-                    onClick={() => { setSelEdge(null); setCtxMenu(null) }}
-                >
+                    onPointerMove={onSvgPM} onPointerUp={onSvgPU} onPointerCancel={onSvgPU}
+                    onPointerDown={onSvgPD} onContextMenu={onSvgCtx} onWheel={onWheel}
+                    onClick={() => { setSelEdge(null); setCtxMenu(null) }}>
                     <defs>
                         <marker id="wf-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
                             <path d="M0,0 L8,4 L0,8 z" fill="#64748b" />
                         </marker>
-                        {/* グリッドは pan/zoom に追従させるため patternTransform を使う */}
                         <pattern id="wf-grid" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse"
                             patternTransform={`translate(${pan.x % 28} ${pan.y % 28}) scale(${zoom})`}>
                             <circle cx="0" cy="0" r="0.8" fill="#1e293b" />
@@ -1225,33 +1346,20 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                             <circle cx="28" cy="28" r="0.8" fill="#1e293b" />
                         </pattern>
                     </defs>
-
                     <rect width="100%" height="100%" fill="url(#wf-grid)" />
-
-                    {/* pan/zoom transform をノード・エッジ全体にかける */}
                     <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
-                        {/* Edges */}
                         {visibleEdges.map((edge, i) => (
-                            <EdgeShape key={`${edgeKey(edge)}-${i}`}
-                                edge={edge} nodeMap={nodeMap}
+                            <EdgeShape key={`${edgeKey(edge)}-${i}`} edge={edge} nodeMap={nodeMap}
                                 isSelected={selEdge === edgeKey(edge)}
-                                onMidPointerDown={onMidPD}
-                                onContextMenu={onEdgeCtx}
-                            />
+                                onMidPointerDown={onMidPD} onContextMenu={onEdgeCtx} />
                         ))}
-
-                        {/* Nodes */}
                         {visibleNodes.map(node => (
                             <NodeShape key={node.id} node={node} isSelected={false}
-                                onPointerDown={onNodePD}
-                                onHandlePointerDown={onHandlePD}
+                                onPointerDown={onNodePD} onHandlePointerDown={onHandlePD}
                                 onDoubleClick={(e, n) => { e.stopPropagation(); setEditing(n) }}
-                                onContextMenu={onNodeCtx}
-                            />
+                                onContextMenu={onNodeCtx} />
                         ))}
                     </g>
-
-                    {/* Temp edge（transform group 内に配置） */}
                     <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
                         {tempLine && (
                             <line x1={tempLine.x1} y1={tempLine.y1} x2={tempLine.x2} y2={tempLine.y2}
@@ -1271,32 +1379,21 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
 
             {/* Context menu */}
             {ctxMenu && (
-                <div style={{
-                    position: 'fixed', left: ctxMenu.x, top: ctxMenu.y,
-                    background: '#1e293b', border: '1px solid #334155',
-                    borderRadius: 6, boxShadow: '0 8px 24px #00000070',
-                    padding: '4px 0', minWidth: 180, zIndex: 400,
-                }} onPointerDown={e => e.stopPropagation()}>
+                <div style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, background: '#1e293b', border: '1px solid #334155', borderRadius: 6, boxShadow: '0 8px 24px #00000070', padding: '4px 0', minWidth: 192, zIndex: 400 }}
+                    onPointerDown={e => e.stopPropagation()}>
                     {ctxMenu.items.map((item, i) => (
                         <button key={i} onClick={() => { item.fn(); setCtxMenu(null) }}
-                            style={{
-                                display: 'block', width: '100%', textAlign: 'left',
-                                padding: '5px 14px', background: 'transparent', border: 'none',
-                                fontSize: 12, color: item.col ?? '#e2e8f0', cursor: 'pointer', fontFamily: 'inherit',
-                            }}
+                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '5px 14px', background: 'transparent', border: 'none', fontSize: 12, color: item.col ?? '#e2e8f0', cursor: 'pointer', fontFamily: 'inherit' }}
                             onMouseEnter={e => (e.currentTarget.style.background = '#334155')}
-                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                        >{item.label}</button>
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                            {item.label}
+                        </button>
                     ))}
                 </div>
             )}
 
             {/* Hint bar */}
-            <div style={{
-                padding: '3px 12px', borderTop: '1px solid #1e293b',
-                background: '#080f1a', fontSize: 10, color: '#334155',
-                display: 'flex', gap: 16, flexShrink: 0,
-            }}>
+            <div style={{ padding: '3px 12px', borderTop: '1px solid #1e293b', background: '#080f1a', fontSize: 10, color: '#334155', display: 'flex', gap: 16, flexShrink: 0 }}>
                 <span>背景ドラッグ: 移動</span>
                 <span>スクロール: ズーム</span>
                 <span>右クリック: ノード追加/削除</span>
