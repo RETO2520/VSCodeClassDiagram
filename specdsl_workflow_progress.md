@@ -88,6 +88,30 @@ Flow:
 | `BreakNode`      | ―                                         | `break`                         |
 | `ContinueNode`   | ―                                         | `continue`                      |
 
+### Flow AST → ワークフロー図グラフへの変換 (今回の主実装)
+
+`SpecDslParser.ts` に `astBodyToWorkflowGraph()` メソッドを新設し、
+`parseGherkinToWorkflow()` 内でFlowブロック検出後に呼び出してビジュアルグラフへ反映する。
+
+#### 変換ルール
+
+| ASTノード型        | 生成されるWFNodeタイプ | エッジ条件                         |
+|--------------------|------------------------|------------------------------------|
+| `action`           | `process`              | 直列（無条件）                     |
+| `return`           | `process` (return X)   | 直列（無条件）                     |
+| `break`            | `break`                | 直列（無条件）                     |
+| `continue`         | `continue`             | 直列（無条件）                     |
+| `if`               | `decision`             | `true` / `false` + マージノード    |
+| `while`            | `loop`                 | `true`(body) / `false`(exit) + ループバック |
+| `forEach`          | `foreach`              | `body` / 後続 + ループバック       |
+| `forRange`         | `forrange`             | `body` / 後続 + ループバック       |
+| `switch`           | `switch`               | `case0`/`case1`/.../`default` + マージノード |
+
+#### Gherkinノードとの接続
+- `Flow:` 直前の最後のGherkinステップノードを `flowEntryId` として記録
+- `astBodyToWorkflowGraph()` の `entryId` にそのIDを渡し、Gherkin末端→Flowグラフを接続
+- `var` 宣言がある場合は先頭に `process` ノードとして挿入
+
 ### ワークフローエディタへの反映 (`view/components/WorkflowEditorPanel.tsx`)
 
 | ビジュアルノード | 形状                  | 色 (stroke)  | 対応ASTノード   |
@@ -98,28 +122,37 @@ Flow:
 | `break`          | 台形 (上辺短)         | `#f87171`    | `BreakNode`     |
 | `continue`       | 台形 (上辺短・violet) | `#a78bfa`    | `ContinueNode`  |
 
-### エッジ条件の自動付与ルール
-
-| 元ノード型            | 自動付与される condition     |
-|-----------------------|------------------------------|
-| `decision` / `loop`   | `'false'` → `'true'` の順    |
-| `foreach` / `forrange`| 1本目: `'body'`、以降: なし  |
-| `switch`              | `'case0'`, `'case1'`, … 最後に `'default'` |
-| `break` / `continue`  | なし (条件なし)              |
-
 ### Phase 2 進捗チェック
 - [x] `WorkflowEditorPanel.tsx` に新 NodeType を追加 (`foreach` / `forrange` / `switch` / `break` / `continue`)
-- [x] 各ノードの形状実装
-  - [x] `foreach` / `forrange` — 六角形 (`hexagonPoints`)
-  - [x] `switch` — 五角形・家型 (`pentagonPoints`)
-  - [x] `break` / `continue` — 台形 (`trapezoidPoints`)
+- [x] 各ノードの形状実装 (hexagon / pentagon / trapezoid)
 - [x] `STYLE` / `NODE_COL` / `nodeSize` に新型を追加
 - [x] `FLOW_NODE_TYPES` グループをツールバーに追加
 - [x] `autoCondition()` に foreach / forrange / switch のエッジ条件自動付与を追加
 - [x] `convertToAst()` に forEach / forRange / switch / break / continue の走査を追加
-- [x] `InlineEditor` に foreach / forrange / switch の構文ヒント placeholder を追加
-- [x] 右クリックコンテキストメニューに Flow制御ノードセクション追加
-- [ ] SpecDslParser 実装 (ForEach/ForRange/Switch/Break/Continue トークン解析)
+- [x] **`SpecDslParser.ts` の `parseFlowBlockToWorkflowAst()` に Phase 2 構文を追加**
+  - [x] `for v in col ... end` → `ForEachNode`
+  - [x] `for v from n to m ... end` → `ForRangeNode`
+  - [x] `switch expr / case / default / end` → `SwitchNode`
+  - [x] `break` / `continue` → `BreakNode` / `ContinueNode`
+- [x] **`astBodyToWorkflowGraph()` を新設 — AST body → WFNode[]+WFEdge[] 変換**
+  - [x] `if/else` → decision + true/false 分岐 + マージノード
+  - [x] `while` → loop + true/false エッジ + ループバック
+  - [x] `forEach` → foreach + body エッジ + ループバック
+  - [x] `forRange` → forrange + body エッジ + ループバック
+  - [x] `switch` → switch + case0/caseN/default エッジ + マージノード
+  - [x] `break` / `continue` → 対応ビジュアルノード
+  - [x] `action` / `return` → process ノード
+- [x] **`parseGherkinToWorkflow()` でFlowグラフをGherkin末端に接続**
+  - [x] `lastGherkinNodeId` を `flowEntryId` として `astBodyToWorkflowGraph()` に渡す
+  - [x] `var` 宣言を先頭 `process` ノードとして挿入
+- [x] **テスト追加 (`src/test/SpecDslParser.test.ts`)**
+  - [x] `[Phase2] Flow if/else reflects visual decision node in workflow.nodes`
+  - [x] `[Phase2] Flow while reflects loop node in workflow.nodes`
+  - [x] `[Phase2] Flow forEach reflects foreach node in workflow.nodes`
+  - [x] `[Phase2] Flow forRange reflects forrange node in workflow.nodes`
+  - [x] `[Phase2] Flow switch reflects switch node with case edges in workflow`
+  - [x] `[Phase2] Flow break/continue reflect in AST and workflow nodes`
+  - [x] `[Phase2] Flow graph connects to Gherkin last node`
 - [ ] Builder各言語テンプレート追加
   - [ ] TypeScript: `for...of` / `for(let i=n;i<m;i++)` / `switch` / `break` / `continue`
   - [ ] Kotlin: `for(v in col)` / `(n..m).forEach` / `when(expr)` / `break` / `continue`
@@ -139,3 +172,4 @@ Flow:
 1. `Flow:` の式/型推論を強化し、`do` 行から副作用対象(メンバ・依存先)を抽出する。
 2. GherkinステップとFlowノード間にトレーサビリティIDを持たせ、生成コードコメントと相互参照できるようにする。
 3. `forEach`/`forRange` ノードのラベル構文を `for <var> in <col>` / `for <var> from <n> to <m>` に統一し、Parserとエディタ間で往復可能にする。
+4. `break`/`continue` スコープ検証 + 診断エラー出力の実装。
