@@ -252,6 +252,10 @@ export function opSignatureKey(op: IOperationModel) {
 /**
  * ワークフローの1シナリオ分のステップ列を IActionNode[] に変換する。
  * startId から endId までのパスを辿り、各ノードのラベルをコメント文にする。
+ *
+ * ノードの label は "Given: xxx" / "When: xxx" / "Then: xxx" 形式を想定。
+ * Gherkin キーワードを保持してコメントに出力することで、
+ * CommentParser が再パースできる形式を維持する。
  */
 function scenarioStepsToActions(
     startId: string,
@@ -263,6 +267,22 @@ function scenarioStepsToActions(
         if (!outEdges.has(e.from)) outEdges.set(e.from, []);
         outEdges.get(e.from)!.push(e);
     }
+
+    // Gherkin キーワード → @タグ のマッピング（CommentParser 互換）
+    const LABEL_TO_COMMENT: Record<string, string> = {
+        'given': '@given',
+        'when':  '@when',
+        'then':  '@then',
+        'and':   '@and',
+        'but':   '@but',
+        'how':   '@how',
+        'why':   '@why',
+        '前提':   '@given',
+        'もし':   '@when',
+        'ならば': '@then',
+        'かつ':   '@and',
+        'しかし': '@but',
+    };
 
     const nodes: WfAstNode[] = [];
     const visited = new Set<string>();
@@ -276,11 +296,30 @@ function scenarioStepsToActions(
 
         // start/end ノードはコメントなし
         if (node.type !== 'start' && node.type !== 'end') {
-            nodes.push({ type: 'action', statement: `// ${node.label}` });
+            // "Keyword: text" → "// @keyword text" 形式に変換
+            const colonIdx = node.label.indexOf(': ');
+            let comment: string;
+            if (colonIdx !== -1) {
+                const kw = node.label.slice(0, colonIdx).toLowerCase();
+                const tag = LABEL_TO_COMMENT[kw];
+                const text = node.label.slice(colonIdx + 2);
+                comment = tag ? `// ${tag} ${text}` : `// ${node.label}`;
+            } else {
+                comment = `// ${node.label}`;
+            }
+            nodes.push({ type: 'action', statement: comment });
+
+            // How / Why メタデータもコメントとして出力
+            const howSteps: string[] | undefined = (node as any).metadata?.howSteps;
+            if (howSteps && howSteps.length > 0) {
+                for (const s of howSteps) nodes.push({ type: 'action', statement: `// @how ${s}` });
+            }
+            const whyReason: string | undefined = (node as any).metadata?.whyReason;
+            if (whyReason) nodes.push({ type: 'action', statement: `// @why ${whyReason}` });
         }
 
         // 次ノードへ（分岐がある場合は最初のエッジだけ辿る — シナリオ内では1本のパスのみ）
-        const nexts: IWorkflowEdge[] = outEdges.get(cur) ?? [];
+        const nexts: IWorkflowEdge[] = (outEdges.get(cur) ?? []).filter(e => e.condition == null);
         cur = nexts.length > 0 ? nexts[0].to : null;
     }
 

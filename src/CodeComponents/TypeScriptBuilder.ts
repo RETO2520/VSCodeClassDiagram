@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { CodeBuilder, IObjectModel, IAttributeModel, safeIdentifier, shouldEmitModifier, TypeModel, buildClassMaps, collectInheritedMembers, opSignatureKey, IClassModel, IOperationModel, IParameterModel, WorkflowAst, IActionNode, IIfNode, IWhileNode, IReturnNode } from './CodeGenerator';
+import { CodeBuilder, IObjectModel, IAttributeModel, safeIdentifier, shouldEmitModifier, TypeModel, buildClassMaps, collectInheritedMembers, opSignatureKey, IClassModel, IOperationModel, IParameterModel, WorkflowAst, IActionNode, IIfNode, IWhileNode, IReturnNode, IWorkflowModel, IWorkflowEdge } from './CodeGenerator';
 import console = require('node:console');
 
 
@@ -292,6 +292,94 @@ export class TypeScriptBuilder extends CodeBuilder {
         return constructorText;
     }
 
+    /**
+     * workflow ノード群を JSDoc の @scenario / @given / @when / @then / @how / @why
+     * アノテーション行に変換する。
+     *
+     * ノードの label は "Given: xxx" / "When: xxx" / "Then: xxx" / "And: xxx" /
+     * "But: xxx" 形式を前提とする（TypescriptAstParser が生成する形式）。
+     * keyword がない場合は @scenario ブロック直下の説明として処理する。
+     */
+    private workflowToJsDocLines(workflow: IWorkflowModel, stableId?: string): string[] {
+        const lines: string[] = [];
+        const nodeMap = new Map(workflow.nodes.map(n => [n.id, n]));
+        const outEdges = new Map<string, IWorkflowEdge[]>();
+        for (const e of workflow.edges) {
+            if (!outEdges.has(e.from)) outEdges.set(e.from, []);
+            outEdges.get(e.from)!.push(e);
+        }
+
+        const startNode = workflow.nodes.find(n => n.type === 'start');
+        if (!startNode) return lines;
+
+        if (stableId) lines.push(`   * @id ${stableId}`);
+
+        // start から出るエッジ = 各シナリオ
+        const scenarioEdges = (outEdges.get(startNode.id) ?? [])
+            .sort((a, b) => {
+                const ax = nodeMap.get(a.to)?.x ?? 0;
+                const bx = nodeMap.get(b.to)?.x ?? 0;
+                return ax - bx;
+            });
+
+        const KEYWORD_TO_TAG: Record<string, string> = {
+            'given': '@given',
+            'when': '@when',
+            'then': '@then',
+            'and': '@and',
+            'but': '@but',
+            'how': '@how',
+            'why': '@why',
+            // 日本語キーワード
+            '前提': '@given',
+            'もし': '@when',
+            'ならば': '@then',
+            'かつ': '@and',
+            'しかし': '@but',
+        };
+
+        for (const scenarioEdge of scenarioEdges) {
+            const scenarioName = scenarioEdge.condition ?? '振る舞い';
+            const srcSuffix = (scenarioEdge.srcs && scenarioEdge.srcs.length > 0)
+                ? ' ' + scenarioEdge.srcs.map((s: { label: string; url: string }) => `src:${s.label} ${s.url}`).join(' ')
+                : '';
+            lines.push(`   * @scenario ${scenarioName}${srcSuffix}`);
+
+            // シナリオのステップをたどる
+            const visited = new Set<string>();
+            let cur: string | null = scenarioEdge.to;
+            while (cur) {
+                if (visited.has(cur)) break;
+                visited.add(cur);
+                const node = nodeMap.get(cur);
+                if (!node || node.type === 'start' || node.type === 'end') break;
+
+                // "Keyword: text" 形式をパース
+                const colonIdx = node.label.indexOf(': ');
+                let tag = '@and';
+                let text = node.label;
+                if (colonIdx !== -1) {
+                    const kw = node.label.slice(0, colonIdx).toLowerCase();
+                    tag = KEYWORD_TO_TAG[kw] ?? '@and';
+                    text = node.label.slice(colonIdx + 2);
+                }
+                lines.push(`   * ${tag} ${text}`);
+
+                // How / Why メタデータ
+                const howSteps: string[] | undefined = (node as any).metadata?.howSteps;
+                if (howSteps && howSteps.length > 0) {
+                    for (const s of howSteps) lines.push(`   * @how ${s}`);
+                }
+                const whyReason: string | undefined = (node as any).metadata?.whyReason;
+                if (whyReason) lines.push(`   * @why ${whyReason}`);
+
+                const nexts: IWorkflowEdge[] = (outEdges.get(cur) ?? []).filter(e => e.condition == null);
+                cur = nexts.length > 0 ? nexts[0].to : null;
+            }
+        }
+        return lines;
+    }
+
     analyzeOperation(cls: IClassModel): { owns: string[], inherits: string[] } {
         let ownAttrs: string[] = [];
         let inheritedAttrs: string[] = [];
@@ -307,7 +395,6 @@ export class TypeScriptBuilder extends CodeBuilder {
             const modOp = emit ? (o.modifier + ' ') : '';
             const paramsStr = (Array.isArray(o.parameters) ? o.parameters.map((p: IParameterModel) => `${safeIdentifier(p.name || 'p')}: ${this.TypeModel.mapTypeForLang(p.type || 'any', 'typescript').name}`).join(', ') : '');
 
-
             if (this.isAbstractMemberInConcreteClass(o, cls)) {
                 continue;
             }
@@ -317,34 +404,45 @@ export class TypeScriptBuilder extends CodeBuilder {
             } else if (cls.isInterface) {
                 sb.owns.push(`  ${method}(${paramsStr}): ${ret};`);
             } else {
-                // JSDoc形式でGherkin仕様を出力する
-                if (o.additionalInfo?.gherkinRaw) {
+                // ── JSDoc 生成 ──────────────────────────────────────────
+                // 優先順位: (1) workflow ノード群  (2) gherkinRaw 生テキスト
+                const hasWorkflow = !!o.workflow && (o.workflow.nodes?.length ?? 0) > 0;
+                const hasGherkinRaw = !!(o.additionalInfo?.gherkinRaw);
+
+                if (hasWorkflow || hasGherkinRaw) {
                     sb.owns.push('  /**');
-                    if (o.additionalInfo?.stableId) {
-                        sb.owns.push(`   * @id ${o.additionalInfo.stableId}`);
+
+                    if (hasWorkflow) {
+                        // workflow ノードから構造化 JSDoc を生成
+                        const jsdocLines = this.workflowToJsDocLines(
+                            o.workflow!,
+                            o.additionalInfo?.stableId,
+                        );
+                        for (const l of jsdocLines) sb.owns.push(l);
+                    } else {
+                        // フォールバック: gherkinRaw をそのまま出力
+                        if (o.additionalInfo?.stableId) {
+                            sb.owns.push(`   * @id ${o.additionalInfo.stableId}`);
+                        }
+                        for (const line of o.additionalInfo!.gherkinRaw!.split('\n')) {
+                            if (line.trim()) sb.owns.push(`   * ${line}`);
+                        }
                     }
-                    const lines = o.additionalInfo.gherkinRaw.split('\n');
-                    for (const line of lines) {
-                        sb.owns.push(`   * ${line}`);
-                    }
+
                     sb.owns.push('   */');
                 }
 
                 sb.owns.push(`  ${vis} ${modOp}${method}(${paramsStr}): ${ret} {`);
 
-                // ワークフローASTがある場合は、その構造に基づいたボイラープレートを生成
+                // ── メソッドボディ生成 ───────────────────────────────────
+                // workflowAst がある場合はその構造に基づいたボイラープレートを生成
                 if (o.workflowAst) {
                     const wfLines = this.generateWorkflow(o.workflowAst);
-                    for (const l of wfLines) {
-                        sb.owns.push(`  ${l}`);
-                    }
+                    for (const l of wfLines) sb.owns.push(`  ${l}`);
+                } else if (ret !== 'void') {
+                    sb.owns.push(`    throw new Error('Not implemented');`);
                 } else {
-                    // 実装がない場合は、AIへの明確な指示コメントを残す
-                    if (ret !== 'void') {
-                        sb.owns.push(`    throw new Error('Not implemented: Implement logic based on the Gherkin spec above.');`);
-                    } else {
-                        sb.owns.push(`    // TODO: Implement logic based on the Gherkin spec above.`);
-                    }
+                    sb.owns.push(`    // TODO: implement`);
                 }
                 sb.owns.push('  }');
             }

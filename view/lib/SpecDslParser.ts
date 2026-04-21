@@ -219,6 +219,16 @@ export class SpecDslParser {
     /**
      * DSL文字列をパースして ParsedDsl を返す。
      */
+    /**
+     * @scenario DSL文字列をパースして ParsedDsl を返す。
+     * @given ソースコードが与えられていること
+     * @when tree-sitterでパースを実行する
+     * @how ヘッダブロック抽出
+     * @how 末尾の空行を1つに正規化
+     * @how 行ごとに進める
+     * @then ParsedDslが生成されること
+     * @why クラス図として可視化するための基礎データ構造を作るため
+     */
     parse(source: string, service: ClassDiagramService): ParsedDsl {
         this.service = service
         const classes: ParsedClass[] = [];
