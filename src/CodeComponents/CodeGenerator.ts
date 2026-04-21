@@ -182,6 +182,12 @@ export interface IGeneratorBuilder {
     getClassClosing(): string;
     getFileName(cls: IClassModel): string;
     getFileExtension(): string;
+    generateTestFiles?(cls: IClassModel): IGeneratedFile[];
+}
+
+export interface IGeneratedFile {
+    relativePath: string;
+    content: string;
 }
 
 export function pascalCase(s: string) {
@@ -613,11 +619,9 @@ export abstract class CodeBuilder implements IGeneratorBuilder {
 
         let overwriteAll = false;
         let skipAll = false;
+        const generatedTests: IGeneratedFile[] = [];
 
-        for (const cls of this.ObjectModel.classes) {
-            const fileName = `${this.getFileName(cls)}${this.getFileExtension()}`;
-            const fileUri = vscode.Uri.joinPath(outputFolder, fileName);
-
+        const shouldWriteFile = async (fileUri: vscode.Uri, displayName: string): Promise<boolean> => {
             let fileExists = false;
             try {
                 await vscode.workspace.fs.stat(fileUri);
@@ -626,38 +630,44 @@ export abstract class CodeBuilder implements IGeneratorBuilder {
                 fileExists = false;
             }
 
-            if (fileExists) {
-                if (skipAll) {
-                    this.logger?.info(`Skipping existing file (Skip All): ${fileName}`);
-                    continue;
-                }
-                if (!overwriteAll) {
-                    const result = await vscode.window.showWarningMessage(
-                        `File '${fileName}' already exists. Overwrite?`,
-                        { modal: true },
-                        'Yes',
-                        'Yes to All',
-                        'No',
-                        'No to All'
-                    );
+            if (!fileExists) return true;
+            if (skipAll) {
+                this.logger?.info(`Skipping existing file (Skip All): ${displayName}`);
+                return false;
+            }
 
-                    if (result === 'No') {
-                        this.logger?.info(`User skipped file: ${fileName}`);
-                        continue;
-                    } else if (result === 'No to All') {
-                        skipAll = true;
-                        this.logger?.info(`User skipped file and all subsequent existing files: ${fileName}`);
-                        continue;
-                    } else if (result === 'Yes to All') {
-                        overwriteAll = true;
-                        this.logger?.info(`User opted to overwrite all remaining files.`);
-                    } else if (result === undefined) {
-                        this.logger?.warn(`Generation cancelled for ${fileName}`);
-                        continue;
-                    }
-                    // 'Yes' falls through to generation
+            if (!overwriteAll) {
+                const result = await vscode.window.showWarningMessage(
+                    `File '${displayName}' already exists. Overwrite?`,
+                    { modal: true },
+                    'Yes',
+                    'Yes to All',
+                    'No',
+                    'No to All'
+                );
+
+                if (result === 'No') {
+                    this.logger?.info(`User skipped file: ${displayName}`);
+                    return false;
+                } else if (result === 'No to All') {
+                    skipAll = true;
+                    this.logger?.info(`User skipped file and all subsequent existing files: ${displayName}`);
+                    return false;
+                } else if (result === 'Yes to All') {
+                    overwriteAll = true;
+                    this.logger?.info(`User opted to overwrite all remaining files.`);
+                } else if (result === undefined) {
+                    this.logger?.warn(`Generation cancelled for ${displayName}`);
+                    return false;
                 }
             }
+            return true;
+        };
+
+        for (const cls of this.ObjectModel.classes) {
+            const fileName = `${this.getFileName(cls)}${this.getFileExtension()}`;
+            const fileUri = vscode.Uri.joinPath(outputFolder, fileName);
+            if (!(await shouldWriteFile(fileUri, fileName))) continue;
 
             this.logger?.info(`Generating class: ${cls.name || 'Unnamed'} -> ${fileName}`);
 
@@ -681,6 +691,37 @@ export abstract class CodeBuilder implements IGeneratorBuilder {
             const text = sb.join('\n');
             await vscode.workspace.fs.writeFile(fileUri, Buffer.from(text, 'utf8'));
             this.logger?.info(`Successfully wrote: ${fileName}`);
+
+            const testFiles = this.generateTestFiles(cls);
+            if (testFiles.length > 0) generatedTests.push(...testFiles);
+        }
+
+        const testsFolderUri = vscode.Uri.joinPath(outputFolder, 'tests');
+        await vscode.workspace.fs.createDirectory(testsFolderUri);
+        this.logger?.info(`Ensured tests directory: ${testsFolderUri.fsPath}`);
+
+        for (const testFile of generatedTests) {
+            const normalizedPath = testFile.relativePath.replace(/\\/g, '/');
+            const pathParts = normalizedPath.split('/').filter(Boolean);
+            if (pathParts.length === 0) continue;
+
+            const fileName = pathParts[pathParts.length - 1];
+            const dirParts = pathParts.slice(0, -1);
+
+            let targetDir = testsFolderUri;
+            for (const dirPart of dirParts) {
+                targetDir = vscode.Uri.joinPath(targetDir, dirPart);
+            }
+            if (dirParts.length > 0) {
+                await vscode.workspace.fs.createDirectory(targetDir);
+            }
+
+            const fileUri = vscode.Uri.joinPath(targetDir, fileName);
+            const displayName = `tests/${normalizedPath}`;
+            if (!(await shouldWriteFile(fileUri, displayName))) continue;
+
+            await vscode.workspace.fs.writeFile(fileUri, Buffer.from(testFile.content, 'utf8'));
+            this.logger?.info(`Successfully wrote test: ${displayName}`);
         }
         this.logger?.info('Code generation completed.');
     }
@@ -693,6 +734,9 @@ export abstract class CodeBuilder implements IGeneratorBuilder {
     public abstract getClassClosing(): string;
     public abstract getFileName(cls: IClassModel): string;
     public abstract getFileExtension(): string;
+    public generateTestFiles(_cls: IClassModel): IGeneratedFile[] {
+        return [];
+    }
 
     protected getAttributes() {
 

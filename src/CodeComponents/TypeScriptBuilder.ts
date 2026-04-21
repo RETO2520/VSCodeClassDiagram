@@ -1,9 +1,39 @@
 import * as vscode from 'vscode';
-import { CodeBuilder, IObjectModel, IAttributeModel, safeIdentifier, shouldEmitModifier, TypeModel, buildClassMaps, collectInheritedMembers, opSignatureKey, IClassModel, IOperationModel, IParameterModel, WorkflowAst, IActionNode, IIfNode, IWhileNode, IReturnNode, IWorkflowModel, IWorkflowEdge } from './CodeGenerator';
+import { CodeBuilder, IObjectModel, IAttributeModel, safeIdentifier, shouldEmitModifier, TypeModel, buildClassMaps, collectInheritedMembers, opSignatureKey, IClassModel, IOperationModel, IParameterModel, WorkflowAst, IActionNode, IIfNode, IWhileNode, IReturnNode, IWorkflowModel, IWorkflowEdge, IGeneratedFile } from './CodeGenerator';
 import console = require('node:console');
 
 
 export class TypeScriptBuilder extends CodeBuilder {
+    public generateTestFiles(cls: IClassModel): IGeneratedFile[] {
+        if (cls.isInterface || cls.isAbstract) return [];
+
+        const className = safeIdentifier(cls.name || 'Unnamed');
+        const opBlocks: string[] = [];
+
+        for (const op of cls.operations || []) {
+            const scenarios = this.extractOperationScenarios(op);
+            if (scenarios.length === 0) continue;
+            opBlocks.push(...this.buildOperationTests(cls, op, scenarios));
+        }
+
+        if (opBlocks.length === 0) return [];
+
+        const lines: string[] = [];
+        lines.push(`import { ${className} } from '../${className}';`);
+        lines.push('');
+        lines.push(`describe('${this.escapeForSingleQuote(className)}', () => {`);
+        lines.push(`  const createSut = () => new ${className}(/* TODO: constructor args */);`);
+        lines.push('');
+        lines.push(...opBlocks);
+        lines.push('});');
+        lines.push('');
+
+        return [{
+            relativePath: `${className}.test.ts`,
+            content: lines.join('\n'),
+        }];
+    }
+
     public generateImports(cls: IClassModel): string[] {
         const importsValue = new Set<string>(); // needs normal import (value)
         const importsTypeOnly = new Set<string>(); // can be import type
@@ -500,6 +530,175 @@ export class TypeScriptBuilder extends CodeBuilder {
             const mapped = tm.mapTypeForLang(name, 'typescript')?.name || name;
             if (builtinTs.has(mapped)) setIn.delete(name);
         }
+    }
+
+    private extractOperationScenarios(op: IOperationModel): Array<{ name: string; steps: Array<{ keyword: string; text: string }> }> {
+        if (op.workflow && (op.workflow.nodes?.length ?? 0) > 0) {
+            return this.extractScenariosFromWorkflow(op.workflow);
+        }
+        if (op.additionalInfo?.gherkinRaw) {
+            return this.extractScenariosFromRaw(op.additionalInfo.gherkinRaw);
+        }
+        return [];
+    }
+
+    private extractScenariosFromWorkflow(workflow: IWorkflowModel): Array<{ name: string; steps: Array<{ keyword: string; text: string }> }> {
+        const out: Array<{ name: string; steps: Array<{ keyword: string; text: string }> }> = [];
+        const nodeMap = new Map(workflow.nodes.map(n => [n.id, n]));
+        const outEdges = new Map<string, IWorkflowEdge[]>();
+        for (const e of workflow.edges) {
+            if (!outEdges.has(e.from)) outEdges.set(e.from, []);
+            outEdges.get(e.from)!.push(e);
+        }
+
+        const startNode = workflow.nodes.find(n => n.type === 'start');
+        if (!startNode) return out;
+
+        const scenarioEdges = (outEdges.get(startNode.id) ?? [])
+            .sort((a, b) => (nodeMap.get(a.to)?.x ?? 0) - (nodeMap.get(b.to)?.x ?? 0));
+
+        let idx = 1;
+        for (const scenarioEdge of scenarioEdges) {
+            const scenario = {
+                name: scenarioEdge.condition?.trim() || `Scenario ${idx++}`,
+                steps: [] as Array<{ keyword: string; text: string }>,
+            };
+
+            const visited = new Set<string>();
+            let cur: string | null = scenarioEdge.to;
+            while (cur) {
+                if (visited.has(cur)) break;
+                visited.add(cur);
+                const node = nodeMap.get(cur);
+                if (!node || node.type === 'start' || node.type === 'end') break;
+                scenario.steps.push(this.parseLabeledStep(node.label));
+                const nexts: IWorkflowEdge[] = (outEdges.get(cur) ?? []).filter(e => e.condition == null);
+                cur = nexts.length > 0 ? nexts[0].to : null;
+            }
+
+            if (scenario.steps.length > 0) out.push(scenario);
+        }
+        return out;
+    }
+
+    private extractScenariosFromRaw(gherkinRaw: string): Array<{ name: string; steps: Array<{ keyword: string; text: string }> }> {
+        const scenarios: Array<{ name: string; steps: Array<{ keyword: string; text: string }> }> = [];
+        let current: { name: string; steps: Array<{ keyword: string; text: string }> } | null = null;
+        let unnamedCounter = 1;
+
+        const pushCurrent = () => {
+            if (current && current.steps.length > 0) scenarios.push(current);
+        };
+
+        const normalizeLine = (raw: string) => raw.trim().replace(/^\*\s*/, '');
+
+        const lines = gherkinRaw.split('\n');
+        for (const raw of lines) {
+            const line = normalizeLine(raw);
+            if (!line) continue;
+
+            const scenarioTag = line.match(/^@scenario\s+(.+)$/i);
+            const scenarioKeyword = line.match(/^(?:Scenario|シナリオ)\s*:\s*(.+)$/i);
+            if (scenarioTag || scenarioKeyword) {
+                pushCurrent();
+                current = { name: (scenarioTag?.[1] ?? scenarioKeyword?.[1] ?? `Scenario ${unnamedCounter++}`).trim(), steps: [] };
+                continue;
+            }
+
+            const taggedStep = line.match(/^@(given|when|then|and|but|how|why)\s+(.+)$/i);
+            if (taggedStep) {
+                if (!current) current = { name: `Scenario ${unnamedCounter++}`, steps: [] };
+                current.steps.push({ keyword: taggedStep[1].toLowerCase(), text: taggedStep[2].trim() });
+                continue;
+            }
+
+
+            const stepKeyword = line.match(/^(Given|When|Then|And|But|How|Why)\s*[: ]\s*(.+)$/i);
+            if (stepKeyword) {
+                if (!current) current = { name: `Scenario ${unnamedCounter++}`, steps: [] };
+                current.steps.push({
+                    keyword: this.normalizeKeyword(stepKeyword[1]),
+                    text: stepKeyword[2].trim(),
+                });
+                continue;
+            }
+        }
+
+        pushCurrent();
+        return scenarios;
+    }
+
+    private parseLabeledStep(label: string): { keyword: string; text: string } {
+        const m = label.match(/^([^:]+):\s*(.+)$/);
+        if (!m) return { keyword: 'step', text: label.trim() };
+        return {
+            keyword: this.normalizeKeyword(m[1]),
+            text: m[2].trim(),
+        };
+    }
+
+    private normalizeKeyword(keyword: string): string {
+        const k = keyword.trim().toLowerCase();
+        const map: Record<string, string> = {
+            'given': 'given',
+            'when': 'when',
+            'then': 'then',
+            'and': 'and',
+            'but': 'but',
+            'how': 'how',
+            'why': 'why',
+            // 日本語キーワード
+        };
+        return map[k] ?? 'step';
+    }
+
+    private buildOperationTests(
+        cls: IClassModel,
+        op: IOperationModel,
+        scenarios: Array<{ name: string; steps: Array<{ keyword: string; text: string }> }>
+    ): string[] {
+        const lines: string[] = [];
+        const opName = safeIdentifier(op.name || 'method');
+        const callArgs = (op.parameters || []).map(p => this.defaultValueForType(p.type)).join(', ');
+        const returnsVoid = this.TypeModel.mapTypeForLang(op.returnType || 'void', 'typescript').name === 'void';
+
+        lines.push(`  describe('${this.escapeForSingleQuote(opName)}', () => {`);
+        for (const scenario of scenarios) {
+            lines.push(`    it('${this.escapeForSingleQuote(scenario.name)}', () => {`);
+            lines.push(`      const sut = createSut();`);
+
+            for (const step of scenario.steps) {
+                const tag = step.keyword === 'step' ? 'step' : step.keyword;
+                lines.push(`      // ${tag.toUpperCase()}: ${step.text}`);
+            }
+
+            if (returnsVoid) {
+                lines.push(`      sut.${opName}(${callArgs});`);
+                lines.push(`      expect(true).toBe(true);`);
+            } else {
+                lines.push(`      const result = sut.${opName}(${callArgs});`);
+                lines.push(`      expect(result).toBeDefined();`);
+            }
+            lines.push('    });');
+            lines.push('');
+        }
+        lines.push('  });');
+        lines.push('');
+        return lines;
+    }
+
+    private defaultValueForType(typeName: string | undefined): string {
+        const mapped = this.TypeModel.mapTypeForLang(typeName || 'any', 'typescript').name.toLowerCase();
+        if (mapped === 'number') return '0';
+        if (mapped === 'string') return `''`;
+        if (mapped === 'boolean') return 'false';
+        if (mapped === 'void') return 'undefined';
+        if (mapped.endsWith('[]') || mapped === 'array') return '[]';
+        return 'null as any';
+    }
+
+    private escapeForSingleQuote(text: string): string {
+        return (text || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     }
 
 }
