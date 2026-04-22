@@ -495,7 +495,7 @@ const STYLE: Record<NodeType, { fill: string; stroke: string; text: string }> = 
 }
 
 const ACCENT = '#3b82f6'
-const VIEWPORT_CULL_PADDING = 140
+const VIEWPORT_CULL_PADDING = 280
 
 // ============================================================
 // Gherkin系ノード用ヘルパー
@@ -1053,6 +1053,7 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
     const [gherkinWf, dispatchGherkin] = useReducer(wfReducer, { nodes: [], edges: [] })
     const [flowWf, dispatchFlow] = useReducer(wfReducer, { nodes: [], edges: [] })
     const [viewMode, setViewMode] = useState<'both' | 'gherkin' | 'flow'>('both')
+    const [bothEditLayer, setBothEditLayer] = useState<'gherkin' | 'flow'>('gherkin')
     const [flowDirty, setFlowDirty] = useState(false)
 
     const lastLoadedWorkflowJson = useRef<string>('')
@@ -1108,6 +1109,7 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
             lastLoadedWorkflowJson.current = ''
             lastLoadedAstJson.current = ''
             setViewMode('both')
+            setBothEditLayer('gherkin')
         }
         loadFromService()
     }, [opRef, loadFromService])
@@ -1117,7 +1119,8 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
         return () => service.offModelChanged(loadFromService)
     }, [service, loadFromService])
 
-    const activeLayer: 'gherkin' | 'flow' = viewMode === 'flow' ? 'flow' : 'gherkin'
+    const activeLayer: 'gherkin' | 'flow' =
+        viewMode === 'both' ? bothEditLayer : (viewMode === 'flow' ? 'flow' : 'gherkin')
     const wf = activeLayer === 'flow' ? flowWf : gherkinWf
     const dispatch = useCallback((action: WFAction) => {
         if (activeLayer === 'flow') {
@@ -1142,7 +1145,7 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
         syncSize()
         const obs = new ResizeObserver(syncSize); obs.observe(svg)
         return () => obs.disconnect()
-    }, [])
+    }, [viewMode])
 
     const clampZoom = (z: number) => Math.min(3, Math.max(0.2, z))
 
@@ -1416,6 +1419,7 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
         }),
         [wf.edges, nodeMap, visibleNodeIds, worldViewport],
     )
+    const otherWf = activeLayer === 'flow' ? gherkinWf : flowWf
 
     // ============================================================
     // Render
@@ -1448,24 +1452,40 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                         {mode === 'both' ? 'Both' : mode === 'gherkin' ? 'Gherkin' : 'Flow'}
                     </button>
                 ))}
-                {viewMode !== 'both' && (
+                {opRef && (
                     <>
                         <div style={{ width: 1, height: 20, background: '#334155', margin: '0 4px' }} />
-                        {viewMode === 'gherkin' && NODE_TYPES.map(t => (
+                        {viewMode === 'both' && (
+                            <>
+                                <button onClick={() => setBothEditLayer('gherkin')} style={{
+                                    height: 26, padding: '0 8px', borderRadius: 4,
+                                    border: `1px solid ${activeLayer === 'gherkin' ? '#34d399' : '#334155'}`,
+                                    color: activeLayer === 'gherkin' ? '#d1fae5' : '#94a3b8',
+                                    background: activeLayer === 'gherkin' ? '#064e3b' : '#0f172a', fontSize: 11,
+                                }}>Edit:Gherkin</button>
+                                <button onClick={() => setBothEditLayer('flow')} style={{
+                                    height: 26, padding: '0 8px', borderRadius: 4,
+                                    border: `1px solid ${activeLayer === 'flow' ? '#f59e0b' : '#334155'}`,
+                                    color: activeLayer === 'flow' ? '#fef3c7' : '#94a3b8',
+                                    background: activeLayer === 'flow' ? '#78350f' : '#0f172a', fontSize: 11,
+                                }}>Edit:Flow</button>
+                            </>
+                        )}
+                        {activeLayer === 'gherkin' && NODE_TYPES.map(t => (
                             <button key={t} onClick={() => addNode(t)} disabled={!opRef} style={{
                                 height: 26, padding: '0 10px', borderRadius: 4, border: `1px solid ${NODE_COL[t]}`,
                                 color: NODE_COL[t], background: `${NODE_COL[t]}18`, fontSize: 11,
                                 cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4,
                             }}>+ {capitalize(t)}</button>
                         ))}
-                        {viewMode === 'gherkin' && GHERKIN_NODE_TYPES.map(t => (
+                        {activeLayer === 'gherkin' && GHERKIN_NODE_TYPES.map(t => (
                             <button key={t} onClick={() => addNode(t)} disabled={!opRef} style={{
                                 height: 26, padding: '0 10px', borderRadius: 4, border: `1px solid ${NODE_COL[t]}`,
                                 color: NODE_COL[t], background: `${NODE_COL[t]}18`, fontSize: 11,
                                 cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4,
                             }}>+ {KEYWORD_LABEL[t]}</button>
                         ))}
-                        {viewMode === 'flow' && FLOW_NODE_TYPES.map(t => (
+                        {activeLayer === 'flow' && FLOW_NODE_TYPES.map(t => (
                             <button key={t} onClick={() => addNode(t)} disabled={!opRef} style={{
                                 height: 26, padding: '0 10px', borderRadius: 4, border: `1px solid ${NODE_COL[t]}`,
                                 color: NODE_COL[t], background: `${NODE_COL[t]}18`, fontSize: 11,
@@ -1485,7 +1505,7 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                     <button onClick={() => zoomBy(1.25)} title="ズームイン" style={{ width: 26, height: 26, borderRadius: 4, border: '1px solid #334155', color: '#94a3b8', background: 'transparent', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}>＋</button>
                 </div>
                 <div style={{ width: 1, height: 20, background: '#334155', margin: '0 4px' }} />
-                <button onClick={reset} disabled={!opRef || viewMode === 'both'} style={{ height: 26, padding: '0 10px', borderRadius: 4, border: '1px solid #475569', color: '#94a3b8', background: 'transparent', fontSize: 11, cursor: opRef && viewMode !== 'both' ? 'pointer' : 'not-allowed', opacity: opRef && viewMode !== 'both' ? 1 : 0.4 }}>Reset</button>
+                <button onClick={reset} disabled={!opRef} style={{ height: 26, padding: '0 10px', borderRadius: 4, border: '1px solid #475569', color: '#94a3b8', background: 'transparent', fontSize: 11, cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4 }}>Reset</button>
                 <button onClick={save} disabled={!opRef} style={{ height: 26, padding: '0 12px', borderRadius: 4, background: opRef ? '#1d4ed8' : '#1e3a5f', color: '#bfdbfe', border: '1px solid #2563eb', fontSize: 11, cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.5 }}>Save Gherkin+Flow</button>
             </div>
 
@@ -1502,9 +1522,53 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                     </div>
                 )}
                 {viewMode === 'both' ? (
-                    <div className="h-full w-full grid grid-cols-1 md:grid-cols-2 gap-3 p-3 overflow-auto">
-                        <MiniWorkflowPreview title="Gherkin Layer (workflow)" wf={gherkinWf} />
-                        <MiniWorkflowPreview title={`Flow Layer (workflowAst)${flowDirty ? ' *' : ''}`} wf={flowWf} />
+                    <div className="h-full w-full grid grid-cols-1 md:grid-cols-2 gap-3 p-3">
+                        <div className="relative min-h-0 overflow-hidden rounded-md border border-slate-700">
+                            <svg ref={svgRef} style={{ width: '100%', height: '100%', display: 'block', cursor: canvasDrag.current ? 'grabbing' : 'grab' }}
+                                onPointerMove={onSvgPM} onPointerUp={onSvgPU} onPointerCancel={onSvgPU}
+                                onPointerDown={onSvgPD} onContextMenu={onSvgCtx} onWheel={onWheel}
+                                onClick={() => { setSelEdge(null); setCtxMenu(null) }}>
+                                <defs>
+                                    <marker id="wf-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                                        <path d="M0,0 L8,4 L0,8 z" fill="#64748b" />
+                                    </marker>
+                                    <pattern id="wf-grid" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse"
+                                        patternTransform={`translate(${pan.x % 28} ${pan.y % 28}) scale(${zoom})`}>
+                                        <circle cx="0" cy="0" r="0.8" fill="#1e293b" />
+                                        <circle cx="28" cy="0" r="0.8" fill="#1e293b" />
+                                        <circle cx="0" cy="28" r="0.8" fill="#1e293b" />
+                                        <circle cx="28" cy="28" r="0.8" fill="#1e293b" />
+                                    </pattern>
+                                </defs>
+                                <rect width="100%" height="100%" fill="url(#wf-grid)" />
+                                <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
+                                    {visibleEdges.map((edge, i) => (
+                                        <EdgeShape key={`${edgeKey(edge)}-${i}`} edge={edge} nodeMap={nodeMap}
+                                            isSelected={selEdge === edgeKey(edge)}
+                                            onMidPointerDown={onMidPD} onContextMenu={onEdgeCtx} />
+                                    ))}
+                                    {visibleNodes.map(node => (
+                                        <NodeShape key={node.id} node={node} isSelected={false}
+                                            onPointerDown={onNodePD} onHandlePointerDown={onHandlePD}
+                                            onDoubleClick={(e, n) => { e.stopPropagation(); setEditing(n) }}
+                                            onContextMenu={onNodeCtx} />
+                                    ))}
+                                </g>
+                                <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
+                                    {tempLine && (
+                                        <line x1={tempLine.x1} y1={tempLine.y1} x2={tempLine.x2} y2={tempLine.y2}
+                                            stroke={ACCENT} strokeWidth={2} strokeDasharray="6 4"
+                                            markerEnd="url(#wf-arrow)" pointerEvents="none" />
+                                    )}
+                                </g>
+                            </svg>
+                        </div>
+                        <div className="min-h-0 overflow-auto">
+                            <MiniWorkflowPreview
+                                title={activeLayer === 'flow' ? 'Gherkin Layer (workflow)' : `Flow Layer (workflowAst)${flowDirty ? ' *' : ''}`}
+                                wf={otherWf}
+                            />
+                        </div>
                     </div>
                 ) : (
                     <svg ref={svgRef} style={{ width: '100%', height: '100%', display: 'block', cursor: canvasDrag.current ? 'grabbing' : 'grab' }}

@@ -13,11 +13,12 @@ export function createWorldViewport(
   padding = 0,
 ): WorldViewport {
   const safeZoom = zoom === 0 ? 1 : zoom
+  const worldPadding = padding / safeZoom
   return {
-    left: (-pan.x) / safeZoom - padding,
-    top: (-pan.y) / safeZoom - padding,
-    right: (screenWidth - pan.x) / safeZoom + padding,
-    bottom: (screenHeight - pan.y) / safeZoom + padding,
+    left: (-pan.x) / safeZoom - worldPadding,
+    top: (-pan.y) / safeZoom - worldPadding,
+    right: (screenWidth - pan.x) / safeZoom + worldPadding,
+    bottom: (screenHeight - pan.y) / safeZoom + worldPadding,
   }
 }
 
