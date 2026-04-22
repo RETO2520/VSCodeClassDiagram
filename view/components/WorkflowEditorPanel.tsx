@@ -228,68 +228,148 @@ export function convertAstToWorkflow(ast?: FlowAst): WFWorkflow {
     const body = ast?.body ?? []
     const vars = ast?.variables ?? []
     let y = 140
-    let tail = startId
 
-    const add = (type: NodeType, label: string) => {
+    const addNode = (type: NodeType, label: string) => {
         const id = generateId(type)
         wf.nodes.push({ id, type, label, x: 220, y })
         y += 86
-        wf.edges.push({ from: tail, to: id })
-        tail = id
+        return id
+    }
+    const addEdge = (from: string, to: string, condition?: string | null) => {
+        const e: WFEdge = { from, to }
+        if (condition !== undefined) e.condition = condition
+        wf.edges.push(e)
     }
 
-    for (const v of vars) {
-        add('process', `var ${v.name}:${v.type}${v.initialValue ? ` = ${v.initialValue}` : ''}`)
-    }
-
-    const visit = (stmts: any[]) => {
+    const appendSequence = (fromId: string, stmts: any[], firstCondition?: string | null): string => {
+        let tail = fromId
+        let firstCond = firstCondition
         for (const s of stmts) {
             if (!s || typeof s !== 'object') continue
             if (s.type === 'if') {
-                add('decision', String(s.condition ?? 'if'))
-                visit(Array.isArray(s.then) ? s.then : [])
-                if (Array.isArray(s.else) && s.else.length > 0) {
-                    add('process', 'else')
-                    visit(s.else)
-                }
+                const decisionId = addNode('decision', String(s.condition ?? 'if'))
+                addEdge(tail, decisionId, firstCond)
+                firstCond = undefined
+
+                const thenStmts = Array.isArray(s.then) ? s.then : []
+                const elseStmts = Array.isArray(s.else) ? s.else : []
+                const thenTail = thenStmts.length > 0
+                    ? appendSequence(decisionId, thenStmts, 'true')
+                    : (() => {
+                        const emptyThenId = addNode('process', 'then')
+                        addEdge(decisionId, emptyThenId, 'true')
+                        return emptyThenId
+                    })()
+                const elseTail = elseStmts.length > 0
+                    ? appendSequence(decisionId, elseStmts, 'false')
+                    : (() => {
+                        const emptyElseId = addNode('process', 'else')
+                        addEdge(decisionId, emptyElseId, 'false')
+                        return emptyElseId
+                    })()
+
+                const mergeId = addNode('process', 'merge')
+                addEdge(thenTail, mergeId)
+                addEdge(elseTail, mergeId)
+                tail = mergeId
                 continue
             }
             if (s.type === 'while') {
-                add('loop', String(s.condition ?? 'while'))
-                visit(Array.isArray(s.body) ? s.body : [])
+                const loopId = addNode('loop', String(s.condition ?? 'while'))
+                addEdge(tail, loopId, firstCond)
+                firstCond = undefined
+
+                const bodyStmts = Array.isArray(s.body) ? s.body : []
+                const bodyTail = bodyStmts.length > 0
+                    ? appendSequence(loopId, bodyStmts, 'true')
+                    : (() => {
+                        const emptyBodyId = addNode('process', 'body')
+                        addEdge(loopId, emptyBodyId, 'true')
+                        return emptyBodyId
+                    })()
+                addEdge(bodyTail, loopId)
+
+                const exitId = addNode('process', 'after while')
+                addEdge(loopId, exitId, 'false')
+                tail = exitId
                 continue
             }
             if (s.type === 'forEach') {
-                add('foreach', `for ${s.variable ?? 'item'} in ${s.collection ?? 'collection'}`)
-                visit(Array.isArray(s.body) ? s.body : [])
+                const id = addNode('foreach', `for ${s.variable ?? 'item'} in ${s.collection ?? 'collection'}`)
+                addEdge(tail, id, firstCond)
+                firstCond = undefined
+                tail = id
+                const bodyStmts = Array.isArray(s.body) ? s.body : []
+                if (bodyStmts.length > 0) {
+                    tail = appendSequence(id, bodyStmts, 'body')
+                }
                 continue
             }
             if (s.type === 'forRange') {
-                add('forrange', `for ${s.variable ?? 'i'} from ${s.from ?? '0'} to ${s.to ?? 'n'}`)
-                visit(Array.isArray(s.body) ? s.body : [])
+                const id = addNode('forrange', `for ${s.variable ?? 'i'} from ${s.from ?? '0'} to ${s.to ?? 'n'}`)
+                addEdge(tail, id, firstCond)
+                firstCond = undefined
+                tail = id
+                const bodyStmts = Array.isArray(s.body) ? s.body : []
+                if (bodyStmts.length > 0) {
+                    tail = appendSequence(id, bodyStmts, 'body')
+                }
                 continue
             }
             if (s.type === 'switch') {
-                add('switch', String(s.expression ?? 'switch'))
+                const swId = addNode('switch', String(s.expression ?? 'switch'))
+                addEdge(tail, swId, firstCond)
+                firstCond = undefined
+                tail = swId
                 for (const c of Array.isArray(s.cases) ? s.cases : []) {
-                    add('process', `case ${String(c?.value ?? '')}`)
-                    visit(Array.isArray(c?.body) ? c.body : [])
+                    const caseLabel = `case ${String(c?.value ?? '')}`
+                    const caseStmts = Array.isArray(c?.body) ? c.body : []
+                    tail = caseStmts.length > 0
+                        ? appendSequence(swId, caseStmts, String(c?.value ?? ''))
+                        : (() => {
+                            const id = addNode('process', caseLabel)
+                            addEdge(swId, id, String(c?.value ?? ''))
+                            return id
+                        })()
                 }
-                if (Array.isArray(s.default) && s.default.length > 0) {
-                    add('process', 'default')
-                    visit(s.default)
+                if (Array.isArray(s.default)) {
+                    const defaultStmts = s.default
+                    tail = defaultStmts.length > 0
+                        ? appendSequence(swId, defaultStmts, 'default')
+                        : (() => {
+                            const id = addNode('process', 'default')
+                            addEdge(swId, id, 'default')
+                            return id
+                        })()
                 }
                 continue
             }
-            if (s.type === 'break') { add('break', 'break'); continue }
-            if (s.type === 'continue') { add('continue', 'continue'); continue }
-            if (s.type === 'return') { add('then', `return ${s.value ?? ''}`.trim()); continue }
-            if (s.type === 'action') { add('process', String(s.statement ?? 'action')); continue }
-            add('process', String(s.type ?? 'step'))
+            const nodeType: NodeType =
+                s.type === 'break' ? 'break' :
+                s.type === 'continue' ? 'continue' :
+                s.type === 'return' ? 'then' : 'process'
+            const label =
+                s.type === 'return' ? `return ${s.value ?? ''}`.trim() :
+                s.type === 'action' ? String(s.statement ?? 'action') :
+                s.type === 'break' ? 'break' :
+                s.type === 'continue' ? 'continue' :
+                String(s.type ?? 'step')
+            const id = addNode(nodeType, label)
+            addEdge(tail, id, firstCond)
+            firstCond = undefined
+            tail = id
         }
+        return tail
     }
-    visit(body)
-    wf.edges.push({ from: tail, to: endId })
+
+    let tail = startId
+    for (const v of vars) {
+        const id = addNode('process', `var ${v.name}:${v.type}${v.initialValue ? ` = ${v.initialValue}` : ''}`)
+        addEdge(tail, id)
+        tail = id
+    }
+    tail = appendSequence(tail, body)
+    addEdge(tail, endId)
     return wf
 }
 
