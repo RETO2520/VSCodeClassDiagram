@@ -6,7 +6,7 @@ import { DomainModel } from '../../view/lib/DomainModel';
 suite('SpecDslParser Flow DSL', () => {
 
     // ─────────────────────────────────────────────────────────────
-    // 既存テスト (Phase 1)
+    // Phase 1: 既存テスト
     // ─────────────────────────────────────────────────────────────
 
     test('parses Flow block into workflowAst and keeps gherkin workflow', () => {
@@ -29,8 +29,7 @@ suite('SpecDslParser Flow DSL', () => {
         ].join('\n');
 
         const service = new ClassDiagramService(DomainModel.createEmpty());
-        const parser = new SpecDslParser();
-        parser.parse(dsl, service);
+        new SpecDslParser().parse(dsl, service);
 
         const op = service.getOperationByName('OrderService', 'process');
         assert.ok(op, 'operation should exist');
@@ -67,8 +66,7 @@ suite('SpecDslParser Flow DSL', () => {
         ].join('\n');
 
         const service = new ClassDiagramService(DomainModel.createEmpty());
-        const parser = new SpecDslParser();
-        parser.parse(dsl, service);
+        new SpecDslParser().parse(dsl, service);
 
         const op = service.getOperationByName('BatchService', 'run');
         assert.ok(op?.workflowAst);
@@ -84,10 +82,10 @@ suite('SpecDslParser Flow DSL', () => {
     });
 
     // ─────────────────────────────────────────────────────────────
-    // Phase 2 テスト: Flow → ワークフロー図グラフへの反映
+    // Phase 2: Gherkin と Flow は独立したグラフ
     // ─────────────────────────────────────────────────────────────
 
-    test('[Phase2] Flow if/else reflects visual decision node in workflow.nodes', () => {
+    test('[独立性] workflow は Gherkin ノードのみを含み Flow ノードを含まない', () => {
         const dsl = [
             'class PaymentService',
             '+ approve(amount:number): boolean',
@@ -110,53 +108,77 @@ suite('SpecDslParser Flow DSL', () => {
 
         const op = service.getOperationByName('PaymentService', 'approve');
         assert.ok(op?.workflow, 'workflow should exist');
+        assert.ok(op?.workflowAst, 'workflowAst should exist');
 
-        const nodes = op!.workflow!.nodes;
-        const decisionNodes = nodes.filter(n => n.type === 'decision');
-        assert.ok(decisionNodes.length >= 1, 'at least one decision node should be generated from if');
-        assert.strictEqual(decisionNodes[0].label, 'amount > 0');
+        const workflowTypes = op!.workflow!.nodes.map(n => n.type);
 
-        // true/false エッジの存在確認
-        const edges = op!.workflow!.edges;
-        const decId = decisionNodes[0].id;
-        const trueEdge = edges.find(e => e.from === decId && e.condition === 'true');
-        const falseEdge = edges.find(e => e.from === decId && e.condition === 'false');
-        assert.ok(trueEdge, 'true edge should exist');
-        assert.ok(falseEdge, 'false edge should exist');
+        // workflow に Flow 由来のノード型が含まれないこと
+        const flowOnlyTypes = ['decision', 'loop', 'foreach', 'forrange', 'switch', 'break', 'continue'];
+        for (const t of flowOnlyTypes) {
+            assert.ok(!workflowTypes.includes(t), `workflow should NOT contain node type "${t}"`);
+        }
+
+        // workflow には Gherkin 由来のノード型のみ含まれること
+        const allowedTypes = ['start', 'end', 'given', 'when', 'then', 'process'];
+        for (const t of workflowTypes) {
+            assert.ok(allowedTypes.includes(t), `workflow node type "${t}" is not a Gherkin type`);
+        }
     });
 
-    test('[Phase2] Flow while reflects loop node in workflow.nodes', () => {
+    test('[独立性] workflowAst は Gherkin グラフとは別個に存在し、構造が正しい', () => {
         const dsl = [
-            'class QueueProcessor',
-            '+ drain(): void',
-            'Scenario: drain queue',
-            'Given queue has items',
-            'When drain is called',
-            'Then items are processed',
+            'class PaymentService',
+            '+ approve(amount:number): boolean',
+            'Scenario: approval',
+            'Given amount is positive',
+            'When approve is called',
+            'Then result is returned',
             'Flow:',
-            'while queue.hasNext()',
-            '  do queue.processNext()',
+            'if amount > 0',
+            '  do this.markApproved()',
+            '  return true',
+            'else',
+            '  do this.markRejected()',
+            '  return false',
             'end',
         ].join('\n');
 
         const service = new ClassDiagramService(DomainModel.createEmpty());
         new SpecDslParser().parse(dsl, service);
 
-        const op = service.getOperationByName('QueueProcessor', 'drain');
-        assert.ok(op?.workflow);
+        const op = service.getOperationByName('PaymentService', 'approve');
+        const ast = op!.workflowAst!;
 
-        const nodes = op!.workflow!.nodes;
-        const loopNodes = nodes.filter(n => n.type === 'loop');
-        assert.ok(loopNodes.length >= 1, 'loop node should exist');
-        assert.strictEqual(loopNodes[0].label, 'queue.hasNext()');
+        // workflowAst に if/else 構造が正しく格納されている
+        const ifNode = (ast.body as any[]).find(n => n.type === 'if');
+        assert.ok(ifNode, 'if node should exist in workflowAst');
+        assert.strictEqual(ifNode.condition, 'amount > 0');
+        assert.strictEqual(ifNode.then[0].type, 'action');
+        assert.strictEqual(ifNode.then[1].type, 'return');
+        assert.ok(ifNode.else, 'else branch should exist');
 
-        const edges = op!.workflow!.edges;
-        const loopId = loopNodes[0].id;
-        assert.ok(edges.find(e => e.from === loopId && e.condition === 'true'), 'true(body) edge should exist');
-        assert.ok(edges.find(e => e.from === loopId && e.condition === 'false'), 'false(exit) edge should exist');
+        // workflow の Gherkin ノードと workflowAst のノードは ID が共有されない
+        const workflowNodeIds = new Set(op!.workflow!.nodes.map(n => n.id));
+        const collectAstIds = (nodes: any[]): string[] => {
+            // workflowAst のノードは id を持たない（AST構造）ので、
+            // ここでは「workflowAst に workflow のノードIDが混入していない」ことを確認する代わりに
+            // workflow ノード数と AST body 長が独立していることを確認する
+            return nodes.map(n => n.type);
+        };
+        // workflow は Gherkin 4ノード (start + given + when + then + end = 5) を持つ
+        assert.ok(op!.workflow!.nodes.length >= 4, 'workflow should have Gherkin nodes');
+        // workflowAst.body には Gherkin 由来の action が含まれない
+        const astBodyTypes = (ast.body as any[]).map(n => n.type);
+        assert.ok(!astBodyTypes.includes('given'), 'workflowAst should not contain "given" type');
+        assert.ok(!astBodyTypes.includes('when'), 'workflowAst should not contain "when" type');
+        assert.ok(!astBodyTypes.includes('then'), 'workflowAst should not contain "then" type');
     });
 
-    test('[Phase2] Flow forEach reflects foreach node in workflow.nodes', () => {
+    // ─────────────────────────────────────────────────────────────
+    // Phase 2: forEach / forRange / switch / break / continue の AST
+    // ─────────────────────────────────────────────────────────────
+
+    test('[Phase2 AST] for...in が forEach ノードに変換される', () => {
         const dsl = [
             'class OrderProcessor',
             '+ processAll(): void',
@@ -174,9 +196,8 @@ suite('SpecDslParser Flow DSL', () => {
         new SpecDslParser().parse(dsl, service);
 
         const op = service.getOperationByName('OrderProcessor', 'processAll');
-        assert.ok(op?.workflow);
+        assert.ok(op?.workflowAst);
 
-        // AST
         const ast = op!.workflowAst!;
         const forEachAst = (ast.body as any[]).find(n => n.type === 'forEach');
         assert.ok(forEachAst, 'forEach AST node should exist');
@@ -184,17 +205,12 @@ suite('SpecDslParser Flow DSL', () => {
         assert.strictEqual(forEachAst.collection, 'this.orders');
         assert.strictEqual(forEachAst.body[0].type, 'action');
 
-        // ビジュアルグラフ
-        const nodes = op!.workflow!.nodes;
-        const forNode = nodes.find(n => n.type === 'foreach');
-        assert.ok(forNode, 'foreach visual node should exist');
-        assert.ok(forNode!.label.includes('order') && forNode!.label.includes('this.orders'));
-
-        const edges = op!.workflow!.edges;
-        assert.ok(edges.find(e => e.from === forNode!.id && e.condition === 'body'), 'body edge should exist');
+        // Gherkin グラフに foreach ノードが含まれないこと
+        const workflowTypes = op!.workflow!.nodes.map(n => n.type);
+        assert.ok(!workflowTypes.includes('foreach'), 'workflow should NOT contain foreach node');
     });
 
-    test('[Phase2] Flow forRange reflects forrange node in workflow.nodes', () => {
+    test('[Phase2 AST] for...from...to が forRange ノードに変換される', () => {
         const dsl = [
             'class Counter',
             '+ countUp(): void',
@@ -212,22 +228,19 @@ suite('SpecDslParser Flow DSL', () => {
         new SpecDslParser().parse(dsl, service);
 
         const op = service.getOperationByName('Counter', 'countUp');
-        assert.ok(op?.workflow);
-
         const ast = op!.workflowAst!;
+
         const forRangeAst = (ast.body as any[]).find(n => n.type === 'forRange');
         assert.ok(forRangeAst, 'forRange AST node should exist');
         assert.strictEqual(forRangeAst.variable, 'i');
         assert.strictEqual(forRangeAst.from, '0');
         assert.strictEqual(forRangeAst.to, '10');
 
-        const nodes = op!.workflow!.nodes;
-        const forNode = nodes.find(n => n.type === 'forrange');
-        assert.ok(forNode, 'forrange visual node should exist');
-        assert.ok(forNode!.label.includes('from 0 to 10'));
+        const workflowTypes = op!.workflow!.nodes.map(n => n.type);
+        assert.ok(!workflowTypes.includes('forrange'), 'workflow should NOT contain forrange node');
     });
 
-    test('[Phase2] Flow switch reflects switch node with case edges in workflow', () => {
+    test('[Phase2 AST] switch が switch/case/default ノードに変換される', () => {
         const dsl = [
             'class StatusHandler',
             '+ handle(): void',
@@ -250,10 +263,8 @@ suite('SpecDslParser Flow DSL', () => {
         new SpecDslParser().parse(dsl, service);
 
         const op = service.getOperationByName('StatusHandler', 'handle');
-        assert.ok(op?.workflow);
-
-        // AST
         const ast = op!.workflowAst!;
+
         const switchAst = (ast.body as any[]).find(n => n.type === 'switch');
         assert.ok(switchAst, 'switch AST node should exist');
         assert.strictEqual(switchAst.expression, 'this.status');
@@ -262,19 +273,11 @@ suite('SpecDslParser Flow DSL', () => {
         assert.strictEqual(switchAst.cases[1].value, '"active"');
         assert.ok(switchAst.default?.length >= 1, 'default branch should exist');
 
-        // ビジュアルグラフ
-        const nodes = op!.workflow!.nodes;
-        const switchNode = nodes.find(n => n.type === 'switch');
-        assert.ok(switchNode, 'switch visual node should exist');
-        assert.strictEqual(switchNode!.label, 'this.status');
-
-        const edges = op!.workflow!.edges;
-        assert.ok(edges.find(e => e.from === switchNode!.id && e.condition === 'case0'), 'case0 edge should exist');
-        assert.ok(edges.find(e => e.from === switchNode!.id && e.condition === 'case1'), 'case1 edge should exist');
-        assert.ok(edges.find(e => e.from === switchNode!.id && e.condition === 'default'), 'default edge should exist');
+        const workflowTypes = op!.workflow!.nodes.map(n => n.type);
+        assert.ok(!workflowTypes.includes('switch'), 'workflow should NOT contain switch node');
     });
 
-    test('[Phase2] Flow break/continue reflect in AST and workflow nodes', () => {
+    test('[Phase2 AST] break と continue が AST に格納される', () => {
         const dsl = [
             'class Searcher',
             '+ findFirst(): void',
@@ -296,9 +299,8 @@ suite('SpecDslParser Flow DSL', () => {
         new SpecDslParser().parse(dsl, service);
 
         const op = service.getOperationByName('Searcher', 'findFirst');
-        assert.ok(op?.workflowAst);
-
         const ast = op!.workflowAst!;
+
         const forEachAst = (ast.body as any[]).find(n => n.type === 'forEach');
         assert.ok(forEachAst, 'forEach should exist');
 
@@ -311,46 +313,9 @@ suite('SpecDslParser Flow DSL', () => {
         const continueNode = forEachAst.body.find((n: any) => n.type === 'continue');
         assert.ok(continueNode, 'continue node should exist in AST');
 
-        // ビジュアルグラフ内の break / continue ノード確認
-        const nodes = op!.workflow!.nodes;
-        assert.ok(nodes.find(n => n.type === 'break'), 'break visual node should exist');
-        assert.ok(nodes.find(n => n.type === 'continue'), 'continue visual node should exist');
-    });
-
-    test('[Phase2] Flow graph connects to Gherkin last node', () => {
-        const dsl = [
-            'class Validator',
-            '+ validate(value:number): boolean',
-            'Scenario: valid input',
-            'Given value is provided',
-            'When validate is called',
-            'Then result is valid',
-            'Flow:',
-            'if value > 0',
-            '  return true',
-            'else',
-            '  return false',
-            'end',
-        ].join('\n');
-
-        const service = new ClassDiagramService(DomainModel.createEmpty());
-        new SpecDslParser().parse(dsl, service);
-
-        const op = service.getOperationByName('Validator', 'validate');
-        assert.ok(op?.workflow);
-
-        const nodes = op!.workflow!.nodes;
-        const edges = op!.workflow!.edges;
-
-        // Then ノードが存在する
-        const thenNode = nodes.find(n => n.label.startsWith('Then:'));
-        assert.ok(thenNode, 'Then gherkin node should exist');
-
-        // Then ノードの後に decision ノードが接続されている
-        const decisionNode = nodes.find(n => n.type === 'decision');
-        assert.ok(decisionNode, 'decision node from Flow should exist');
-
-        const connectingEdge = edges.find(e => e.from === thenNode!.id && e.to === decisionNode!.id);
-        assert.ok(connectingEdge, 'Then node should connect to Flow decision node');
+        // Gherkin グラフに break/continue ノードが含まれないこと
+        const workflowTypes = op!.workflow!.nodes.map(n => n.type);
+        assert.ok(!workflowTypes.includes('break'), 'workflow should NOT contain break node');
+        assert.ok(!workflowTypes.includes('continue'), 'workflow should NOT contain continue node');
     });
 });

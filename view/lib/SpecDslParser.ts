@@ -184,6 +184,15 @@ export interface ParsedDsl {
  *
  * import-spec-dsl コマンドから利用されるほか、
  * テストやGUI側からも直接利用できるよう独立クラスとして提供する。
+ *
+ * ## 二層構造の方針
+ *
+ *   operation.workflow    … Gherkin シナリオから生成したビジュアルグラフ（仕様層）
+ *   operation.workflowAst … Flow: ブロックから生成した制御構造 AST（実装層）
+ *
+ * 両者は独立したグラフとして保持し、相互に接続しない。
+ * ワークフローエディタは workflowAst を別レイヤー / タブで表示することで
+ * 「仕様」と「実装」を同一キャンバス上で混在させずに済む。
  */
 export class SpecDslParser {
     private aliases: Map<string, string> = new Map();
@@ -536,9 +545,16 @@ export class SpecDslParser {
     }
 
     // ============================================================
-    // Gherkin → ワークフロー変換
+    // Gherkin → ワークフロー変換（仕様層）
     // ============================================================
 
+    /**
+     * Gherkin シナリオを workflow ビジュアルグラフに変換する。
+     *
+     * Flow: ブロックを検出した場合は workflowAst のみを生成し、
+     * Gherkin グラフとは切り離して独立した実装層として保持する。
+     * 両グラフを同一キャンバスに接続・混在させることはしない。
+     */
     private parseGherkinToWorkflow(lines: string[], startIndex: number, context?: any): {
         workflow: ClassOperation['workflow'];
         workflowAst?: ClassOperation['workflowAst'];
@@ -571,11 +587,6 @@ export class SpecDslParser {
         currentY += STEP_Y;
         let maxY = 0;
 
-        // Gherkin ステップを収集するループ
-        // Flow: ブロックを検出した時点で lastNodeId（最後のGherkinノード）を記録し、
-        // ASTをグラフ化してそのまま接続する。
-        let lastGherkinNodeId: string | null = null;
-
         while (i < lines.length) {
             const trimmed = lines[i].trim();
             if (trimmed === '') { i++; continue; }
@@ -589,7 +600,6 @@ export class SpecDslParser {
                 currentScenarioName = parsed.name;
                 currentSrcs = parsed.srcs;
                 lastNodeId = startId;
-                lastGherkinNodeId = null;
                 currentY = 150;
                 currentX += SCENARIO_WIDTH;
                 i++;
@@ -597,51 +607,14 @@ export class SpecDslParser {
             }
 
             // ── Flow: ブロック ──────────────────────────────────────
+            // Flow: ブロックは workflowAst にのみ格納する。
+            // Gherkin グラフ（workflow.nodes/edges）への接続は行わない。
+            // 両者は独立したグラフとして WorkflowEditorPanel が別レイヤーで表示する。
             if (/^Flow\s*:\s*$/i.test(trimmed)) {
                 const flowResult = this.parseFlowBlockToWorkflowAst(lines, i + 1);
-
-                if (this.hasWorkflowAstContent(flowResult.workflowAst)) {
-                    // 初出の Flow ブロックを workflowAst として保存
-                    if (!workflowAst) workflowAst = flowResult.workflowAst;
-
-                    // ── AST → ビジュアルグラフ変換 ──────────────────
-                    // Flow: の直前の Gherkin ノード（または start）を接続起点にする
-                    const flowEntryId = lastGherkinNodeId ?? startId;
-                    const flowStartX = currentX;
-                    const flowStartY = currentY + 20; // Gherkin末端から少し空ける
-
-                    const graphResult = this.astBodyToWorkflowGraph(
-                        (flowResult.workflowAst!.body as any[]),
-                        nodes, edges,
-                        flowEntryId,
-                        flowStartX, flowStartY,
-                        /* stepY */ 90,
-                    );
-
-                    // 変数宣言ノードをグラフ先頭に挿入（var宣言があれば）
-                    if ((flowResult.workflowAst!.variables?.length ?? 0) > 0) {
-                        const varId = createId();
-                        const varLabel = flowResult.workflowAst!.variables
-                            .map(v => `var ${v.name}: ${v.type}${v.initialValue ? ` = ${v.initialValue}` : ''}`)
-                            .join(', ');
-                        nodes.push({ id: varId, type: 'process', label: varLabel, x: flowStartX, y: flowStartY - 60 });
-                        // flowEntryId → varId → 元々 flowEntryId につながっていた最初の Flowノード
-                        const firstFlowEdge = edges.find(e => e.from === flowEntryId && nodes.find(n => n.id === e.to)?.type !== 'end');
-                        if (firstFlowEdge) {
-                            const origTo = firstFlowEdge.to;
-                            firstFlowEdge.to = varId;
-                            edges.push({ from: varId, to: origTo });
-                        } else {
-                            edges.push({ from: flowEntryId, to: varId });
-                        }
-                    }
-
-                    // Flowグラフの末端ノードを lastNodeId として引き継ぐ
-                    lastNodeId = graphResult.lastId;
-                    currentY = graphResult.nextY;
-                    if (currentY > maxY) maxY = currentY;
+                if (!workflowAst && this.hasWorkflowAstContent(flowResult.workflowAst)) {
+                    workflowAst = flowResult.workflowAst;
                 }
-
                 i = flowResult.endIndex + 1;
                 continue;
             }
@@ -730,7 +703,6 @@ export class SpecDslParser {
                 });
 
                 lastNodeId = newId;
-                lastGherkinNodeId = newId; // Flow: ブロックの接続起点を記録
                 currentY += STEP_Y;
                 if (currentY > maxY) maxY = currentY;
             }
@@ -751,8 +723,13 @@ export class SpecDslParser {
     }
 
     // ============================================================
-    // Flow: ブロック → AST 変換
-    // (for / switch / break / continue を Phase 2 として追加)
+    // Flow: ブロック → AST 変換（実装層）
+    //
+    // 設計方針:
+    //   parseFlowBlockToWorkflowAst() は workflowAst のみを返す。
+    //   ビジュアルグラフ（nodes/edges）への変換は行わない。
+    //   WorkflowEditorPanel が workflowAst を受け取り、
+    //   必要に応じて独立したグラフとして表示・編集する。
     // ============================================================
 
     private parseFlowBlockToWorkflowAst(
@@ -887,216 +864,6 @@ export class SpecDslParser {
         }
 
         return { workflowAst: { variables, body }, endIndex: i - 1 };
-    }
-
-    // ============================================================
-    // Flow AST → ワークフローグラフ 変換
-    // ============================================================
-
-    /**
-     * workflowAst.body を WFNode[] + WFEdge[] に変換する。
-     *
-     * 変換ルール:
-     *   action / return    → process ノード（直列接続）
-     *   break / continue   → break / continue ノード
-     *   if                 → decision ノード + true/false 分岐 → マージノード
-     *   while              → loop ノード + true(body)/false(exit) エッジ + ループバック
-     *   forEach / forRange → foreach / forrange ノード + body/exit エッジ + ループバック
-     *   switch             → switch ノード + case0/case1/.../default エッジ → マージノード
-     *
-     * @param astBody   workflowAst.body（再帰的に処理する配列）
-     * @param nodes     追記先ノード配列（参照渡し）
-     * @param edges     追記先エッジ配列（参照渡し）
-     * @param entryId   この body の直前ノード ID（最初のエッジの from に使う）
-     * @param x         ノードを置く中心 X 座標
-     * @param startY    ノードを置き始める Y 座標
-     * @param stepY     ノード間の Y 間隔（デフォルト 90）
-     * @returns lastId: body 末尾ノード ID、nextY: 次に使える Y 座標
-     */
-    private astBodyToWorkflowGraph(
-        astBody: any[],
-        nodes: NonNullable<ClassOperation['workflow']>['nodes'],
-        edges: NonNullable<ClassOperation['workflow']>['edges'],
-        entryId: string,
-        x: number,
-        startY: number,
-        stepY: number = 90,
-    ): { lastId: string; nextY: number } {
-        let lastId = entryId;
-        let y = startY;
-
-        for (const astNode of astBody) {
-            const id = createId();
-
-            // ── action（code / comment / instruction）────────────────
-            if (astNode.type === 'action') {
-                nodes.push({ id, type: 'process', label: astNode.statement ?? '', x, y });
-                edges.push({ from: lastId, to: id });
-                lastId = id; y += stepY; continue;
-            }
-
-            // ── return ───────────────────────────────────────────────
-            if (astNode.type === 'return') {
-                const label = astNode.value ? `return ${astNode.value}` : 'return';
-                nodes.push({ id, type: 'process', label, x, y });
-                edges.push({ from: lastId, to: id });
-                lastId = id; y += stepY; continue;
-            }
-
-            // ── break ────────────────────────────────────────────────
-            if (astNode.type === 'break') {
-                nodes.push({ id, type: 'break', label: 'break', x, y });
-                edges.push({ from: lastId, to: id });
-                lastId = id; y += stepY; continue;
-            }
-
-            // ── continue ─────────────────────────────────────────────
-            if (astNode.type === 'continue') {
-                nodes.push({ id, type: 'continue', label: 'continue', x, y });
-                edges.push({ from: lastId, to: id });
-                lastId = id; y += stepY; continue;
-            }
-
-            // ── if ───────────────────────────────────────────────────
-            if (astNode.type === 'if') {
-                const decisionId = id;
-                nodes.push({ id: decisionId, type: 'decision', label: astNode.condition ?? '', x, y });
-                edges.push({ from: lastId, to: decisionId });
-                y += stepY;
-
-                const mergeId = createId();
-                const BX = 200; // 分岐の左右オフセット
-
-                // then 分岐
-                const thenResult = this.astBodyToWorkflowGraph(astNode.then ?? [], nodes, edges, decisionId, x + BX, y, stepY);
-                // decision から then 側への最初のエッジに condition='true' を付与
-                const thenEdge = edges.filter(e => e.from === decisionId).find(e => e.condition == null);
-                if (thenEdge) thenEdge.condition = 'true';
-
-                // else 分岐
-                const elseBody = astNode.else ?? [];
-                let falseLastId: string;
-                let falseNextY: number;
-                if (elseBody.length > 0) {
-                    const elseResult = this.astBodyToWorkflowGraph(elseBody, nodes, edges, decisionId, x - BX, y, stepY);
-                    const elseEdge = edges.filter(e => e.from === decisionId).find(e => e.condition == null);
-                    if (elseEdge) elseEdge.condition = 'false';
-                    falseLastId = elseResult.lastId;
-                    falseNextY = elseResult.nextY;
-                } else {
-                    falseLastId = decisionId;
-                    falseNextY = y;
-                }
-
-                const mergeY = Math.max(thenResult.nextY, falseNextY);
-                nodes.push({ id: mergeId, type: 'process', label: '(merge)', x, y: mergeY });
-                edges.push({ from: thenResult.lastId, to: mergeId });
-                if (falseLastId !== decisionId) {
-                    edges.push({ from: falseLastId, to: mergeId });
-                } else {
-                    edges.push({ from: decisionId, to: mergeId, condition: 'false' });
-                }
-
-                lastId = mergeId; y = mergeY + stepY; continue;
-            }
-
-            // ── while ────────────────────────────────────────────────
-            if (astNode.type === 'while') {
-                const loopId = id;
-                nodes.push({ id: loopId, type: 'loop', label: astNode.condition ?? '', x, y });
-                edges.push({ from: lastId, to: loopId });
-                y += stepY;
-
-                const bodyResult = this.astBodyToWorkflowGraph(astNode.body ?? [], nodes, edges, loopId, x, y, stepY);
-                const bodyEdge = edges.filter(e => e.from === loopId).find(e => e.condition == null);
-                if (bodyEdge) bodyEdge.condition = 'true';
-                edges.push({ from: bodyResult.lastId, to: loopId }); // ループバック
-
-                const exitId = createId();
-                nodes.push({ id: exitId, type: 'process', label: '(loop exit)', x, y: bodyResult.nextY });
-                edges.push({ from: loopId, to: exitId, condition: 'false' });
-
-                lastId = exitId; y = bodyResult.nextY + stepY; continue;
-            }
-
-            // ── forEach ──────────────────────────────────────────────
-            if (astNode.type === 'forEach') {
-                const forId = id;
-                nodes.push({ id: forId, type: 'foreach', label: `for ${astNode.variable} in ${astNode.collection}`, x, y });
-                edges.push({ from: lastId, to: forId });
-                y += stepY;
-
-                const bodyResult = this.astBodyToWorkflowGraph(astNode.body ?? [], nodes, edges, forId, x, y, stepY);
-                const bodyEdge = edges.filter(e => e.from === forId).find(e => e.condition == null);
-                if (bodyEdge) bodyEdge.condition = 'body';
-                edges.push({ from: bodyResult.lastId, to: forId }); // ループバック
-
-                const exitId = createId();
-                nodes.push({ id: exitId, type: 'process', label: '(foreach exit)', x, y: bodyResult.nextY });
-                edges.push({ from: forId, to: exitId });
-
-                lastId = exitId; y = bodyResult.nextY + stepY; continue;
-            }
-
-            // ── forRange ─────────────────────────────────────────────
-            if (astNode.type === 'forRange') {
-                const forId = id;
-                nodes.push({ id: forId, type: 'forrange', label: `for ${astNode.variable} from ${astNode.from} to ${astNode.to}`, x, y });
-                edges.push({ from: lastId, to: forId });
-                y += stepY;
-
-                const bodyResult = this.astBodyToWorkflowGraph(astNode.body ?? [], nodes, edges, forId, x, y, stepY);
-                const bodyEdge = edges.filter(e => e.from === forId).find(e => e.condition == null);
-                if (bodyEdge) bodyEdge.condition = 'body';
-                edges.push({ from: bodyResult.lastId, to: forId }); // ループバック
-
-                const exitId = createId();
-                nodes.push({ id: exitId, type: 'process', label: '(forrange exit)', x, y: bodyResult.nextY });
-                edges.push({ from: forId, to: exitId });
-
-                lastId = exitId; y = bodyResult.nextY + stepY; continue;
-            }
-
-            // ── switch ───────────────────────────────────────────────
-            if (astNode.type === 'switch') {
-                const switchId = id;
-                nodes.push({ id: switchId, type: 'switch', label: astNode.expression ?? '', x, y });
-                edges.push({ from: lastId, to: switchId });
-                y += stepY;
-
-                const mergeId = createId();
-                const cases: { value: string; body: any[] }[] = astNode.cases ?? [];
-                const CX_STEP = 180;
-                const caseBaseX = x - ((cases.length - 1) / 2) * CX_STEP;
-                let maxCaseY = y;
-
-                cases.forEach((c, idx) => {
-                    const caseX = caseBaseX + idx * CX_STEP;
-                    const caseResult = this.astBodyToWorkflowGraph(c.body, nodes, edges, switchId, caseX, y, stepY);
-                    const caseEdge = edges.filter(e => e.from === switchId).find(e => e.condition == null);
-                    if (caseEdge) caseEdge.condition = `case${idx}`;
-                    edges.push({ from: caseResult.lastId, to: mergeId });
-                    if (caseResult.nextY > maxCaseY) maxCaseY = caseResult.nextY;
-                });
-
-                if ((astNode.default as any[])?.length > 0) {
-                    const defResult = this.astBodyToWorkflowGraph(
-                        astNode.default, nodes, edges, switchId, x + cases.length * CX_STEP, y, stepY
-                    );
-                    const defEdge = edges.filter(e => e.from === switchId).find(e => e.condition == null);
-                    if (defEdge) defEdge.condition = 'default';
-                    edges.push({ from: defResult.lastId, to: mergeId });
-                    if (defResult.nextY > maxCaseY) maxCaseY = defResult.nextY;
-                } else {
-                    edges.push({ from: switchId, to: mergeId, condition: 'default' });
-                }
-
-                nodes.push({ id: mergeId, type: 'process', label: '(switch merge)', x, y: maxCaseY });
-                lastId = mergeId; y = maxCaseY + stepY; continue;
-            }
-        }
-
-        return { lastId, nextY: y };
     }
 
     private isFlowBoundary(trimmedLine: string): boolean {

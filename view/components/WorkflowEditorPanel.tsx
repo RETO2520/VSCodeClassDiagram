@@ -71,12 +71,29 @@ export interface WFWorkflow {
     edges: WFEdge[]
 }
 
+type FlowAst = {
+    variables: Array<{ name: string; type: string; initialValue?: string }>
+    body: any[]
+}
+
 export interface WFOpRef {
     classIndex: number
     opIndex: number
     classId: string
     operationId: string
     label: string
+}
+
+function createEmptyWorkflow(x = 220): WFWorkflow {
+    const s = generateId('start')
+    const e = generateId('end')
+    return {
+        nodes: [
+            { id: s, type: 'start', label: 'Start', x, y: 80 },
+            { id: e, type: 'end', label: 'End', x, y: 260 },
+        ],
+        edges: [{ from: s, to: e }],
+    }
 }
 
 export interface WorkflowEditorPanelProps {
@@ -202,6 +219,79 @@ function generateId(prefix: string) {
 // ============================================================
 // convertToAst — Phase 2 拡張
 // ============================================================
+
+export function convertAstToWorkflow(ast?: FlowAst): WFWorkflow {
+    const wf = createEmptyWorkflow()
+    const startId = wf.nodes[0].id
+    const endId = wf.nodes[1].id
+    wf.edges = []
+    const body = ast?.body ?? []
+    const vars = ast?.variables ?? []
+    let y = 140
+    let tail = startId
+
+    const add = (type: NodeType, label: string) => {
+        const id = generateId(type)
+        wf.nodes.push({ id, type, label, x: 220, y })
+        y += 86
+        wf.edges.push({ from: tail, to: id })
+        tail = id
+    }
+
+    for (const v of vars) {
+        add('process', `var ${v.name}:${v.type}${v.initialValue ? ` = ${v.initialValue}` : ''}`)
+    }
+
+    const visit = (stmts: any[]) => {
+        for (const s of stmts) {
+            if (!s || typeof s !== 'object') continue
+            if (s.type === 'if') {
+                add('decision', String(s.condition ?? 'if'))
+                visit(Array.isArray(s.then) ? s.then : [])
+                if (Array.isArray(s.else) && s.else.length > 0) {
+                    add('process', 'else')
+                    visit(s.else)
+                }
+                continue
+            }
+            if (s.type === 'while') {
+                add('loop', String(s.condition ?? 'while'))
+                visit(Array.isArray(s.body) ? s.body : [])
+                continue
+            }
+            if (s.type === 'forEach') {
+                add('foreach', `for ${s.variable ?? 'item'} in ${s.collection ?? 'collection'}`)
+                visit(Array.isArray(s.body) ? s.body : [])
+                continue
+            }
+            if (s.type === 'forRange') {
+                add('forrange', `for ${s.variable ?? 'i'} from ${s.from ?? '0'} to ${s.to ?? 'n'}`)
+                visit(Array.isArray(s.body) ? s.body : [])
+                continue
+            }
+            if (s.type === 'switch') {
+                add('switch', String(s.expression ?? 'switch'))
+                for (const c of Array.isArray(s.cases) ? s.cases : []) {
+                    add('process', `case ${String(c?.value ?? '')}`)
+                    visit(Array.isArray(c?.body) ? c.body : [])
+                }
+                if (Array.isArray(s.default) && s.default.length > 0) {
+                    add('process', 'default')
+                    visit(s.default)
+                }
+                continue
+            }
+            if (s.type === 'break') { add('break', 'break'); continue }
+            if (s.type === 'continue') { add('continue', 'continue'); continue }
+            if (s.type === 'return') { add('then', `return ${s.value ?? ''}`.trim()); continue }
+            if (s.type === 'action') { add('process', String(s.statement ?? 'action')); continue }
+            add('process', String(s.type ?? 'step'))
+        }
+    }
+    visit(body)
+    wf.edges.push({ from: tail, to: endId })
+    return wf
+}
 
 export function convertToAst(wf: WFWorkflow) {
     const { nodes, edges } = wf
@@ -836,6 +926,56 @@ function InlineEditor({ node, svgRef, onCommit, onCancel }: {
     )
 }
 
+function MiniWorkflowPreview({ title, wf }: { title: string; wf: WFWorkflow }) {
+    const width = 360
+    const height = 200
+    if (!wf.nodes.length) {
+        return <div style={{ border: '1px solid #334155', borderRadius: 6, background: '#0b1220', padding: 10, color: '#64748b', fontSize: 11 }}>{title}: empty</div>
+    }
+    const xs = wf.nodes.map(n => n.x)
+    const ys = wf.nodes.map(n => n.y)
+    const minX = Math.min(...xs), maxX = Math.max(...xs)
+    const minY = Math.min(...ys), maxY = Math.max(...ys)
+    const bw = Math.max(1, maxX - minX + 120)
+    const bh = Math.max(1, maxY - minY + 80)
+    const s = Math.min((width - 20) / bw, (height - 20) / bh)
+    const tx = 10 + (width - 20 - bw * s) / 2 - minX * s + 60 * s
+    const ty = 10 + (height - 20 - bh * s) / 2 - minY * s + 40 * s
+    const pos = (x: number, y: number) => ({ x: x * s + tx, y: y * s + ty })
+    const map = new Map(wf.nodes.map(n => [n.id, n]))
+
+    return (
+        <div style={{ border: '1px solid #334155', borderRadius: 6, background: '#0b1220', overflow: 'hidden' }}>
+            <div style={{ padding: '6px 10px', borderBottom: '1px solid #1f2937', fontSize: 11, color: '#cbd5e1' }}>
+                {title} ({wf.nodes.length} nodes / {wf.edges.length} edges)
+            </div>
+            <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
+                <rect width={width} height={height} fill="#0b1220" />
+                {wf.edges.map((e, i) => {
+                    const from = map.get(e.from)
+                    const to = map.get(e.to)
+                    if (!from || !to) return null
+                    const a = pos(from.x, from.y)
+                    const b = pos(to.x, to.y)
+                    return <line key={`${e.from}-${e.to}-${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#64748b" strokeWidth={1.2} />
+                })}
+                {wf.nodes.map(n => {
+                    const p = pos(n.x, n.y)
+                    const st = STYLE[n.type]
+                    return (
+                        <g key={n.id} transform={`translate(${p.x},${p.y})`}>
+                            <rect x={-28} y={-10} width={56} height={20} rx={3} fill={st.fill} stroke={st.stroke} strokeWidth={1} />
+                            <text x={0} y={0} textAnchor="middle" dominantBaseline="central" fill={st.text} fontSize={8}>
+                                {n.label.length > 10 ? `${n.label.slice(0, 9)}…` : n.label}
+                            </text>
+                        </g>
+                    )
+                })}
+            </svg>
+        </div>
+    )
+}
+
 // ============================================================
 // Node type meta
 // ============================================================
@@ -910,12 +1050,17 @@ function autoCondition(fromNode: WFNode, existingOuts: WFEdge[]): string | null 
 
 export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorPanelProps) {
     const svgRef = useRef<SVGSVGElement>(null)
-    const [wf, dispatch] = useReducer(wfReducer, { nodes: [], edges: [] })
+    const [gherkinWf, dispatchGherkin] = useReducer(wfReducer, { nodes: [], edges: [] })
+    const [flowWf, dispatchFlow] = useReducer(wfReducer, { nodes: [], edges: [] })
+    const [viewMode, setViewMode] = useState<'both' | 'gherkin' | 'flow'>('both')
+    const [flowDirty, setFlowDirty] = useState(false)
 
-    const lastLoadedJson = useRef<string>('')
+    const lastLoadedWorkflowJson = useRef<string>('')
+    const lastLoadedAstJson = useRef<string>('')
     const currentOpKey = useRef<string>('')
     const opRefRef = useRef(opRef)
     const serviceRef = useRef(service)
+    const loadedFlowAstRef = useRef<FlowAst | undefined>(undefined)
     useEffect(() => { opRefRef.current = opRef }, [opRef])
     useEffect(() => { serviceRef.current = service }, [service])
 
@@ -933,31 +1078,37 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
             }
         }
         if (!op || !cls) return
-        const incoming = op.workflow?.nodes?.length ? op.workflow : null
-        const incomingJson = JSON.stringify(incoming)
-        if (incomingJson === lastLoadedJson.current) return
-        lastLoadedJson.current = incomingJson
-        if (incoming) {
-            dispatch({ type: 'SET_WF', wf: JSON.parse(incomingJson) })
+        const incomingWorkflow = op.workflow?.nodes?.length ? op.workflow : null
+        const incomingWorkflowJson = JSON.stringify(incomingWorkflow)
+        const incomingAst = (op.workflowAst ?? { variables: [], body: [] }) as FlowAst
+        const incomingAstJson = JSON.stringify(incomingAst)
+        if (
+            incomingWorkflowJson === lastLoadedWorkflowJson.current &&
+            incomingAstJson === lastLoadedAstJson.current
+        ) return
+        lastLoadedWorkflowJson.current = incomingWorkflowJson
+        lastLoadedAstJson.current = incomingAstJson
+        loadedFlowAstRef.current = JSON.parse(incomingAstJson)
+        setFlowDirty(false)
+
+        if (incomingWorkflow) {
+            dispatchGherkin({ type: 'SET_WF', wf: JSON.parse(incomingWorkflowJson) })
         } else {
-            const s = generateId('start'), e = generateId('end')
-            dispatch({
-                type: 'SET_WF', wf: {
-                    nodes: [
-                        { id: s, type: 'start', label: 'Start', x: 220, y: 80 },
-                        { id: e, type: 'end', label: 'End', x: 220, y: 260 },
-                    ],
-                    edges: [{ from: s, to: e }],
-                }
-            })
+            dispatchGherkin({ type: 'SET_WF', wf: createEmptyWorkflow() })
         }
+        dispatchFlow({ type: 'SET_WF', wf: convertAstToWorkflow(JSON.parse(incomingAstJson)) })
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     useEffect(() => {
         if (!opRef) return
         const key = `${opRef.classId}:${opRef.operationId}`
-        if (currentOpKey.current !== key) { currentOpKey.current = key; lastLoadedJson.current = '' }
+        if (currentOpKey.current !== key) {
+            currentOpKey.current = key
+            lastLoadedWorkflowJson.current = ''
+            lastLoadedAstJson.current = ''
+            setViewMode('both')
+        }
         loadFromService()
     }, [opRef, loadFromService])
 
@@ -965,6 +1116,17 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
         service.onModelChanged(loadFromService)
         return () => service.offModelChanged(loadFromService)
     }, [service, loadFromService])
+
+    const activeLayer: 'gherkin' | 'flow' = viewMode === 'flow' ? 'flow' : 'gherkin'
+    const wf = activeLayer === 'flow' ? flowWf : gherkinWf
+    const dispatch = useCallback((action: WFAction) => {
+        if (activeLayer === 'flow') {
+            dispatchFlow(action)
+            if (action.type !== 'SET_WF') setFlowDirty(true)
+            return
+        }
+        dispatchGherkin(action)
+    }, [activeLayer])
 
     const nodeMap = useMemo(() => new Map(wf.nodes.map(n => [n.id, n])), [wf.nodes])
 
@@ -1212,24 +1374,24 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
     const save = useCallback(() => {
         if (!opRef) return
         if (!opRef.classId || !opRef.operationId) { console.error('[WorkflowEditorPanel] save: classId or operationId is missing', opRef); return }
-        let workflowAst: ReturnType<typeof convertToAst> | undefined
-        try { workflowAst = convertToAst(wf) } catch (e) { console.error('[WorkflowEditorPanel] AST conversion failed', e) }
-        const workflowCopy = JSON.parse(JSON.stringify(wf))
+        let workflowAst: ReturnType<typeof convertToAst> | FlowAst | undefined = loadedFlowAstRef.current
+        if (flowDirty || !workflowAst) {
+            try { workflowAst = convertToAst(flowWf) } catch (e) { console.error('[WorkflowEditorPanel] AST conversion failed', e) }
+        }
+        const workflowCopy = JSON.parse(JSON.stringify(gherkinWf))
         try {
             service.applyUpdateOperationWorkflow({ classId: opRef.classId, operationId: opRef.operationId, workflow: workflowCopy, workflowAst })
-            lastLoadedJson.current = JSON.stringify(workflowCopy)
+            lastLoadedWorkflowJson.current = JSON.stringify(workflowCopy)
+            lastLoadedAstJson.current = JSON.stringify(workflowAst ?? { variables: [], body: [] })
+            loadedFlowAstRef.current = JSON.parse(lastLoadedAstJson.current)
+            setFlowDirty(false)
         } catch (e) { console.error('[WorkflowEditorPanel] applyUpdateOperationWorkflow failed', e) }
-    }, [opRef, wf, service])
+    }, [opRef, gherkinWf, flowWf, flowDirty, service])
 
     const reset = useCallback(() => {
-        const s = generateId('start'), e = generateId('end')
-        dispatch({
-            type: 'SET_WF', wf: {
-                nodes: [{ id: s, type: 'start', label: 'Start', x: 220, y: 80 }, { id: e, type: 'end', label: 'End', x: 220, y: 260 }],
-                edges: [{ from: s, to: e }],
-            }
-        })
-    }, [])
+        dispatch({ type: 'SET_WF', wf: createEmptyWorkflow() })
+        if (activeLayer === 'flow') setFlowDirty(true)
+    }, [dispatch, activeLayer])
 
     const worldViewport = useMemo(
         () => createWorldViewport(viewSize.width, viewSize.height, zoom, pan, VIEWPORT_CULL_PADDING),
@@ -1275,34 +1437,43 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                 </span>
                 <div style={{ width: 1, height: 20, background: '#334155', margin: '0 4px' }} />
 
-                {/* 既存ノード */}
-                {NODE_TYPES.map(t => (
-                    <button key={t} onClick={() => addNode(t)} disabled={!opRef} style={{
-                        height: 26, padding: '0 10px', borderRadius: 4, border: `1px solid ${NODE_COL[t]}`,
-                        color: NODE_COL[t], background: `${NODE_COL[t]}18`, fontSize: 11,
-                        cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4,
-                    }}>+ {capitalize(t)}</button>
+                {(['both', 'gherkin', 'flow'] as const).map(mode => (
+                    <button key={mode} onClick={() => setViewMode(mode)} disabled={!opRef} style={{
+                        height: 26, padding: '0 10px', borderRadius: 4,
+                        border: `1px solid ${viewMode === mode ? '#60a5fa' : '#334155'}`,
+                        color: viewMode === mode ? '#dbeafe' : '#94a3b8',
+                        background: viewMode === mode ? '#1e3a8a' : '#0f172a',
+                        fontSize: 11, cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4,
+                    }}>
+                        {mode === 'both' ? 'Both' : mode === 'gherkin' ? 'Gherkin' : 'Flow'}
+                    </button>
                 ))}
-                <div style={{ width: 1, height: 20, background: '#334155', margin: '0 4px' }} />
-
-                {/* Gherkin系 */}
-                {GHERKIN_NODE_TYPES.map(t => (
-                    <button key={t} onClick={() => addNode(t)} disabled={!opRef} style={{
-                        height: 26, padding: '0 10px', borderRadius: 4, border: `1px solid ${NODE_COL[t]}`,
-                        color: NODE_COL[t], background: `${NODE_COL[t]}18`, fontSize: 11,
-                        cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4,
-                    }}>+ {KEYWORD_LABEL[t]}</button>
-                ))}
-                <div style={{ width: 1, height: 20, background: '#334155', margin: '0 4px' }} />
-
-                {/* Phase 2: Flow制御ノード */}
-                {FLOW_NODE_TYPES.map(t => (
-                    <button key={t} onClick={() => addNode(t)} disabled={!opRef} style={{
-                        height: 26, padding: '0 10px', borderRadius: 4, border: `1px solid ${NODE_COL[t]}`,
-                        color: NODE_COL[t], background: `${NODE_COL[t]}18`, fontSize: 11,
-                        cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4,
-                    }}>+ {FLOW_NODE_LABEL[t]}</button>
-                ))}
+                {viewMode !== 'both' && (
+                    <>
+                        <div style={{ width: 1, height: 20, background: '#334155', margin: '0 4px' }} />
+                        {viewMode === 'gherkin' && NODE_TYPES.map(t => (
+                            <button key={t} onClick={() => addNode(t)} disabled={!opRef} style={{
+                                height: 26, padding: '0 10px', borderRadius: 4, border: `1px solid ${NODE_COL[t]}`,
+                                color: NODE_COL[t], background: `${NODE_COL[t]}18`, fontSize: 11,
+                                cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4,
+                            }}>+ {capitalize(t)}</button>
+                        ))}
+                        {viewMode === 'gherkin' && GHERKIN_NODE_TYPES.map(t => (
+                            <button key={t} onClick={() => addNode(t)} disabled={!opRef} style={{
+                                height: 26, padding: '0 10px', borderRadius: 4, border: `1px solid ${NODE_COL[t]}`,
+                                color: NODE_COL[t], background: `${NODE_COL[t]}18`, fontSize: 11,
+                                cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4,
+                            }}>+ {KEYWORD_LABEL[t]}</button>
+                        ))}
+                        {viewMode === 'flow' && FLOW_NODE_TYPES.map(t => (
+                            <button key={t} onClick={() => addNode(t)} disabled={!opRef} style={{
+                                height: 26, padding: '0 10px', borderRadius: 4, border: `1px solid ${NODE_COL[t]}`,
+                                color: NODE_COL[t], background: `${NODE_COL[t]}18`, fontSize: 11,
+                                cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4,
+                            }}>+ {FLOW_NODE_LABEL[t]}</button>
+                        ))}
+                    </>
+                )}
 
                 <div style={{ flex: 1 }} />
 
@@ -1314,8 +1485,8 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                     <button onClick={() => zoomBy(1.25)} title="ズームイン" style={{ width: 26, height: 26, borderRadius: 4, border: '1px solid #334155', color: '#94a3b8', background: 'transparent', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}>＋</button>
                 </div>
                 <div style={{ width: 1, height: 20, background: '#334155', margin: '0 4px' }} />
-                <button onClick={reset} disabled={!opRef} style={{ height: 26, padding: '0 10px', borderRadius: 4, border: '1px solid #475569', color: '#94a3b8', background: 'transparent', fontSize: 11, cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.4 }}>Reset</button>
-                <button onClick={save} disabled={!opRef} style={{ height: 26, padding: '0 12px', borderRadius: 4, background: opRef ? '#1d4ed8' : '#1e3a5f', color: '#bfdbfe', border: '1px solid #2563eb', fontSize: 11, cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.5 }}>Save Workflow</button>
+                <button onClick={reset} disabled={!opRef || viewMode === 'both'} style={{ height: 26, padding: '0 10px', borderRadius: 4, border: '1px solid #475569', color: '#94a3b8', background: 'transparent', fontSize: 11, cursor: opRef && viewMode !== 'both' ? 'pointer' : 'not-allowed', opacity: opRef && viewMode !== 'both' ? 1 : 0.4 }}>Reset</button>
+                <button onClick={save} disabled={!opRef} style={{ height: 26, padding: '0 12px', borderRadius: 4, background: opRef ? '#1d4ed8' : '#1e3a5f', color: '#bfdbfe', border: '1px solid #2563eb', fontSize: 11, cursor: opRef ? 'pointer' : 'not-allowed', opacity: opRef ? 1 : 0.5 }}>Save Gherkin+Flow</button>
             </div>
 
             {/* Canvas */}
@@ -1330,44 +1501,51 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                         </p>
                     </div>
                 )}
-                <svg ref={svgRef} style={{ width: '100%', height: '100%', display: 'block', cursor: canvasDrag.current ? 'grabbing' : 'grab' }}
-                    onPointerMove={onSvgPM} onPointerUp={onSvgPU} onPointerCancel={onSvgPU}
-                    onPointerDown={onSvgPD} onContextMenu={onSvgCtx} onWheel={onWheel}
-                    onClick={() => { setSelEdge(null); setCtxMenu(null) }}>
-                    <defs>
-                        <marker id="wf-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
-                            <path d="M0,0 L8,4 L0,8 z" fill="#64748b" />
-                        </marker>
-                        <pattern id="wf-grid" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse"
-                            patternTransform={`translate(${pan.x % 28} ${pan.y % 28}) scale(${zoom})`}>
-                            <circle cx="0" cy="0" r="0.8" fill="#1e293b" />
-                            <circle cx="28" cy="0" r="0.8" fill="#1e293b" />
-                            <circle cx="0" cy="28" r="0.8" fill="#1e293b" />
-                            <circle cx="28" cy="28" r="0.8" fill="#1e293b" />
-                        </pattern>
-                    </defs>
-                    <rect width="100%" height="100%" fill="url(#wf-grid)" />
-                    <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
-                        {visibleEdges.map((edge, i) => (
-                            <EdgeShape key={`${edgeKey(edge)}-${i}`} edge={edge} nodeMap={nodeMap}
-                                isSelected={selEdge === edgeKey(edge)}
-                                onMidPointerDown={onMidPD} onContextMenu={onEdgeCtx} />
-                        ))}
-                        {visibleNodes.map(node => (
-                            <NodeShape key={node.id} node={node} isSelected={false}
-                                onPointerDown={onNodePD} onHandlePointerDown={onHandlePD}
-                                onDoubleClick={(e, n) => { e.stopPropagation(); setEditing(n) }}
-                                onContextMenu={onNodeCtx} />
-                        ))}
-                    </g>
-                    <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
-                        {tempLine && (
-                            <line x1={tempLine.x1} y1={tempLine.y1} x2={tempLine.x2} y2={tempLine.y2}
-                                stroke={ACCENT} strokeWidth={2} strokeDasharray="6 4"
-                                markerEnd="url(#wf-arrow)" pointerEvents="none" />
-                        )}
-                    </g>
-                </svg>
+                {viewMode === 'both' ? (
+                    <div className="h-full w-full grid grid-cols-1 md:grid-cols-2 gap-3 p-3 overflow-auto">
+                        <MiniWorkflowPreview title="Gherkin Layer (workflow)" wf={gherkinWf} />
+                        <MiniWorkflowPreview title={`Flow Layer (workflowAst)${flowDirty ? ' *' : ''}`} wf={flowWf} />
+                    </div>
+                ) : (
+                    <svg ref={svgRef} style={{ width: '100%', height: '100%', display: 'block', cursor: canvasDrag.current ? 'grabbing' : 'grab' }}
+                        onPointerMove={onSvgPM} onPointerUp={onSvgPU} onPointerCancel={onSvgPU}
+                        onPointerDown={onSvgPD} onContextMenu={onSvgCtx} onWheel={onWheel}
+                        onClick={() => { setSelEdge(null); setCtxMenu(null) }}>
+                        <defs>
+                            <marker id="wf-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                                <path d="M0,0 L8,4 L0,8 z" fill="#64748b" />
+                            </marker>
+                            <pattern id="wf-grid" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse"
+                                patternTransform={`translate(${pan.x % 28} ${pan.y % 28}) scale(${zoom})`}>
+                                <circle cx="0" cy="0" r="0.8" fill="#1e293b" />
+                                <circle cx="28" cy="0" r="0.8" fill="#1e293b" />
+                                <circle cx="0" cy="28" r="0.8" fill="#1e293b" />
+                                <circle cx="28" cy="28" r="0.8" fill="#1e293b" />
+                            </pattern>
+                        </defs>
+                        <rect width="100%" height="100%" fill="url(#wf-grid)" />
+                        <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
+                            {visibleEdges.map((edge, i) => (
+                                <EdgeShape key={`${edgeKey(edge)}-${i}`} edge={edge} nodeMap={nodeMap}
+                                    isSelected={selEdge === edgeKey(edge)}
+                                    onMidPointerDown={onMidPD} onContextMenu={onEdgeCtx} />
+                            ))}
+                            {visibleNodes.map(node => (
+                                <NodeShape key={node.id} node={node} isSelected={false}
+                                    onPointerDown={onNodePD} onHandlePointerDown={onHandlePD}
+                                    onDoubleClick={(e, n) => { e.stopPropagation(); setEditing(n) }}
+                                    onContextMenu={onNodeCtx} />
+                            ))}
+                        </g>
+                        <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
+                            {tempLine && (
+                                <line x1={tempLine.x1} y1={tempLine.y1} x2={tempLine.x2} y2={tempLine.y2}
+                                    stroke={ACCENT} strokeWidth={2} strokeDasharray="6 4"
+                                    markerEnd="url(#wf-arrow)" pointerEvents="none" />
+                            )}
+                        </g>
+                    </svg>
+                )}
             </div>
 
             {/* Inline editor */}
