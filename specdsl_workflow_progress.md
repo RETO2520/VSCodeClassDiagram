@@ -1,4 +1,4 @@
-# SpecDSL Workflow拡張 進捗ログ
+﻿# SpecDSL Workflow拡張 進捗ログ
 
 最終更新: 2026-04-21
 
@@ -155,8 +155,7 @@ Flow:
   - [x] `[Phase2] Flow graph connects to Gherkin last node`
 - [ ] Builder各言語テンプレート追加
   - [ ] TypeScript: `for...of` / `for(let i=n;i<m;i++)` / `switch` / `break` / `continue`
-  - [ ] Kotlin: `for(v in col)` / `(n..m).forEach` / `when(expr)` / `break` / `continue`
-  - [ ] Python: `for v in col:` / `for i in range(n,m):` / `match expr:` / `break` / `continue`
+  - [ ] Java, C++, C#, Rustに向けたもの
 - [ ] ネスト検証テスト (for の中に switch、switch の中に for)
 - [ ] `break`/`continue` スコープ検証 (ループ外使用時に診断エラー)
 - [ ] `dsl_syntax_guide.md` に新構文サンプルを追記
