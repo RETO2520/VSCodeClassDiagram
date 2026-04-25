@@ -1,12 +1,11 @@
 ﻿/**
  * WorkflowEditorPanel.tsx
- * Phase 2 bugfix:
- *   1. if/else — else空のとき process('else') ダミーノードを生成しない
- *      → decision→merge に false エッジを直結
- *   2. if/then — then空のとき同様に true エッジを直結
- *   3. while/forEach/forRange — ループバックエッジ (bodyTail→loopId) を追加
- *   4. 自己ループエッジ → getEdgePoints で kind:'loop' を返し EdgeShape でベジェ弧描画
- *   5. switch — 各 case 末尾を共通 mergeId へ収束
+ *
+ * ループ表示の修正 (2026-04-24):
+ *   Problem 1: forEach/forRange のボディノードと exit ノードが重なる
+ *     → ボディを baseX から左にオフセット配置し、exit は baseX に垂直配置
+ *   Problem 2: ループバックエッジ (bodyTail→forId) が右側ベジェ弧にならない
+ *     → WFEdge に loopBack フラグを追加し getEdgePoints で検出して弧描画
  */
 
 import React, { useReducer, useRef, useCallback, useEffect, useState, useMemo } from 'react'
@@ -21,7 +20,12 @@ export interface WFNode {
     id: string; type: NodeType; label: string; x: number; y: number
     metadata?: { howSteps?: string[]; whyReason?: string }
 }
-export interface WFEdge { from: string; to: string; condition?: string | null; mid?: { x: number; y: number } }
+export interface WFEdge {
+    from: string; to: string; condition?: string | null
+    mid?: { x: number; y: number }
+    /** ループバックエッジ (bodyTail→loopNode) のフラグ。右側ベジェ弧で描画する */
+    loopBack?: boolean
+}
 export interface WFWorkflow { nodes: WFNode[]; edges: WFEdge[] }
 type FlowAst = { variables: Array<{ name: string; type: string; initialValue?: string }>; body: any[] }
 export interface WFOpRef { classIndex: number; opIndex: number; classId: string; operationId: string; label: string }
@@ -53,7 +57,7 @@ const GHERKIN_KEYWORDS: NodeType[] = ['given', 'when', 'then', 'how']
 function nodeSizeWithMeta(node: WFNode): { w: number; h: number } {
     const base = nodeSize(node.type)
     if (!GHERKIN_KEYWORDS.includes(node.type as any)) return base
-    const howH = (node.metadata?.howSteps?.length ?? 0) > 0 ? HOW_PADDING + (node.metadata!.howSteps!.length) * HOW_ITEM_H + HOW_PADDING : 0
+    const howH = (node.metadata?.howSteps?.length ?? 0) > 0 ? HOW_PADDING + node.metadata!.howSteps!.length * HOW_ITEM_H + HOW_PADDING : 0
     const whyH = node.metadata?.whyReason ? HOW_ITEM_H + 4 : 0
     return { w: base.w, h: base.h + howH + whyH }
 }
@@ -85,15 +89,51 @@ type EdgeResult =
     | { kind: 'poly'; pts: readonly [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }] }
     | { kind: 'loop'; d: string; labelPt: { x: number; y: number } }
 
+/**
+ * エッジの描画パラメータを返す。
+ *
+ * ループバック描画の条件（いずれかを満たすとき右側ベジェ弧）:
+ *   1. edge.from === edge.to   (自己ループ)
+ *   2. edge.loopBack === true  (bodyTail → loopNode の逆行エッジ)
+ *
+ * 弧の形状:
+ *   - 自己ループ: loopNode 右辺の上端→右外側→下端
+ *   - loopBack: bodyTail(from)右辺 → 右外側に膨らむ → loopNode(to)右辺（上向き）
+ *   - ボディは loopNode より右・下にあるため、右側の弧はボディと重ならない
+ */
 function getEdgePoints(edge: WFEdge, nodeMap: Map<string, WFNode>): EdgeResult | null {
     const from = nodeMap.get(edge.from), to = nodeMap.get(edge.to); if (!from || !to) return null
-    if (edge.from === edge.to) {
-        const { w, h } = nodeSize(from.type); const rx = w / 2, ry = h / 2
-        const px = from.x + rx
-        const py1 = from.y - ry * 0.5, py2 = from.y + ry * 0.5
-        const d = `M${px},${py1} C${from.x + rx + 72},${from.y - 52} ${from.x + rx + 72},${from.y + 52} ${px},${py2}`
-        return { kind: 'loop', d, labelPt: { x: from.x + rx + 54, y: from.y } }
+
+    // 自己ループ または loopBack フラグ付きエッジ → 右側ベジェ弧
+    const isLoopArc = edge.from === edge.to || edge.loopBack === true
+    if (isLoopArc) {
+        if (edge.from === edge.to) {
+            // 自己ループ（空ボディ）: ループノード右辺で小さな弧
+            const { w, h } = nodeSize(from.type)
+            const rx = w / 2, ry = h / 2
+            const sx = from.x + rx, sy = from.y - ry * 0.4
+            const ex = from.x + rx, ey = from.y + ry * 0.4
+            const BULGE = Math.max(60, w * 0.5)
+            const d = `M${sx},${sy} C${sx + BULGE},${sy - 16} ${sx + BULGE},${ey + 16} ${ex},${ey}`
+            return { kind: 'loop', d, labelPt: { x: from.x + rx + BULGE * 0.55, y: from.y } }
+        }
+        // loopBack: bodyTail(from) の右辺から loopNode(to) の右辺へ戻る上向き弧
+        // ボディは loopNode より右・下にあるため、両ノードの右辺を右外側で繋ぐ
+        const fromSz = nodeSize(from.type), toSz = nodeSize(to.type)
+        const fromRx = fromSz.w / 2, toRx = toSz.w / 2
+        // 出発点: bodyTail 右辺の中央
+        const sx = from.x + fromRx, sy = from.y
+        // 到着点: loopNode 右辺の中央
+        const ex = to.x + toRx, ey = to.y
+        // 制御点: 両点の右側で最も張り出した X を基準に膨らます
+        const BULGE = Math.max(80, Math.abs(from.x - to.x) * 0.5 + 60)
+        const rightX = Math.max(sx, ex) + BULGE
+        const d = `M${sx},${sy} C${rightX},${sy} ${rightX},${ey} ${ex},${ey}`
+        const labelPt = { x: rightX - BULGE * 0.25, y: (sy + ey) / 2 }
+        return { kind: 'loop', d, labelPt }
     }
+
+    // 通常エッジ
     const st = edge.mid ?? to, et = edge.mid ?? from
     const start = boundaryPointTowards(from, st), end = boundaryPointTowards(to, et)
     const mid = edge.mid ? { x: edge.mid.x, y: edge.mid.y } : { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }
@@ -101,21 +141,37 @@ function getEdgePoints(edge: WFEdge, nodeMap: Map<string, WFNode>): EdgeResult |
 }
 
 // ── convertAstToWorkflow ────────────────────────────────────
+//
+// ノード配置の修正:
+//   forEach / forRange / while のボディノードは baseX から右に BODY_OFFSET だけずらす。
+//   exit ノードは baseX 正中に縦配置し、ボディと重ならない。
+//   ループバックエッジには loopBack:true を付与し、bodyTail→loopNode の右側弧で描画させる。
+//
 export function convertAstToWorkflow(ast?: FlowAst): WFWorkflow {
     const wf = createEmptyWorkflow(); const startId = wf.nodes[0].id, endId = wf.nodes[1].id
     wf.edges = []
     const body = ast?.body ?? [], vars = ast?.variables ?? []
-    const LANE_W = 200, STEP_Y = 86; let globalY = 140
+    const LANE_W = 200, STEP_Y = 86
+    // ループボディを baseX から左にオフセットする量
+    const BODY_OFFSET = 180
+    let globalY = 140
+
     const addNode = (type: NodeType, label: string, x = 220): string => {
         const id = generateId(type); wf.nodes.push({ id, type, label, x, y: globalY }); globalY += STEP_Y; return id
     }
-    const addEdge = (from: string, to: string, cond?: string | null) => {
-        const e: WFEdge = { from, to }; if (cond !== undefined) e.condition = cond; wf.edges.push(e)
+    const addEdge = (from: string, to: string, cond?: string | null, loopBack?: boolean) => {
+        const e: WFEdge = { from, to }
+        if (cond !== undefined) e.condition = cond
+        if (loopBack) e.loopBack = true
+        wf.edges.push(e)
     }
+
     const appendSeq = (fromId: string, stmts: any[], firstCond: string | null | undefined, baseX: number): string => {
         let tail = fromId; let pendCond: string | null | undefined = firstCond
+
         for (const s of stmts) {
             if (!s || typeof s !== 'object') continue
+
             // ── if ──────────────────────────────────────────
             if (s.type === 'if') {
                 const decId = addNode('decision', String(s.condition ?? 'if'), baseX)
@@ -125,43 +181,69 @@ export function convertAstToWorkflow(ast?: FlowAst): WFWorkflow {
                 const elseStmts: any[] = Array.isArray(s.else) ? s.else : []
                 let thenTail: string, thenEndY: number
                 if (thenStmts.length > 0) { globalY = savedY; thenTail = appendSeq(decId, thenStmts, 'true', baseX + LANE_W); thenEndY = globalY }
-                else { thenTail = decId; thenEndY = savedY }   // then空 → decision→merge に true 直結
+                else { thenTail = decId; thenEndY = savedY }
                 let elseTail: string, elseEndY: number
                 if (elseStmts.length > 0) { globalY = savedY; elseTail = appendSeq(decId, elseStmts, 'false', baseX - LANE_W); elseEndY = globalY }
-                else { elseTail = decId; elseEndY = savedY }   // else空 → decision→merge に false 直結
+                else { elseTail = decId; elseEndY = savedY }
                 globalY = Math.max(thenEndY, elseEndY)
                 const mergeId = addNode('process', '(merge)', baseX)
                 if (thenTail === decId) addEdge(decId, mergeId, 'true'); else addEdge(thenTail, mergeId)
                 if (elseTail === decId) addEdge(decId, mergeId, 'false'); else addEdge(elseTail, mergeId)
                 tail = mergeId; continue
             }
+
             // ── while ───────────────────────────────────────
             if (s.type === 'while') {
                 const loopId = addNode('loop', String(s.condition ?? 'while'), baseX)
                 addEdge(tail, loopId, pendCond); pendCond = undefined
                 const bodyStmts: any[] = Array.isArray(s.body) ? s.body : []
-                if (bodyStmts.length > 0) { const bt = appendSeq(loopId, bodyStmts, 'true', baseX); addEdge(bt, loopId) }
-                else { addEdge(loopId, loopId, 'true') }   // 空ボディ: 自己ループ
-                const exitId = addNode('process', '↓ (exit)', baseX); addEdge(loopId, exitId, 'false'); tail = exitId; continue
+                if (bodyStmts.length > 0) {
+                    // ボディを左オフセットに配置
+                    const bt = appendSeq(loopId, bodyStmts, 'true', baseX + BODY_OFFSET)
+                    // ループバックエッジ: bodyTail→loopId、loopBack フラグ付き
+                    addEdge(bt, loopId, undefined, true)
+                } else {
+                    addEdge(loopId, loopId, 'true')  // 空ボディ: 自己ループ
+                }
+                const exitId = addNode('process', '↓ (exit)', baseX)
+                addEdge(loopId, exitId, 'false')
+                tail = exitId; continue
             }
+
             // ── forEach ─────────────────────────────────────
             if (s.type === 'forEach') {
                 const forId = addNode('foreach', `for ${s.variable ?? 'item'} in ${s.collection ?? 'collection'}`, baseX)
                 addEdge(tail, forId, pendCond); pendCond = undefined
                 const bodyStmts: any[] = Array.isArray(s.body) ? s.body : []
-                if (bodyStmts.length > 0) { const bt = appendSeq(forId, bodyStmts, 'body', baseX); addEdge(bt, forId) }
-                else { addEdge(forId, forId, 'body') }
-                const exitId = addNode('process', '↓ (exit)', baseX); addEdge(forId, exitId); tail = exitId; continue
+                if (bodyStmts.length > 0) {
+                    // ボディを左オフセットに配置
+                    const bt = appendSeq(forId, bodyStmts, 'body', baseX + BODY_OFFSET)
+                    // ループバックエッジ: bodyTail→forId、loopBack フラグ付き
+                    addEdge(bt, forId, undefined, true)
+                } else {
+                    addEdge(forId, forId, 'body')    // 空ボディ: 自己ループ
+                }
+                const exitId = addNode('process', '↓ (exit)', baseX)
+                addEdge(forId, exitId)
+                tail = exitId; continue
             }
+
             // ── forRange ────────────────────────────────────
             if (s.type === 'forRange') {
                 const forId = addNode('forrange', `for ${s.variable ?? 'i'} from ${s.from ?? '0'} to ${s.to ?? 'n'}`, baseX)
                 addEdge(tail, forId, pendCond); pendCond = undefined
                 const bodyStmts: any[] = Array.isArray(s.body) ? s.body : []
-                if (bodyStmts.length > 0) { const bt = appendSeq(forId, bodyStmts, 'body', baseX); addEdge(bt, forId) }
-                else { addEdge(forId, forId, 'body') }
-                const exitId = addNode('process', '↓ (exit)', baseX); addEdge(forId, exitId); tail = exitId; continue
+                if (bodyStmts.length > 0) {
+                    const bt = appendSeq(forId, bodyStmts, 'body', baseX + BODY_OFFSET)
+                    addEdge(bt, forId, undefined, true)
+                } else {
+                    addEdge(forId, forId, 'body')
+                }
+                const exitId = addNode('process', '↓ (exit)', baseX)
+                addEdge(forId, exitId)
+                tail = exitId; continue
             }
+
             // ── switch ──────────────────────────────────────
             if (s.type === 'switch') {
                 const swId = addNode('switch', String(s.expression ?? 'switch'), baseX)
@@ -184,12 +266,13 @@ export function convertAstToWorkflow(ast?: FlowAst): WFWorkflow {
                     const dx = sx0 + cases.length * caseW; globalY = savedY
                     caseTails.push(appendSeq(swId, s.default, 'default', dx))
                     if (globalY > maxY) maxY = globalY
-                } else { caseTails.push(swId) }   // default なし: switch→merge に直結
+                } else { caseTails.push(swId) }
                 globalY = maxY
                 const mergeId = addNode('process', '(switch merge)', baseX)
                 for (const ct of caseTails) { if (ct === swId) addEdge(swId, mergeId, 'default'); else addEdge(ct, mergeId) }
                 tail = mergeId; continue
             }
+
             // ── 末端ノード ───────────────────────────────────
             const nt: NodeType = s.type === 'break' ? 'break' : s.type === 'continue' ? 'continue' : 'process'
             const lbl = s.type === 'return' ? `return ${s.value ?? ''}`.trim()
@@ -199,6 +282,7 @@ export function convertAstToWorkflow(ast?: FlowAst): WFWorkflow {
         }
         return tail
     }
+
     let tail = startId
     for (const v of vars) { const id = addNode('process', `var ${v.name}:${v.type}${v.initialValue ? ` = ${v.initialValue}` : ''}`); addEdge(tail, id); tail = id }
     tail = appendSeq(tail, body, undefined, 220)
@@ -328,7 +412,7 @@ function NodeShape({ node, isSelected, onPointerDown, onHandlePointerDown, onDou
     </>)
 }
 
-// ── EdgeShape ────────────────────────────────────────────────
+// ── EdgeShape ─────────────────────────────────────────────────
 interface EdgeShapeProps { edge: WFEdge; nodeMap: Map<string, WFNode>; isSelected: boolean; onMidPointerDown: (e: React.PointerEvent, edge: WFEdge) => void; onContextMenu: (e: React.MouseEvent, edge: WFEdge) => void }
 function EdgeShape({ edge, nodeMap, isSelected, onMidPointerDown, onContextMenu }: EdgeShapeProps) {
     const res = getEdgePoints(edge, nodeMap); if (!res) return null
@@ -339,7 +423,7 @@ function EdgeShape({ edge, nodeMap, isSelected, onMidPointerDown, onContextMenu 
                 <path d={d} fill="none" stroke="transparent" strokeWidth={10} style={{ cursor: 'context-menu' }} />
                 <path d={d} fill="none" stroke={col} strokeWidth={isSelected ? 2 : 1.5} strokeDasharray={dash} markerEnd="url(#wf-arrow)" />
                 {isL && <g pointerEvents="none">
-                    <rect x={lp.x - 2} y={lp.y - 10} width={64} height={16} rx={3} fill="#1e1b4b" stroke="#a78bfa" strokeWidth={0.8} opacity={0.9} />
+                    <rect x={lp.x - 4} y={lp.y - 10} width={68} height={16} rx={3} fill="#1e1b4b" stroke="#a78bfa" strokeWidth={0.8} opacity={0.9} />
                     <text x={lp.x + 30} y={lp.y - 2} textAnchor="middle" dominantBaseline="central" fontSize={9} fill="#c4b5fd" fontFamily='"Cascadia Code",monospace'>{String(edge.condition).length > 10 ? String(edge.condition).slice(0, 9) + '…' : String(edge.condition)}</text>
                 </g>}
             </g>
@@ -383,7 +467,7 @@ function MiniWorkflowPreview({ title, wf }: { title: string; wf: WFWorkflow }) {
         <div style={{ padding: '6px 10px', borderBottom: '1px solid #1f2937', fontSize: 11, color: '#cbd5e1' }}>{title} ({wf.nodes.length} nodes)</div>
         <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: 'block' }}>
             <rect width={W} height={H} fill="#0b1220" />
-            {wf.edges.map((e, i) => { const f = map.get(e.from), t = map.get(e.to); if (!f || !t) return null; const a = pos(f.x, f.y), b = pos(t.x, t.y); if (e.from === e.to) return <circle key={i} cx={a.x + 12} cy={a.y} r={10} fill="none" stroke="#64748b" strokeWidth={1} />; return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#64748b" strokeWidth={1.2} /> })}
+            {wf.edges.map((e, i) => { const f = map.get(e.from), t = map.get(e.to); if (!f || !t) return null; const a = pos(f.x, f.y), b = pos(t.x, t.y); if (e.from === e.to || e.loopBack) return <path key={i} d={`M${a.x + 8},${a.y - 4} C${a.x + 20},${a.y - 12} ${a.x + 20},${b.y + 12} ${b.x + 8},${b.y + 4}`} fill="none" stroke="#64748b" strokeWidth={1} />; return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#64748b" strokeWidth={1.2} /> })}
             {wf.nodes.map(n => { const p = pos(n.x, n.y); const st = STYLE[n.type]; return (<g key={n.id} transform={`translate(${p.x},${p.y})`}><rect x={-28} y={-10} width={56} height={20} rx={3} fill={st.fill} stroke={st.stroke} strokeWidth={1} /><text x={0} y={0} textAnchor="middle" dominantBaseline="central" fill={st.text} fontSize={8}>{n.label.length > 10 ? `${n.label.slice(0, 9)}…` : n.label}</text></g>) })}
         </svg>
     </div>)

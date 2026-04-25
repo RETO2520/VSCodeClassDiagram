@@ -16,386 +16,119 @@ import { DomainModel } from "./DomainModel";
 import { postMessage } from "../../frontend/src/bridge/vscode-bridge";
 import { RefactorSuggester } from "./RefactorSuggester";
 
-// ============================================================
-// Public Types
-// ============================================================
-
 export interface ParsedClass {
-    name: string;
-    kind: ClassKind;
-    isAbstract: boolean;
-    members: ClassMember[];
-    operations: ClassOperation[];
-    extendsName: string | null;
-    implementsNames: string[];
+    name: string; kind: ClassKind; isAbstract: boolean; members: ClassMember[];
+    operations: ClassOperation[]; extendsName: string | null; implementsNames: string[];
 }
-
 export interface ParsedRelation {
-    source: string;
-    target: string;
+    source: string; target: string;
     type: "generalization" | "realization" | "instantiation" | "association" | "aggregation" | "composition" | "dependency";
-    label?: string;
-    sourceMultiplicity?: string;
-    targetMultiplicity?: string;
+    label?: string; sourceMultiplicity?: string; targetMultiplicity?: string;
 }
-
-// UI側(WorkflowEditorPanel)と構造を合わせたローカルインターフェース
-// インポートせずに、このファイル内でのパース用に使用します
 interface LocalWFNode { id: string; type: string; label: string; x: number; y: number; }
 interface LocalWFEdge { from: string; to: string; }
 interface LocalWorkflow { nodes: LocalWFNode[]; edges: LocalWFEdge[]; }
-
-// ============================================================
-// Gherkin Types
-// ============================================================
-
-export interface GherkinStep {
-    keyword: GherkinKeyword;
-    text: string;
-    /** Howブロックの場合の実装順指針（keyword === "How" の時のみ） */
-    howSteps?: string[];
-}
-
-export interface GherkinScenario {
-    name: string;
-    steps: GherkinStep[];
-}
-
-export interface GherkinFeature {
-    name: string;
-    scenarios: GherkinScenario[];
-}
-
-// ============================================================
-// Structured Constraint（制約の構造化）
-// ============================================================
-
-/**
- * 制約の種別
- * - range    : 以上/以下/未満/超過 などの範囲制約
- * - equality : 等しい/一致/である などの等値制約
- * - state    : 〜状態/〜済み などの状態制約
- * - existence: 存在する/nullでない などの存在制約
- * - custom   : 上記に当てはまらないカスタム制約
- */
+export interface GherkinStep { keyword: GherkinKeyword; text: string; howSteps?: string[]; }
+export interface GherkinScenario { name: string; steps: GherkinStep[]; }
+export interface GherkinFeature { name: string; scenarios: GherkinScenario[]; }
 export type ConstraintKind = 'range' | 'equality' | 'state' | 'existence' | 'custom';
-
-export interface StructuredConstraint {
-    kind: ConstraintKind;
-    /** 制約の主語（「受注金額」「ユーザー」等） */
-    subject: string;
-    /** 演算子に相当するテキスト（「以上」「等しい」等） */
-    operator: string;
-    /** 値部分（「1000」「未確認」等）。取得できない場合は空文字 */
-    value: string;
-    /** パース元の原文 */
-    raw: string;
-}
-
-// ============================================================
-// Workflow Backref（ワークフロー逆参照）
-// ============================================================
-
-/**
- * DSL内のメンバ名・操作名が、どのワークフローノードで参照されているかを示す逆参照エントリ。
- * ParsedDsl.backrefIndex のキーは identifierName（メンバ名または操作名）。
- */
-export interface WorkflowBackref {
-    /** 参照しているワークフローノードのID */
-    nodeId: string;
-    /** 参照しているシナリオ名 */
-    scenarioName: string;
-    /** 参照しているクラス名 */
-    className: string;
-    /** 参照している操作名 */
-    operationName: string;
-    /** Gherkin ステップのキーワード（Given/When/Then 等） */
-    stepKeyword: string;
-    /** ステップ本文 */
-    stepText: string;
-}
-
-// ============================================================
-// CLI Suggestion（CLI提案）
-// ============================================================
-
-export type CliSuggestionKind =
-    | 'add-member'        // メンバ追加が推奨される
-    | 'add-state-machine' // 状態機械の追加が推奨される
-    | 'generate-code'     // コード生成が推奨される
-    | 'add-constraint'    // 制約の明示化が推奨される
-    | 'add-relation';     // リレーション追加が推奨される
-
-export interface CliSuggestion {
-    kind: CliSuggestionKind;
-    /** CLIへ直接貼り付け可能なコマンド文字列 */
-    command: string;
-    /** 提案の理由（UIのツールチップ等に使用） */
-    reason: string;
-    /** 関連するクラス名 */
-    className?: string;
-    /** 関連するメンバ・操作名 */
-    identifierName?: string;
-    /** 優先度（高いほど先に表示） */
-    priority: number;
-    /**
-     * true のとき、コマンドラインへ渡す際に自動で "dry-run " を先頭に付与する。
-     * refactor / add-relation 系など副作用が大きいコマンドはデフォルト true。
-     * add-member など軽微な変更は false にしてプレビューなしで流せる。
-     */
-    dryRun?: boolean;
-}
-
-// ============================================================
-// ParsedDsl（統合型）
-// ============================================================
-
+export interface StructuredConstraint { kind: ConstraintKind; subject: string; operator: string; value: string; raw: string; }
+export interface WorkflowBackref { nodeId: string; scenarioName: string; className: string; operationName: string; stepKeyword: string; stepText: string; }
+export type CliSuggestionKind = 'add-member' | 'add-state-machine' | 'generate-code' | 'add-constraint' | 'add-relation';
+export interface CliSuggestion { kind: CliSuggestionKind; command: string; reason: string; className?: string; identifierName?: string; priority: number; dryRun?: boolean; }
 export interface ParsedDsl {
-    classes: ParsedClass[];
-    relations: ParsedRelation[];
-    features: GherkinFeature[];
-    endpoints: ParsedEndpoint[];
-    /**
-     * identifierName → そのidentifierを参照しているワークフローノード群
-     */
-    backrefIndex: Map<string, WorkflowBackref[]>;
-    /**
-     * CLIやCodeLensに渡す提案リスト。優先度降順でソート済み。
-     */
-    cliSuggestions: CliSuggestion[];
-    /**
-     * DSL先頭のコメント行・alias宣言をそのまま保持したブロック。
-     * toDSL() で生成した本体の前に差し込むことで、
-     * コメントと alias が失われないようにする。
-     */
-    headerBlock: string;
+    classes: ParsedClass[]; relations: ParsedRelation[]; features: GherkinFeature[];
+    endpoints: ParsedEndpoint[]; backrefIndex: Map<string, WorkflowBackref[]>;
+    cliSuggestions: CliSuggestion[]; headerBlock: string;
 }
 
-
-// ============================================================
-// SpecDslParser
-// ============================================================
-
-/**
- * SpecDslParser
- *
- * export-spec-dsl が出力するDSL形式のテキストをパースし、
- * ParsedDsl (クラス定義 + リレーション定義) に変換する。
- *
- * import-spec-dsl コマンドから利用されるほか、
- * テストやGUI側からも直接利用できるよう独立クラスとして提供する。
- *
- * ## 二層構造の方針
- *
- *   operation.workflow    … Gherkin シナリオから生成したビジュアルグラフ（仕様層）
- *   operation.workflowAst … Flow: ブロックから生成した制御構造 AST（実装層）
- *
- * 両者は独立したグラフとして保持し、相互に接続しない。
- * ワークフローエディタは workflowAst を別レイヤー / タブで表示することで
- * 「仕様」と「実装」を同一キャンバス上で混在させずに済む。
- */
 export class SpecDslParser {
     private aliases: Map<string, string> = new Map();
-
-    /** parse() に渡された ClassDiagramService への参照。Pass2.5 で利用する */
     private service: ClassDiagramService | null = null;
-
-    /**
-     * 名詞正規化辞書（ドメインワード→正規形）
-     * parse() のたびに動的に再構築される。
-     */
     private nounDictionary: Map<string, string> = new Map();
-
-    /**
-     * 逆参照インデックス（identifierName → WorkflowBackref[]）
-     * parseGherkinToWorkflow() 内で随時追記される。
-     */
     private backrefIndex: Map<string, WorkflowBackref[]> = new Map();
-
-    /**
-     * CLI提案リスト。parse() の後半で生成される。
-     */
     private cliSuggestions: CliSuggestion[] = [];
 
-    /**
-     * 最後に parse() した際に収集した alias マップを返す。
-     * SpecEditorPanel が toDSL() に渡すために使用する。
-     */
-    getAliasMap(): Map<string, string> {
-        return new Map(this.aliases);
-    }
+    getAliasMap(): Map<string, string> { return new Map(this.aliases); }
 
-    /**
-     * DSL文字列をパースして ParsedDsl を返す。
-     */
-    /**
-     * @scenario DSL文字列をパースして ParsedDsl を返す。
-     * @given ソースコードが与えられていること
-     * @when tree-sitterでパースを実行する
-     * @how ヘッダブロック抽出
-     * @how 末尾の空行を1つに正規化
-     * @how 行ごとに進める
-     * @then ParsedDslが生成されること
-     * @why クラス図として可視化するための基礎データ構造を作るため
-     */
     parse(source: string, service: ClassDiagramService): ParsedDsl {
-        this.service = service
-        const classes: ParsedClass[] = [];
-        const relations: ParsedRelation[] = [];
-        const features: GherkinFeature[] = [];
-        const endpoints: ParsedEndpoint[] = [];
-        this.aliases.clear();
-        this.backrefIndex.clear();
-        this.cliSuggestions = [];
-
+        this.service = service;
+        const classes: ParsedClass[] = [], relations: ParsedRelation[] = [], features: GherkinFeature[] = [], endpoints: ParsedEndpoint[] = [];
+        this.aliases.clear(); this.backrefIndex.clear(); this.cliSuggestions = [];
         let current: ParsedClass | null = null;
-
         const lines = source.split("\n").map(l => l.trimEnd());
 
-        // ── ヘッダブロック抽出 ─────────────────────────────────────
         const headerLines: string[] = [];
         for (const line of lines) {
             const t = line.trim();
-            const isClassOrRelation =
-                t.match(/^(abstract\s+)?(class|interface|struct)\b/) ||
-                t.match(/^[+\-#~]/) ||
-                ['->', '+>', '*>', '>|', '>/', '-/>', 'o>'].some(sym => t.includes(sym));
+            const isClassOrRelation = t.match(/^(abstract\s+)?(class|interface|struct)\b/) || t.match(/^[+\-#~]/) || ['->', '+>', '*>', '>|', '>/', '-/>', 'o>'].some(sym => t.includes(sym));
             if (isClassOrRelation) break;
             if (!t || t.startsWith('//') || t.startsWith('#') || t.match(/^alias\s+/i)) {
-                if (!t.startsWith('# generated by') && !t.match(/^# \d{4}/)) {
-                    headerLines.push(line);
-                }
+                if (!t.startsWith('# generated by') && !t.match(/^# \d{4}/)) headerLines.push(line);
             }
         }
-        while (headerLines.length > 0 && headerLines[headerLines.length - 1].trim() === '') {
-            headerLines.pop();
-        }
+        while (headerLines.length > 0 && headerLines[headerLines.length - 1].trim() === '') headerLines.pop();
         const headerBlock = headerLines.join('\n');
 
         for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const trimmed = line.trim();
+            const line = lines[i], trimmed = line.trim();
             if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("#")) continue;
-
-            // ---- Alias 宣言 ----
             const aliasMatch = trimmed.match(/^alias\s+"([^"]+)"\s+as\s+"([^"]+)"$/i);
-            if (aliasMatch) {
-                this.aliases.set(aliasMatch[1], aliasMatch[2]);
-                continue;
-            }
-
-            // ---- クラス宣言 ----
+            if (aliasMatch) { this.aliases.set(aliasMatch[1], aliasMatch[2]); continue; }
             const classDecl = this.matchClassDecl(trimmed);
-            if (classDecl) {
-                if (current) classes.push(current);
-                current = classDecl;
-                continue;
-            }
-
-            // ---- リレーション ----
+            if (classDecl) { if (current) classes.push(current); current = classDecl; continue; }
             const rel = this.matchRelation(trimmed);
-            if (rel) {
-                relations.push(rel);
-                continue;
-            }
-
+            if (rel) { relations.push(rel); continue; }
             if (!current) continue;
-
-            // ---- extends ----
             const extendsMatch = trimmed.match(/^extends\s+(\w+)$/);
             if (extendsMatch) { current.extendsName = extendsMatch[1]; continue; }
-
-            // ---- implements ----
             const implMatch = trimmed.match(/^implements\s+(.+)$/);
-            if (implMatch) {
-                current.implementsNames = implMatch[1].split(",").map(s => s.trim()).filter(Boolean);
-                continue;
-            }
-
-            // ---- Gherkin 行は Pass2 で処理 ----
+            if (implMatch) { current.implementsNames = implMatch[1].split(",").map(s => s.trim()).filter(Boolean); continue; }
             if (trimmed.match(/^(?:Scenario|シナリオ):/i)) continue;
             if (trimmed.match(/^(?:Given|When|Then|And|But|How|Why|前提|もし|ならば|かつ|しかし)\s/i)) continue;
             if (trimmed.match(/^"[^"]*"$/)) continue;
-
-            // ---- endpoint宣言 ----
             const endpoint = this.matchEndpoint(trimmed);
-            if (endpoint) {
-                if (current) { classes.push(current); current = null; }
-                endpoints.push(endpoint);
-                continue;
-            }
-
-            // ---- メンバ ----
+            if (endpoint) { if (current) { classes.push(current); current = null; } endpoints.push(endpoint); continue; }
             const member = this.matchMember(trimmed);
             if (member) { current?.members.push(member); continue; }
-
-            // ---- 操作 ----
             const operation = this.matchOperation(trimmed);
             if (operation) { current.operations.push(operation); continue; }
         }
-
         if (current) classes.push(current);
 
-        // ── 名詞正規化辞書 ────────────────────────────────────────
         this.nounDictionary.clear();
         for (const cls of classes) {
             this.nounDictionary.set(cls.name, cls.name);
             for (const m of cls.members) this.nounDictionary.set(m.name, m.name);
             for (const op of cls.operations) this.nounDictionary.set(op.name, op.name);
         }
-        for (const [alias, realName] of this.aliases.entries()) {
-            this.nounDictionary.set(alias, realName);
-        }
+        for (const [alias, realName] of this.aliases.entries()) this.nounDictionary.set(alias, realName);
 
-        // Pass 1: クラスを登録
-        for (const cls of classes) {
-            service.applyAddType({ name: cls.name, kind: cls.kind, isAbstract: cls.isAbstract });
-        }
+        for (const cls of classes) service.applyAddType({ name: cls.name, kind: cls.kind, isAbstract: cls.isAbstract });
 
-        // Pass 2: メンバ・操作を追加
         for (const cls of classes) {
-            for (const member of cls.members) {
-                service.applyAddMember({ className: cls.name, member });
-            }
+            for (const member of cls.members) service.applyAddMember({ className: cls.name, member });
             const classInfo = service.getClassByName(cls.name);
-
-            const classBlockStart = lines.findIndex(l =>
-                new RegExp(`(abstract\\s+)?(class|interface|struct)\\s+${cls.name}\\b`).test(l.trim())
-            );
-            const classBlockEnd = lines.findIndex((l, idx) =>
-                idx > classBlockStart &&
-                /^(abstract\s+)?(class|interface|struct)\s+\w+/.test(l.trim())
-            );
+            const classBlockStart = lines.findIndex(l => new RegExp(`(abstract\\s+)?(class|interface|struct)\\s+${cls.name}\\b`).test(l.trim()));
+            const classBlockEnd = lines.findIndex((l, idx) => idx > classBlockStart && /^(abstract\s+)?(class|interface|struct)\s+\w+/.test(l.trim()));
             const blockEnd = classBlockEnd === -1 ? lines.length : classBlockEnd;
-
             for (const operation of cls.operations) {
                 service.applyAddOperation({ className: cls.name, operation });
-
                 if (classInfo) {
-                    const opLineIndex = lines.findIndex((l, idx) =>
-                        idx >= classBlockStart && idx < blockEnd && l.includes(`${operation.name}(`)
-                    );
-
+                    const opLineIndex = lines.findIndex((l, idx) => idx >= classBlockStart && idx < blockEnd && l.includes(`${operation.name}(`));
                     if (opLineIndex !== -1) {
                         for (let j = opLineIndex + 1; j < blockEnd; j++) {
                             const nextLine = lines[j].trim();
                             if (!nextLine) continue;
                             if (nextLine.match(/^[+\-#~]/)) break;
-
                             if (nextLine.match(/^(?:Scenario|シナリオ):/i)) {
                                 const c = service.getClassByName(cls.name);
                                 if (!c) break;
                                 const op = service.getOperationByName(cls.name, operation.name);
                                 if (!op) break;
-
                                 const contextWithOp = { ...classInfo, _currentOperationName: operation.name };
                                 const result = this.parseGherkinToWorkflow(lines, j, contextWithOp);
-                                service.applyUpdateOperationWorkflow({
-                                    classId: c.id,
-                                    operationId: op.id,
-                                    workflow: result.workflow,
-                                    workflowAst: result.workflowAst,
-                                });
+                                service.applyUpdateOperationWorkflow({ classId: c.id, operationId: op.id, workflow: result.workflow, workflowAst: result.workflowAst });
                                 break;
                             }
                         }
@@ -404,106 +137,55 @@ export class SpecDslParser {
             }
         }
 
-        // Pass 3: 継承・実装関係
         for (const cls of classes) {
-            if (cls.extendsName) {
-                service.applySetBase({ className: cls.name, baseClassName: cls.extendsName });
-            }
-            for (const ifaceName of cls.implementsNames) {
-                service.applyAddInterfaceImpl({ className: cls.name, interfaceName: ifaceName });
-            }
+            if (cls.extendsName) service.applySetBase({ className: cls.name, baseClassName: cls.extendsName });
+            for (const ifaceName of cls.implementsNames) service.applyAddInterfaceImpl({ className: cls.name, interfaceName: ifaceName });
         }
 
-        // Pass2.5: needs をメンバに紐づける
         for (const cls of classes) {
-            const classStart = lines.findIndex(l =>
-                new RegExp(`(abstract\\s+)?(class|interface|struct)\\s+${cls.name}\\b`).test(l.trim())
-            );
-            const classEnd = lines.findIndex((l, idx) =>
-                idx > classStart && /^(abstract\s+)?(class|interface|struct)\s+\w+/.test(l.trim())
-            );
+            const classStart = lines.findIndex(l => new RegExp(`(abstract\\s+)?(class|interface|struct)\\s+${cls.name}\\b`).test(l.trim()));
+            const classEnd = lines.findIndex((l, idx) => idx > classStart && /^(abstract\s+)?(class|interface|struct)\s+\w+/.test(l.trim()));
             const blockEnd = classEnd === -1 ? lines.length : classEnd;
-
             for (let i = classStart; i < blockEnd; i++) {
                 const memberMatch = this.matchMember(lines[i].trim());
                 if (!memberMatch) continue;
-
                 const nextLine = lines[i + 1]?.trim() ?? '';
                 const needsMatch = nextLine.match(/^needs(?:\s+(owner))?\s*(?:"([^"]*)")?$/);
                 if (needsMatch) {
                     const needs: MemberNeeds = { isOwner: !!needsMatch[1], reason: needsMatch[2] ?? '' };
-                    if (this.service) {
-                        this.service.applyUpdateMemberNeeds({
-                            className: cls.name, memberName: memberMatch.name, needs,
-                        });
-                    } else {
-                        const member = cls.members.find(m => m.name === memberMatch.name);
-                        if (member) member.needs = needs;
-                    }
+                    if (this.service) this.service.applyUpdateMemberNeeds({ className: cls.name, memberName: memberMatch.name, needs });
+                    else { const member = cls.members.find(m => m.name === memberMatch.name); if (member) member.needs = needs; }
                 }
             }
         }
 
         this.cliSuggestions = this.generateCliSuggestions(classes, relations);
-
-        return {
-            classes, relations, features, endpoints,
-            backrefIndex: new Map(this.backrefIndex),
-            cliSuggestions: [...this.cliSuggestions],
-            headerBlock,
-        };
+        return { classes, relations, features, endpoints, backrefIndex: new Map(this.backrefIndex), cliSuggestions: [...this.cliSuggestions], headerBlock };
     }
-
-    // ============================================================
-    // Line Matchers
-    // ============================================================
 
     private matchEndpoint(line: string): ParsedEndpoint | null {
         const m = line.match(/^endpoint\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(\S+)$/i);
         if (!m) return null;
         return { id: createId(), method: m[1].toUpperCase(), path: m[2], scenarios: [] };
     }
-
     private matchClassDecl(line: string): ParsedClass | null {
-        const m = line.match(
-            /^(abstract\s+)?(class|interface|struct)\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w,\s]+))?$/
-        );
+        const m = line.match(/^(abstract\s+)?(class|interface|struct)\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w,\s]+))?$/);
         if (!m) return null;
-        return {
-            name: m[3], kind: m[2] as ClassKind, isAbstract: !!m[1],
-            members: [], operations: [], extendsName: m[4] ?? null,
-            implementsNames: m[5] ? m[5].split(',').map(s => s.trim()).filter(Boolean) : [],
-        };
+        return { name: m[3], kind: m[2] as ClassKind, isAbstract: !!m[1], members: [], operations: [], extendsName: m[4] ?? null, implementsNames: m[5] ? m[5].split(',').map(s => s.trim()).filter(Boolean) : [] };
     }
-
     private matchMember(line: string): ClassMember | null {
         if (line.includes("(")) return null;
         const m = line.match(/^([+\-#~])\s*(?:(s|a)\s+)?(\w+)\s*:\s*(.+)$/);
         if (!m) return null;
-        return {
-            id: createId(), name: m[3], type: m[4].trim(),
-            visibility: this.parseVisibility(m[1]),
-            isStatic: m[2] === "s", isAbstract: m[2] === "a",
-            relationship: "auto", sourceMultiplicity: "1", targetMultiplicity: "1",
-        };
+        return { id: createId(), name: m[3], type: m[4].trim(), visibility: this.parseVisibility(m[1]), isStatic: m[2] === "s", isAbstract: m[2] === "a", relationship: "auto", sourceMultiplicity: "1", targetMultiplicity: "1" };
     }
-
     private matchOperation(line: string): ClassOperation | null {
         const m = line.match(/^([+\-#~])\s*(?:(s|a)\s+)?(\w+)\s*\(([^)]*)\)\s*(?::\s*(.+))?$/);
         if (!m) return null;
-        return {
-            id: createId(), name: m[3], returnType: m[5]?.trim() ?? "void",
-            visibility: this.parseVisibility(m[1]),
-            parameters: this.parseParameters(m[4]),
-            isStatic: m[2] === "s", isAbstract: m[2] === "a",
-        };
+        return { id: createId(), name: m[3], returnType: m[5]?.trim() ?? "void", visibility: this.parseVisibility(m[1]), parameters: this.parseParameters(m[4]), isStatic: m[2] === "s", isAbstract: m[2] === "a" };
     }
-
     private matchRelation(line: string): ParsedRelation | null {
-        const symbolMap: Record<string, ParsedRelation["type"]> = {
-            "-/>": "dependency", ">|": "generalization", ">/": "realization",
-            "+>": "instantiation", "->": "association", "o>": "aggregation", "*>": "composition",
-        };
+        const symbolMap: Record<string, ParsedRelation["type"]> = { "-/>": "dependency", ">|": "generalization", ">/": "realization", "+>": "instantiation", "->": "association", "o>": "aggregation", "*>": "composition" };
         for (const [symbol, type] of Object.entries(symbolMap)) {
             if (!line.includes(symbol)) continue;
             const parts = line.split(symbol);
@@ -511,209 +193,101 @@ export class SpecDslParser {
             const source = parts[0].trim();
             const restMatch = parts[1].trim().match(/^(\w+)(?:\s+:(\S+))?(?:\s+(\S+)\s+(\S+))?$/);
             if (!restMatch) continue;
-            return {
-                source, target: restMatch[1], type,
-                label: restMatch[2], sourceMultiplicity: restMatch[3], targetMultiplicity: restMatch[4],
-            };
+            return { source, target: restMatch[1], type, label: restMatch[2], sourceMultiplicity: restMatch[3], targetMultiplicity: restMatch[4] };
         }
         return null;
     }
-
-    // ============================================================
-    // Helpers
-    // ============================================================
-
     private parseVisibility(symbol: string): Visibility {
-        switch (symbol) {
-            case "+": return "public";
-            case "-": return "private";
-            case "#": return "protected";
-            case "~": return "package";
-            default: return "public";
-        }
+        switch (symbol) { case "+": return "public"; case "-": return "private"; case "#": return "protected"; case "~": return "package"; default: return "public"; }
     }
-
     private parseScenarioLine(raw: string): { name: string; srcs: { label: string; url: string }[] } {
         const srcIdx = raw.search(/\bsrc:\s/);
         if (srcIdx === -1) return { name: raw.trim(), srcs: [] };
-        const name = raw.slice(0, srcIdx).trim();
-        const srcs: { label: string; url: string }[] = [];
-        const srcRe = /\bsrc:\s+(\S+)\s+(\S+)/g;
-        let m: RegExpExecArray | null;
+        const name = raw.slice(0, srcIdx).trim(), srcs: { label: string; url: string }[] = [];
+        const srcRe = /\bsrc:\s+(\S+)\s+(\S+)/g; let m: RegExpExecArray | null;
         while ((m = srcRe.exec(raw)) !== null) srcs.push({ label: m[1], url: m[2] });
         return { name, srcs };
     }
 
     // ============================================================
     // Gherkin → ワークフロー変換（仕様層）
+    // Flow: ブロックは workflowAst のみに格納し、workflow グラフとは独立して保持する
     // ============================================================
-
-    /**
-     * Gherkin シナリオを workflow ビジュアルグラフに変換する。
-     *
-     * Flow: ブロックを検出した場合は workflowAst のみを生成し、
-     * Gherkin グラフとは切り離して独立した実装層として保持する。
-     * 両グラフを同一キャンバスに接続・混在させることはしない。
-     */
-    private parseGherkinToWorkflow(lines: string[], startIndex: number, context?: any): {
-        workflow: ClassOperation['workflow'];
-        workflowAst?: ClassOperation['workflowAst'];
-        endIndex: number;
-    } {
+    private parseGherkinToWorkflow(lines: string[], startIndex: number, context?: any): { workflow: ClassOperation['workflow']; workflowAst?: ClassOperation['workflowAst']; endIndex: number; } {
         const nodes: NonNullable<ClassOperation['workflow']>['nodes'] = [];
         const edges: NonNullable<ClassOperation['workflow']>['edges'] = [];
         let workflowAst: ClassOperation['workflowAst'] | undefined;
-
-        const STEP_Y = 100;
-        let currentY = 50;
-        let currentX = 200;
-        const SCENARIO_WIDTH = 250;
-        let lastNodeId: string | null = null;
-
-        const firstParsed = this.parseScenarioLine(
-            (lines[startIndex]?.trim() ?? "").replace(/^(?:Scenario|シナリオ):\s*/i, "")
-        );
-        let currentScenarioName = firstParsed.name;
-        let currentSrcs = firstParsed.srcs;
-
+        const STEP_Y = 100; let currentY = 50, currentX = 200;
+        const SCENARIO_WIDTH = 250; let lastNodeId: string | null = null;
+        const firstParsed = this.parseScenarioLine((lines[startIndex]?.trim() ?? "").replace(/^(?:Scenario|シナリオ):\s*/i, ""));
+        let currentScenarioName = firstParsed.name, currentSrcs = firstParsed.srcs;
         let i = startIndex + 1;
-
-        const startId = createId();
-        const endId = createId();
+        const startId = createId(), endId = createId();
         nodes.push({ id: startId, type: 'start', label: '開始', x: 200, y: currentY });
         const endNode = { id: endId, type: 'end', label: '終了', x: 200, y: 0 };
-
-        lastNodeId = startId;
-        currentY += STEP_Y;
-        let maxY = 0;
+        lastNodeId = startId; currentY += STEP_Y; let maxY = 0;
 
         while (i < lines.length) {
             const trimmed = lines[i].trim();
             if (trimmed === '') { i++; continue; }
-
             if (trimmed.match(/^(abstract\s+)?(class|interface|struct)\b/) || trimmed.match(/^[+\-#~]/)) break;
-
-            // ── 新しいシナリオ ──
             if (trimmed.match(/^(?:Scenario|シナリオ):/i)) {
                 if (lastNodeId && lastNodeId !== startId) edges.push({ from: lastNodeId, to: endId });
                 const parsed = this.parseScenarioLine(trimmed.replace(/^(?:Scenario|シナリオ):\s*/i, ""));
-                currentScenarioName = parsed.name;
-                currentSrcs = parsed.srcs;
-                lastNodeId = startId;
-                currentY = 150;
-                currentX += SCENARIO_WIDTH;
-                i++;
-                continue;
+                currentScenarioName = parsed.name; currentSrcs = parsed.srcs;
+                lastNodeId = startId; currentY = 150; currentX += SCENARIO_WIDTH; i++; continue;
             }
-
-            // ── Flow: ブロック ──────────────────────────────────────
-            // Flow: ブロックは workflowAst にのみ格納する。
-            // Gherkin グラフ（workflow.nodes/edges）への接続は行わない。
-            // 両者は独立したグラフとして WorkflowEditorPanel が別レイヤーで表示する。
             if (/^Flow\s*:\s*$/i.test(trimmed)) {
                 const flowResult = this.parseFlowBlockToWorkflowAst(lines, i + 1);
-                if (!workflowAst && this.hasWorkflowAstContent(flowResult.workflowAst)) {
-                    workflowAst = flowResult.workflowAst;
-                }
-                i = flowResult.endIndex + 1;
-                continue;
+                if (!workflowAst && this.hasWorkflowAstContent(flowResult.workflowAst)) workflowAst = flowResult.workflowAst;
+                i = flowResult.endIndex + 1; continue;
             }
-
-            // ── Gherkin ステップ ────────────────────────────────────
             const stepMatch = trimmed.match(/^(Given|When|Then|And|But|How|Why|前提|もし|ならば|かつ|しかし)\s*(.*)$/i);
             if (stepMatch) {
-                const keyword = stepMatch[1] as GherkinKeyword;
-                const text = stepMatch[2].trim();
-
-                // How ブロック
+                const keyword = stepMatch[1] as GherkinKeyword, text = stepMatch[2].trim();
                 if (keyword === 'How') {
-                    const howSteps: string[] = [];
-                    if (text) howSteps.push(text);
+                    const howSteps: string[] = []; if (text) howSteps.push(text);
                     let j = i + 1;
-                    while (j < lines.length) {
-                        const m = lines[j].trim().match(/^"([^"]*)"$/);
-                        if (m) { howSteps.push(m[1]); j++; } else break;
-                    }
+                    while (j < lines.length) { const m = lines[j].trim().match(/^"([^"]*)"$/); if (m) { howSteps.push(m[1]); j++; } else break; }
                     i = j - 1;
-                    if (lastNodeId && lastNodeId !== startId) {
-                        const n = nodes.find(n => n.id === lastNodeId);
-                        if (n) n.metadata = { ...n.metadata, howSteps };
-                    }
+                    if (lastNodeId && lastNodeId !== startId) { const n = nodes.find(n => n.id === lastNodeId); if (n) n.metadata = { ...n.metadata, howSteps }; }
                     i++; continue;
                 }
-
-                // Why ステップ
                 if (keyword === 'Why') {
-                    if (lastNodeId && lastNodeId !== startId) {
-                        const n = nodes.find(n => n.id === lastNodeId);
-                        if (n) n.metadata = { ...n.metadata, whyReason: text };
-                    }
+                    if (lastNodeId && lastNodeId !== startId) { const n = nodes.find(n => n.id === lastNodeId); if (n) n.metadata = { ...n.metadata, whyReason: text }; }
                     i++; continue;
                 }
-
                 const nodeType = (() => {
                     switch (keyword.toLowerCase()) {
                         case 'given': case '前提': return 'given';
                         case 'when': case 'もし': return 'when';
                         case 'then': case 'ならば': return 'then';
-                        case 'and': case 'but': case 'かつ': case 'しかし': {
-                            const prev = lastNodeId ? nodes.find(n => n.id === lastNodeId) : null;
-                            return (prev?.type ?? 'process') as any;
-                        }
+                        case 'and': case 'but': case 'かつ': case 'しかし': { const prev = lastNodeId ? nodes.find(n => n.id === lastNodeId) : null; return (prev?.type ?? 'process') as any; }
                         default: return 'process';
                     }
                 })() as any;
-
                 const bindings = this.resolveIdentifiers(text, context);
                 const isGiven = /^(Given|前提)$/i.test(keyword);
                 const constraints = isGiven ? this.extractConstraints(text) : undefined;
                 const inferredState = this.inferState(text);
-
                 const newId = createId();
-                nodes.push({
-                    id: newId, type: nodeType,
-                    label: `${keyword}: ${text}`, x: currentX, y: currentY,
-                    metadata: {
-                        bindings: bindings.length > 0 ? bindings : undefined,
-                        constraints: constraints && constraints.length > 0 ? constraints : undefined,
-                        inferredState,
-                    },
-                });
-
+                nodes.push({ id: newId, type: nodeType, label: `${keyword}: ${text}`, x: currentX, y: currentY, metadata: { bindings: bindings.length > 0 ? bindings : undefined, constraints: constraints && constraints.length > 0 ? constraints : undefined, inferredState } });
                 if (bindings.length > 0 && context) {
-                    const className: string = context.name ?? '';
-                    const operationName: string = context._currentOperationName ?? context.operations?.[0]?.name ?? '';
+                    const className: string = context.name ?? '', operationName: string = context._currentOperationName ?? context.operations?.[0]?.name ?? '';
                     for (const identifierName of bindings) {
-                        const entry: WorkflowBackref = {
-                            nodeId: newId, scenarioName: currentScenarioName,
-                            className, operationName, stepKeyword: keyword, stepText: text,
-                        };
+                        const entry: WorkflowBackref = { nodeId: newId, scenarioName: currentScenarioName, className, operationName, stepKeyword: keyword, stepText: text };
                         const existing = this.backrefIndex.get(identifierName);
-                        if (existing) existing.push(entry);
-                        else this.backrefIndex.set(identifierName, [entry]);
+                        if (existing) existing.push(entry); else this.backrefIndex.set(identifierName, [entry]);
                     }
                 }
-
                 const isFirst = lastNodeId === startId;
-                edges.push({
-                    from: lastNodeId!,
-                    to: newId,
-                    condition: isFirst ? currentScenarioName : null,
-                    srcs: isFirst && currentSrcs.length > 0 ? currentSrcs : undefined,
-                });
-
-                lastNodeId = newId;
-                currentY += STEP_Y;
-                if (currentY > maxY) maxY = currentY;
+                edges.push({ from: lastNodeId!, to: newId, condition: isFirst ? currentScenarioName : null, srcs: isFirst && currentSrcs.length > 0 ? currentSrcs : undefined });
+                lastNodeId = newId; currentY += STEP_Y; if (currentY > maxY) maxY = currentY;
             }
             i++;
         }
-
         if (lastNodeId && lastNodeId !== startId) edges.push({ from: lastNodeId, to: endId });
-        endNode.x = 200 + (currentX - 200) / 2;
-        endNode.y = maxY + 20;
-        nodes.push(endNode);
-
+        endNode.x = 200 + (currentX - 200) / 2; endNode.y = maxY + 20; nodes.push(endNode);
         return { workflow: { nodes, edges }, workflowAst, endIndex: i - 1 };
     }
 
@@ -725,17 +299,14 @@ export class SpecDslParser {
     // ============================================================
     // Flow: ブロック → AST 変換（実装層）
     //
-    // 設計方針:
-    //   parseFlowBlockToWorkflowAst() は workflowAst のみを返す。
-    //   ビジュアルグラフ（nodes/edges）への変換は行わない。
-    //   WorkflowEditorPanel が workflowAst を受け取り、
-    //   必要に応じて独立したグラフとして表示・編集する。
+    // バグ修正 (2026-04-24):
+    //   case / default のスタック処理で「pop してから top() を取る」順序に修正。
+    //   修正前は「top() を取ってから条件付きで pop」していたため、
+    //   2番目以降の case では t.kind === 'case' になってしまい
+    //   t.kind === 'switch' の条件が成立せず、ノードが前の case の
+    //   ボディに流れ込んでいた。
     // ============================================================
-
-    private parseFlowBlockToWorkflowAst(
-        lines: string[],
-        startIndex: number
-    ): { workflowAst: ClassOperation['workflowAst']; endIndex: number } {
+    private parseFlowBlockToWorkflowAst(lines: string[], startIndex: number): { workflowAst: ClassOperation['workflowAst']; endIndex: number } {
         type MutableWfNode = { type: string; [key: string]: any };
         type Frame = {
             kind: 'root' | 'if' | 'while' | 'foreach' | 'forrange' | 'switch' | 'case';
@@ -752,46 +323,44 @@ export class SpecDslParser {
 
         let i = startIndex;
         for (; i < lines.length; i++) {
-            const raw = lines[i];
-            const line = raw.trim();
-
+            const raw = lines[i], line = raw.trim();
             if (!line) continue;
             if (this.isFlowBoundary(line)) break;
 
             // end
             if (/^end$/i.test(line)) {
                 if (stack.length === 1) { i++; break; }
-                stack.pop();
-                continue;
+                stack.pop(); continue;
             }
 
             // else
             if (/^else$/i.test(line)) {
                 const t = top();
-                if (t.kind === 'if' && t.ifNode) {
-                    t.ifNode.else = t.ifNode.else ?? [];
-                    t.nodes = t.ifNode.else;
-                }
+                if (t.kind === 'if' && t.ifNode) { t.ifNode.else = t.ifNode.else ?? []; t.nodes = t.ifNode.else; }
                 continue;
             }
 
-            // case <value>:
+            // ── case <value>: ──────────────────────────────────────────
+            // 修正: 先に前の case フレームをポップしてから top() で switch フレームを取得する。
+            // これにより 2番目以降の case でも t.kind === 'switch' が成立する。
             const caseMatch = line.match(/^case\s+(.+?):?\s*$/i);
             if (caseMatch) {
-                const t = top();
+                if (top().kind === 'case') stack.pop();          // ← 先にポップ
+                const t = top();                                   // ← ポップ後に取得
                 if (t.kind === 'switch' && t.switchNode) {
                     const caseNode: MutableWfNode = { type: 'case', value: caseMatch[1].trim(), body: [] };
                     t.switchNode.cases = t.switchNode.cases ?? [];
                     t.switchNode.cases.push(caseNode);
-                    if (top().kind === 'case') stack.pop();
                     stack.push({ kind: 'case', nodes: caseNode.body, switchNode: t.switchNode });
                 }
                 continue;
             }
 
-            // default:
+            // ── default: ──────────────────────────────────────────────
+            // 同様に先にポップしてから top() で switch フレームを取得する。
             if (/^default\s*:?\s*$/i.test(line)) {
-                const t = top();
+                if (top().kind === 'case') stack.pop();          // ← 先にポップ
+                const t = top();                                   // ← ポップ後に取得
                 if (t.kind === 'switch' && t.switchNode) {
                     t.switchNode.default = t.switchNode.default ?? [];
                     stack.push({ kind: 'case', nodes: t.switchNode.default, switchNode: t.switchNode });
@@ -805,43 +374,23 @@ export class SpecDslParser {
 
             // if
             const ifM = line.match(/^if\s+(.+)$/i);
-            if (ifM) {
-                const n: MutableWfNode = { type: 'if', condition: ifM[1].trim(), then: [] };
-                cur().push(n); stack.push({ kind: 'if', nodes: n.then, ifNode: n });
-                continue;
-            }
+            if (ifM) { const n: MutableWfNode = { type: 'if', condition: ifM[1].trim(), then: [] }; cur().push(n); stack.push({ kind: 'if', nodes: n.then, ifNode: n }); continue; }
 
             // while
             const whileM = line.match(/^while\s+(.+)$/i);
-            if (whileM) {
-                const n: MutableWfNode = { type: 'while', condition: whileM[1].trim(), body: [] };
-                cur().push(n); stack.push({ kind: 'while', nodes: n.body });
-                continue;
-            }
+            if (whileM) { const n: MutableWfNode = { type: 'while', condition: whileM[1].trim(), body: [] }; cur().push(n); stack.push({ kind: 'while', nodes: n.body }); continue; }
 
             // for <v> in <collection>
             const forEachM = line.match(/^for\s+([A-Za-z_]\w*)\s+in\s+(.+)$/i);
-            if (forEachM) {
-                const n: MutableWfNode = { type: 'forEach', variable: forEachM[1].trim(), collection: forEachM[2].trim(), body: [] };
-                cur().push(n); stack.push({ kind: 'foreach', nodes: n.body });
-                continue;
-            }
+            if (forEachM) { const n: MutableWfNode = { type: 'forEach', variable: forEachM[1].trim(), collection: forEachM[2].trim(), body: [] }; cur().push(n); stack.push({ kind: 'foreach', nodes: n.body }); continue; }
 
             // for <v> from <n> to <m>
             const forRangeM = line.match(/^for\s+([A-Za-z_]\w*)\s+from\s+(\S+)\s+to\s+(\S+)$/i);
-            if (forRangeM) {
-                const n: MutableWfNode = { type: 'forRange', variable: forRangeM[1].trim(), from: forRangeM[2].trim(), to: forRangeM[3].trim(), body: [] };
-                cur().push(n); stack.push({ kind: 'forrange', nodes: n.body });
-                continue;
-            }
+            if (forRangeM) { const n: MutableWfNode = { type: 'forRange', variable: forRangeM[1].trim(), from: forRangeM[2].trim(), to: forRangeM[3].trim(), body: [] }; cur().push(n); stack.push({ kind: 'forrange', nodes: n.body }); continue; }
 
             // switch <expr>
             const switchM = line.match(/^switch\s+(.+)$/i);
-            if (switchM) {
-                const n: MutableWfNode = { type: 'switch', expression: switchM[1].trim(), cases: [] };
-                cur().push(n); stack.push({ kind: 'switch', nodes: [], switchNode: n });
-                continue;
-            }
+            if (switchM) { const n: MutableWfNode = { type: 'switch', expression: switchM[1].trim(), cases: [] }; cur().push(n); stack.push({ kind: 'switch', nodes: [], switchNode: n }); continue; }
 
             // break / continue
             if (/^break$/i.test(line)) { cur().push({ type: 'break' }); continue; }
@@ -877,69 +426,36 @@ export class SpecDslParser {
     }
 
     private resolveIdentifiers(text: string, context?: any): string[] {
-        const found: string[] = [];
-        if (!context) return found;
-        const members = context.members?.map((m: any) => m.name) || [];
-        const operations = context.operations?.map((op: any) => op.name) || [];
-        const allIdentifiers = [...members, ...operations];
-        const normalizedText = this.normalizeNoun(text);
-
-        for (const id of allIdentifiers) {
-            if (text.includes(id) || normalizedText.includes(id)) { found.push(id); continue; }
-        }
-        for (const [alias, realName] of this.aliases.entries()) {
-            if ((text.includes(alias) || normalizedText.includes(alias)) && allIdentifiers.includes(realName) && !found.includes(realName)) {
-                found.push(realName);
-            }
-        }
-        for (const [dictKey, realName] of this.nounDictionary.entries()) {
-            if (dictKey === realName) continue;
-            if ((text.includes(dictKey) || normalizedText.includes(dictKey)) && allIdentifiers.includes(realName) && !found.includes(realName)) {
-                found.push(realName);
-            }
-        }
+        const found: string[] = []; if (!context) return found;
+        const members = context.members?.map((m: any) => m.name) || [], operations = context.operations?.map((op: any) => op.name) || [];
+        const allIdentifiers = [...members, ...operations], normalizedText = this.normalizeNoun(text);
+        for (const id of allIdentifiers) { if (text.includes(id) || normalizedText.includes(id)) { found.push(id); continue; } }
+        for (const [alias, realName] of this.aliases.entries()) { if ((text.includes(alias) || normalizedText.includes(alias)) && allIdentifiers.includes(realName) && !found.includes(realName)) found.push(realName); }
+        for (const [dictKey, realName] of this.nounDictionary.entries()) { if (dictKey === realName) continue; if ((text.includes(dictKey) || normalizedText.includes(dictKey)) && allIdentifiers.includes(realName) && !found.includes(realName)) found.push(realName); }
         return found;
     }
 
     private extractConstraints(text: string): StructuredConstraint[] {
         const constraints: StructuredConstraint[] = [];
-
-        const rangePattern = /([^\s、。,]+(?:は|が))([^\s、。,]+)(?:の)?(以上|以下|未満|超|超過)/g;
-        let m: RegExpExecArray | null;
-        while ((m = rangePattern.exec(text)) !== null) {
-            constraints.push({ kind: 'range', subject: this.normalizeNoun(m[1].replace(/[はが]$/, '')), operator: m[3], value: m[2], raw: m[0] });
-        }
+        const rangePattern = /([^\s、。,]+(?:は|が))([^\s、。,]+)(?:の)?(以上|以下|未満|超|超過)/g; let m: RegExpExecArray | null;
+        while ((m = rangePattern.exec(text)) !== null) constraints.push({ kind: 'range', subject: this.normalizeNoun(m[1].replace(/[はが]$/, '')), operator: m[3], value: m[2], raw: m[0] });
         const eqPattern = /([^\s、。,]+(?:は|が))([^\s、。,]+)(?:に|と)?(であること|等しい|一致する|である)/g;
-        while ((m = eqPattern.exec(text)) !== null) {
-            constraints.push({ kind: 'equality', subject: this.normalizeNoun(m[1].replace(/[はが]$/, '')), operator: m[3], value: m[2], raw: m[0] });
-        }
+        while ((m = eqPattern.exec(text)) !== null) constraints.push({ kind: 'equality', subject: this.normalizeNoun(m[1].replace(/[はが]$/, '')), operator: m[3], value: m[2], raw: m[0] });
         const statePattern = /([^\s、。,]+(?:が|は|の))([^\s、。,]+(?:状態|済み|中|完了|待ち))/g;
-        while ((m = statePattern.exec(text)) !== null) {
-            constraints.push({ kind: 'state', subject: this.normalizeNoun(m[1].replace(/[がはの]$/, '')), operator: '状態', value: m[2], raw: m[0] });
-        }
+        while ((m = statePattern.exec(text)) !== null) constraints.push({ kind: 'state', subject: this.normalizeNoun(m[1].replace(/[がはの]$/, '')), operator: '状態', value: m[2], raw: m[0] });
         const existPattern = /([^\s、。,]+)(?:が|は)(存在する|nullでない|空でない|設定されている|登録済み)/g;
-        while ((m = existPattern.exec(text)) !== null) {
-            constraints.push({ kind: 'existence', subject: this.normalizeNoun(m[1]), operator: m[2], value: '', raw: m[0] });
-        }
+        while ((m = existPattern.exec(text)) !== null) constraints.push({ kind: 'existence', subject: this.normalizeNoun(m[1]), operator: m[2], value: '', raw: m[0] });
         return constraints;
     }
 
     private inferState(text: string): string | undefined {
-        const s = text.match(/([^\s、。,]+(?:状態|済み|中|完了|待ち|確認済|未確認|保留))/);
-        if (s) return s[1];
-        const e = text.match(/\b(pending|confirmed|cancelled|processing|completed|draft|active|inactive)\b/i);
-        return e ? e[1].toLowerCase() : undefined;
+        const s = text.match(/([^\s、。,]+(?:状態|済み|中|完了|待ち|確認済|未確認|保留))/); if (s) return s[1];
+        const e = text.match(/\b(pending|confirmed|cancelled|processing|completed|draft|active|inactive)\b/i); return e ? e[1].toLowerCase() : undefined;
     }
 
     private normalizeNoun(text: string): string {
-        for (const [alias, realName] of this.aliases.entries()) {
-            if (text.includes(alias)) text = text.replace(new RegExp(alias, 'g'), realName);
-        }
-        const rules: [RegExp, string][] = [
-            [/する$/, ''], [/した$/, ''], [/された$/, ''], [/されている$/, ''],
-            [/している$/, ''], [/できる$/, ''], [/できない$/, 'できない'],
-            [/である$/, ''], [/であった$/, ''], [/ている$/, ''], [/ている $/, ''],
-        ];
+        for (const [alias, realName] of this.aliases.entries()) { if (text.includes(alias)) text = text.replace(new RegExp(alias, 'g'), realName); }
+        const rules: [RegExp, string][] = [[/する$/,''],[/した$/,''],[/された$/,''],[/されている$/,''],[/している$/,''],[/できる$/,''],[/できない$/,'できない'],[/である$/,''],[/であった$/,''],[/ている$/,''],[/ている $/,'']];
         text = text.replace(/[、。,.！!？?]/g, ' ').replace(/\b(は|が|を|に|で|と|の|も|から|まで|へ)\b/g, ' ').trim();
         for (const [pattern, rep] of rules) text = text.replace(pattern, rep);
         return text;
@@ -947,72 +463,34 @@ export class SpecDslParser {
 
     private parseParameters(raw: string): OperationParameter[] {
         if (!raw.trim()) return [];
-        return raw.split(",").map(p => p.trim()).filter(Boolean).map(p => {
-            const idx = p.lastIndexOf(":");
-            if (idx === -1) return { id: createId(), name: p.trim(), type: "any" };
-            return { id: createId(), name: p.slice(0, idx).trim(), type: p.slice(idx + 1).trim() };
-        });
+        return raw.split(",").map(p => p.trim()).filter(Boolean).map(p => { const idx = p.lastIndexOf(":"); if (idx === -1) return { id: createId(), name: p.trim(), type: "any" }; return { id: createId(), name: p.slice(0, idx).trim(), type: p.slice(idx + 1).trim() }; });
     }
-
-    // ============================================================
-    // CLI Suggestion Generator
-    // ============================================================
 
     private generateCliSuggestions(classes: ParsedClass[], relations: ParsedRelation[]): CliSuggestion[] {
         const suggestions: CliSuggestion[] = [];
-
         for (const cls of classes) {
             let totalBackrefs = 0;
             for (const member of cls.members) totalBackrefs += this.backrefIndex.get(member.name)?.length ?? 0;
             for (const op of cls.operations) totalBackrefs += this.backrefIndex.get(op.name)?.length ?? 0;
-            if (totalBackrefs >= 2) {
-                suggestions.push({
-                    kind: 'generate-code', command: `generate-code --class ${cls.name}`,
-                    reason: `${cls.name} は ${totalBackrefs} 件のシナリオから参照されています。コード生成の優先候補です。`,
-                    className: cls.name, priority: 80 + totalBackrefs, dryRun: false,
-                });
-            }
-
+            if (totalBackrefs >= 2) suggestions.push({ kind: 'generate-code', command: `generate-code --class ${cls.name}`, reason: `${cls.name} は ${totalBackrefs} 件のシナリオから参照されています。コード生成の優先候補です。`, className: cls.name, priority: 80 + totalBackrefs, dryRun: false });
             for (const op of cls.operations) {
-                for (const param of op.parameters.filter((p: any) => p.type === 'any')) {
-                    suggestions.push({
-                        kind: 'add-member', command: `edit-param --class ${cls.name} --op ${op.name} --param ${param.name} --type <type>`,
-                        reason: `${cls.name}.${op.name}() のパラメータ "${param.name}" の型が未指定です。`,
-                        className: cls.name, identifierName: op.name, priority: 60, dryRun: true,
-                    });
-                }
+                for (const param of op.parameters.filter((p: any) => p.type === 'any')) suggestions.push({ kind: 'add-member', command: `edit-param --class ${cls.name} --op ${op.name} --param ${param.name} --type <type>`, reason: `${cls.name}.${op.name}() のパラメータ "${param.name}" の型が未指定です。`, className: cls.name, identifierName: op.name, priority: 60, dryRun: true });
             }
-
             const memberNames = new Set(cls.members.map(m => m.name));
             for (const [, backrefs] of this.backrefIndex.entries()) {
                 if (!backrefs.some(r => r.className === cls.name)) continue;
                 for (const ref of backrefs.filter(r => r.stepKeyword.match(/^(Given|前提)$/i) && r.className === cls.name)) {
                     const s = this.inferState(ref.stepText);
-                    if (s && !memberNames.has('status') && !memberNames.has('state')) {
-                        suggestions.push({
-                            kind: 'add-member', command: `add-member --class ${cls.name} --name status --type ${cls.name}Status`,
-                            reason: `シナリオ "${ref.scenarioName}" で "${s}" という状態が言及されていますが、statusメンバが存在しません。`,
-                            className: cls.name, priority: 70, dryRun: true,
-                        });
-                        break;
-                    }
+                    if (s && !memberNames.has('status') && !memberNames.has('state')) { suggestions.push({ kind: 'add-member', command: `add-member --class ${cls.name} --name status --type ${cls.name}Status`, reason: `シナリオ "${ref.scenarioName}" で "${s}" という状態が言及されていますが、statusメンバが存在しません。`, className: cls.name, priority: 70, dryRun: true }); break; }
                 }
             }
-
             for (const op of cls.operations) {
                 const rt = op.returnType?.replace(/\[\]$/, '');
                 if (!rt || rt === 'void' || rt === 'any') continue;
                 if (!classes.some(c => c.name === rt)) continue;
-                if (!relations.some(r => (r.source === cls.name && r.target === rt) || (r.source === rt && r.target === cls.name))) {
-                    suggestions.push({
-                        kind: 'add-relation', command: `add-relation --from ${cls.name} --to ${rt} --type dependency`,
-                        reason: `${cls.name}.${op.name}() が ${rt} を返しますが、リレーションが定義されていません。`,
-                        className: cls.name, identifierName: op.name, priority: 50, dryRun: true,
-                    });
-                }
+                if (!relations.some(r => (r.source === cls.name && r.target === rt) || (r.source === rt && r.target === cls.name))) suggestions.push({ kind: 'add-relation', command: `add-relation --from ${cls.name} --to ${rt} --type dependency`, reason: `${cls.name}.${op.name}() が ${rt} を返しますが、リレーションが定義されていません。`, className: cls.name, identifierName: op.name, priority: 50, dryRun: true });
             }
         }
-
         const refactorSuggestions = new RefactorSuggester().suggest(classes, relations).map(s => ({ ...s, dryRun: true }));
         suggestions.push(...refactorSuggestions);
         return suggestions.sort((a, b) => b.priority - a.priority);
