@@ -31,21 +31,24 @@ class TypeScriptAstParser
           if item.invalid
             break
           end
+          do item.finalize()
         end
-        return true
+        
       else
         do this.markRejected()
-        return false
+        switch this.status
+          case "pending":
+            do this.initialize()
+          case "active":
+            do this.execute()
+            return true
+          case "queue":
+            do this.queue()
+          default:
+            return false
+        end
       end
-      switch this.status
-        case "pending":
-          do this.initialize()
-        case "active":
-          do this.execute()
-          return true
-        default:
-          return false
-      end
+      do test()
   - updateLanguage(languageId: string): void
     Scenario: 振る舞い
       When (!this.parser)

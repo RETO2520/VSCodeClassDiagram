@@ -209,10 +209,6 @@ export class SpecDslParser {
         return { name, srcs };
     }
 
-    // ============================================================
-    // Gherkin → ワークフロー変換（仕様層）
-    // Flow: ブロックは workflowAst のみに格納し、workflow グラフとは独立して保持する
-    // ============================================================
     private parseGherkinToWorkflow(lines: string[], startIndex: number, context?: any): { workflow: ClassOperation['workflow']; workflowAst?: ClassOperation['workflowAst']; endIndex: number; } {
         const nodes: NonNullable<ClassOperation['workflow']>['nodes'] = [];
         const edges: NonNullable<ClassOperation['workflow']>['edges'] = [];
@@ -299,12 +295,19 @@ export class SpecDslParser {
     // ============================================================
     // Flow: ブロック → AST 変換（実装層）
     //
-    // バグ修正 (2026-04-24):
-    //   case / default のスタック処理で「pop してから top() を取る」順序に修正。
-    //   修正前は「top() を取ってから条件付きで pop」していたため、
-    //   2番目以降の case では t.kind === 'case' になってしまい
-    //   t.kind === 'switch' の条件が成立せず、ノードが前の case の
-    //   ボディに流れ込んでいた。
+    // スタック管理の設計:
+    //   各ブロック構文（if/while/for/switch）は対応するフレームを push し、
+    //   end キーワードで pop する。
+    //
+    // end の処理ルール:
+    //   switch の end は「case/default フレーム + switch フレーム」を
+    //   両方閉じる必要がある。case/default フレームは switch ブロック内で
+    //   常にスタックに積まれたままになるため、end 検出時に:
+    //     1. top が case なら先に case をポップ
+    //     2. その後に switch（または他のブロック）をポップ
+    //   という2段ポップを行う。
+    //   これにより switch の end が if/while 等の end と同じ1回の
+    //   キーワードで正しく閉じられる。
     // ============================================================
     private parseFlowBlockToWorkflowAst(lines: string[], startIndex: number): { workflowAst: ClassOperation['workflowAst']; endIndex: number } {
         type MutableWfNode = { type: string; [key: string]: any };
@@ -327,26 +330,33 @@ export class SpecDslParser {
             if (!line) continue;
             if (this.isFlowBoundary(line)) break;
 
-            // end
+            // ── end ──────────────────────────────────────────────────────
+            // switch の end は case フレームも一緒に閉じる（2段ポップ）
             if (/^end$/i.test(line)) {
                 if (stack.length === 1) { i++; break; }
-                stack.pop(); continue;
+                // case フレームが残っていれば先にポップ（switch の最後の case/default）
+                if (top().kind === 'case') {
+                    stack.pop();
+                    if (stack.length === 1) { i++; break; }
+                }
+                // if / while / foreach / forrange / switch をポップ
+                stack.pop();
+                continue;
             }
 
-            // else
+            // ── else ─────────────────────────────────────────────────────
             if (/^else$/i.test(line)) {
                 const t = top();
                 if (t.kind === 'if' && t.ifNode) { t.ifNode.else = t.ifNode.else ?? []; t.nodes = t.ifNode.else; }
                 continue;
             }
 
-            // ── case <value>: ──────────────────────────────────────────
-            // 修正: 先に前の case フレームをポップしてから top() で switch フレームを取得する。
-            // これにより 2番目以降の case でも t.kind === 'switch' が成立する。
+            // ── case <value>: ─────────────────────────────────────────────
+            // 先に前の case フレームをポップしてから switch フレームを取得する
             const caseMatch = line.match(/^case\s+(.+?):?\s*$/i);
             if (caseMatch) {
-                if (top().kind === 'case') stack.pop();          // ← 先にポップ
-                const t = top();                                   // ← ポップ後に取得
+                if (top().kind === 'case') stack.pop();
+                const t = top();
                 if (t.kind === 'switch' && t.switchNode) {
                     const caseNode: MutableWfNode = { type: 'case', value: caseMatch[1].trim(), body: [] };
                     t.switchNode.cases = t.switchNode.cases ?? [];
@@ -356,11 +366,10 @@ export class SpecDslParser {
                 continue;
             }
 
-            // ── default: ──────────────────────────────────────────────
-            // 同様に先にポップしてから top() で switch フレームを取得する。
+            // ── default: ──────────────────────────────────────────────────
             if (/^default\s*:?\s*$/i.test(line)) {
-                if (top().kind === 'case') stack.pop();          // ← 先にポップ
-                const t = top();                                   // ← ポップ後に取得
+                if (top().kind === 'case') stack.pop();
+                const t = top();
                 if (t.kind === 'switch' && t.switchNode) {
                     t.switchNode.default = t.switchNode.default ?? [];
                     stack.push({ kind: 'case', nodes: t.switchNode.default, switchNode: t.switchNode });

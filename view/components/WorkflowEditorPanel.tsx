@@ -166,7 +166,24 @@ export function convertAstToWorkflow(ast?: FlowAst): WFWorkflow {
         wf.edges.push(e)
     }
 
-    const appendSeq = (fromId: string, stmts: any[], firstCond: string | null | undefined, baseX: number): string => {
+    // TerminalKind:
+    //   'none'     – 通常フロー継続
+    //   'return'   – return 文で終端 → end ノードへ接続済み
+    //   'break'    – break 文で終端 → 最近傍ループの exitId へ接続が必要
+    //   'continue' – continue 文で終端 → ループバック先へ接続しない
+    type TerminalKind = 'none' | 'return' | 'break' | 'continue'
+    type SeqResult = { tail: string; kind: TerminalKind }
+
+    // appendSeq
+    //   loopExitId: 現在のスコープで break が飛ぶべき exit ノードのID
+    //               ループ外（トップレベル）では null
+    const appendSeq = (
+        fromId: string,
+        stmts: any[],
+        firstCond: string | null | undefined,
+        baseX: number,
+        loopExitId: string | null = null
+    ): SeqResult => {
         let tail = fromId; let pendCond: string | null | undefined = firstCond
 
         for (const s of stmts) {
@@ -179,16 +196,59 @@ export function convertAstToWorkflow(ast?: FlowAst): WFWorkflow {
                 const savedY = globalY
                 const thenStmts: any[] = Array.isArray(s.then) ? s.then : []
                 const elseStmts: any[] = Array.isArray(s.else) ? s.else : []
-                let thenTail: string, thenEndY: number
-                if (thenStmts.length > 0) { globalY = savedY; thenTail = appendSeq(decId, thenStmts, 'true', baseX + LANE_W); thenEndY = globalY }
-                else { thenTail = decId; thenEndY = savedY }
-                let elseTail: string, elseEndY: number
-                if (elseStmts.length > 0) { globalY = savedY; elseTail = appendSeq(decId, elseStmts, 'false', baseX - LANE_W); elseEndY = globalY }
-                else { elseTail = decId; elseEndY = savedY }
+
+                // then 分岐
+                let thenTail: string, thenEndY: number, thenKind: TerminalKind
+                if (thenStmts.length > 0) {
+                    globalY = savedY
+                    const r = appendSeq(decId, thenStmts, 'true', baseX + LANE_W, loopExitId)
+                    thenTail = r.tail; thenEndY = globalY; thenKind = r.kind
+                } else { thenTail = decId; thenEndY = savedY; thenKind = 'none' }
+
+                // else 分岐
+                let elseTail: string, elseEndY: number, elseKind: TerminalKind
+                if (elseStmts.length > 0) {
+                    globalY = savedY
+                    const r = appendSeq(decId, elseStmts, 'false', baseX - LANE_W, loopExitId)
+                    elseTail = r.tail; elseEndY = globalY; elseKind = r.kind
+                } else { elseTail = decId; elseEndY = savedY; elseKind = 'none' }
+
+                const thenTerminal = thenKind !== 'none'
+                const elseTerminal = elseKind !== 'none'
+
+                // ── ケース1: 両分岐が終端 → merge 不要、即 return ──────
+                if (thenTerminal && elseTerminal) {
+                    globalY = Math.max(thenEndY, elseEndY)
+                    return { tail: thenTail, kind: thenKind }
+                }
+
+                // ── ケース2: then終端 & else空(elseTail===decId) ─────────
+                // merge ノード不要。decId を tail として false エッジを次ノードへ遅延接続
+                if (thenTerminal && elseTail === decId) {
+                    globalY = Math.max(thenEndY, elseEndY)
+                    // pendCond を 'false' にして次ノードへの接続を委ねる
+                    tail = decId
+                    pendCond = 'false'
+                    continue
+                }
+
+                // ── ケース3: else終端 & then空(thenTail===decId) ─────────
+                if (elseTerminal && thenTail === decId) {
+                    globalY = Math.max(thenEndY, elseEndY)
+                    tail = decId
+                    pendCond = 'true'
+                    continue
+                }
+
+                // ── ケース4: 片方または両方が非終端 → merge ノードへ収束 ─
                 globalY = Math.max(thenEndY, elseEndY)
                 const mergeId = addNode('process', '(merge)', baseX)
-                if (thenTail === decId) addEdge(decId, mergeId, 'true'); else addEdge(thenTail, mergeId)
-                if (elseTail === decId) addEdge(decId, mergeId, 'false'); else addEdge(elseTail, mergeId)
+                if (!thenTerminal) {
+                    if (thenTail === decId) addEdge(decId, mergeId, 'true'); else addEdge(thenTail, mergeId)
+                }
+                if (!elseTerminal) {
+                    if (elseTail === decId) addEdge(decId, mergeId, 'false'); else addEdge(elseTail, mergeId)
+                }
                 tail = mergeId; continue
             }
 
@@ -196,16 +256,20 @@ export function convertAstToWorkflow(ast?: FlowAst): WFWorkflow {
             if (s.type === 'while') {
                 const loopId = addNode('loop', String(s.condition ?? 'while'), baseX)
                 addEdge(tail, loopId, pendCond); pendCond = undefined
+                // exitId を先に予約（y は body 処理後に addNode で確定）
+                const exitId = generateId('exit')
                 const bodyStmts: any[] = Array.isArray(s.body) ? s.body : []
                 if (bodyStmts.length > 0) {
-                    // ボディを左オフセットに配置
-                    const bt = appendSeq(loopId, bodyStmts, 'true', baseX + BODY_OFFSET)
-                    // ループバックエッジ: bodyTail→loopId、loopBack フラグ付き
-                    addEdge(bt, loopId, undefined, true)
+                    // body を右レーンで処理。globalY は body の最大 Y まで進む
+                    const savedBodyStart = globalY
+                    const r = appendSeq(loopId, bodyStmts, 'true', baseX + BODY_OFFSET, exitId)
+                    if (r.kind === 'none') addEdge(r.tail, loopId, undefined, true)
                 } else {
-                    addEdge(loopId, loopId, 'true')  // 空ボディ: 自己ループ
+                    addEdge(loopId, loopId, 'true')
                 }
-                const exitId = addNode('process', '↓ (exit)', baseX)
+                // body 処理後の globalY が exit ノードの正しい Y
+                wf.nodes.push({ id: exitId, type: 'process', label: '↓ (exit)', x: baseX, y: globalY })
+                globalY += STEP_Y
                 addEdge(loopId, exitId, 'false')
                 tail = exitId; continue
             }
@@ -214,16 +278,17 @@ export function convertAstToWorkflow(ast?: FlowAst): WFWorkflow {
             if (s.type === 'forEach') {
                 const forId = addNode('foreach', `for ${s.variable ?? 'item'} in ${s.collection ?? 'collection'}`, baseX)
                 addEdge(tail, forId, pendCond); pendCond = undefined
+                const exitId = generateId('exit')
                 const bodyStmts: any[] = Array.isArray(s.body) ? s.body : []
                 if (bodyStmts.length > 0) {
-                    // ボディを左オフセットに配置
-                    const bt = appendSeq(forId, bodyStmts, 'body', baseX + BODY_OFFSET)
-                    // ループバックエッジ: bodyTail→forId、loopBack フラグ付き
-                    addEdge(bt, forId, undefined, true)
+                    const r = appendSeq(forId, bodyStmts, 'body', baseX + BODY_OFFSET, exitId)
+                    if (r.kind === 'none') addEdge(r.tail, forId, undefined, true)
                 } else {
-                    addEdge(forId, forId, 'body')    // 空ボディ: 自己ループ
+                    addEdge(forId, forId, 'body')
                 }
-                const exitId = addNode('process', '↓ (exit)', baseX)
+                // body 処理後の globalY が exit ノードの正しい Y
+                wf.nodes.push({ id: exitId, type: 'process', label: '↓ (exit)', x: baseX, y: globalY })
+                globalY += STEP_Y
                 addEdge(forId, exitId)
                 tail = exitId; continue
             }
@@ -232,14 +297,17 @@ export function convertAstToWorkflow(ast?: FlowAst): WFWorkflow {
             if (s.type === 'forRange') {
                 const forId = addNode('forrange', `for ${s.variable ?? 'i'} from ${s.from ?? '0'} to ${s.to ?? 'n'}`, baseX)
                 addEdge(tail, forId, pendCond); pendCond = undefined
+                const exitId = generateId('exit')
                 const bodyStmts: any[] = Array.isArray(s.body) ? s.body : []
                 if (bodyStmts.length > 0) {
-                    const bt = appendSeq(forId, bodyStmts, 'body', baseX + BODY_OFFSET)
-                    addEdge(bt, forId, undefined, true)
+                    const r = appendSeq(forId, bodyStmts, 'body', baseX + BODY_OFFSET, exitId)
+                    if (r.kind === 'none') addEdge(r.tail, forId, undefined, true)
                 } else {
                     addEdge(forId, forId, 'body')
                 }
-                const exitId = addNode('process', '↓ (exit)', baseX)
+                // body 処理後の globalY が exit ノードの正しい Y
+                wf.nodes.push({ id: exitId, type: 'process', label: '↓ (exit)', x: baseX, y: globalY })
+                globalY += STEP_Y
                 addEdge(forId, exitId)
                 tail = exitId; continue
             }
@@ -253,23 +321,36 @@ export function convertAstToWorkflow(ast?: FlowAst): WFWorkflow {
                 const total = cases.length + (hasDef ? 1 : 0)
                 const caseW = LANE_W * 0.85
                 const sx0 = baseX - ((total - 1) / 2) * caseW
-                const savedY = globalY; const caseTails: string[] = []; let maxY = savedY
+                const savedY = globalY
+                const caseResults: SeqResult[] = []
+                let maxY = savedY
                 cases.forEach((c: any, idx: number) => {
                     const cx = sx0 + idx * caseW; const cs: any[] = Array.isArray(c?.body) ? c.body : []
                     globalY = savedY
-                    let ct: string
-                    if (cs.length > 0) { ct = appendSeq(swId, cs, String(c?.value ?? `case${idx}`), cx) }
-                    else { const eid = addNode('process', `case ${c?.value ?? idx}`, cx); addEdge(swId, eid, String(c?.value ?? `case${idx}`)); ct = eid }
-                    caseTails.push(ct); if (globalY > maxY) maxY = globalY
+                    if (cs.length > 0) {
+                        caseResults.push(appendSeq(swId, cs, String(c?.value ?? `case${idx}`), cx, loopExitId))
+                    } else {
+                        const eid = addNode('process', `case ${c?.value ?? idx}`, cx)
+                        addEdge(swId, eid, String(c?.value ?? `case${idx}`))
+                        caseResults.push({ tail: eid, kind: 'none' })
+                    }
+                    if (globalY > maxY) maxY = globalY
                 })
                 if (hasDef) {
                     const dx = sx0 + cases.length * caseW; globalY = savedY
-                    caseTails.push(appendSeq(swId, s.default, 'default', dx))
+                    caseResults.push(appendSeq(swId, s.default, 'default', dx, loopExitId))
                     if (globalY > maxY) maxY = globalY
-                } else { caseTails.push(swId) }
+                } else {
+                    caseResults.push({ tail: swId, kind: 'none' })
+                }
                 globalY = maxY
                 const mergeId = addNode('process', '(switch merge)', baseX)
-                for (const ct of caseTails) { if (ct === swId) addEdge(swId, mergeId, 'default'); else addEdge(ct, mergeId) }
+                for (const cr of caseResults) {
+                    if (cr.kind === 'none') {
+                        if (cr.tail === swId) addEdge(swId, mergeId, 'default'); else addEdge(cr.tail, mergeId)
+                    }
+                    // return/break/continue は既に接続済み → merge へ繋がない
+                }
                 tail = mergeId; continue
             }
 
@@ -278,16 +359,34 @@ export function convertAstToWorkflow(ast?: FlowAst): WFWorkflow {
             const lbl = s.type === 'return' ? `return ${s.value ?? ''}`.trim()
                 : s.type === 'action' ? String(s.statement ?? 'action')
                     : s.type === 'break' ? 'break' : s.type === 'continue' ? 'continue' : String(s.type ?? 'step')
-            const id = addNode(nt, lbl, baseX); addEdge(tail, id, pendCond); pendCond = undefined; tail = id
+            const id = addNode(nt, lbl, baseX)
+            addEdge(tail, id, pendCond)
+            pendCond = undefined
+            tail = id
+            if (s.type === 'return') {
+                addEdge(id, endId)
+                return { tail, kind: 'return' }
+            }
+            if (s.type === 'break') {
+                // break → 最近傍ループの exit ノードへ接続
+                if (loopExitId) addEdge(id, loopExitId)
+                return { tail, kind: 'break' }
+            }
+            if (s.type === 'continue') {
+                // continue → ループバックは外側が担当（ここでは接続しない）
+                return { tail, kind: 'continue' }
+            }
         }
-        return tail
+        return { tail, kind: 'none' }
     }
 
     let tail = startId
     for (const v of vars) { const id = addNode('process', `var ${v.name}:${v.type}${v.initialValue ? ` = ${v.initialValue}` : ''}`); addEdge(tail, id); tail = id }
-    tail = appendSeq(tail, body, undefined, 220)
+    const bodyResult = appendSeq(tail, body, undefined, 220)
     const endNode = wf.nodes.find(n => n.id === endId); if (endNode) endNode.y = globalY
-    addEdge(tail, endId); return wf
+    // トップレベルが terminal でない場合のみ末尾から end へ接続
+    if (bodyResult.kind === 'none') addEdge(bodyResult.tail, endId)
+    return wf
 }
 
 export function convertToAst(wf: WFWorkflow) {
@@ -302,13 +401,18 @@ export function convertToAst(wf: WFWorkflow) {
     function walk(id: string | undefined, stop: string | null = null): any[] {
         if (!id || id === stop) return []; const n = nodeMap.get(id); if (!n) return []; const outs = outEdges.get(id) || []
         if (n.type === 'end') return [{ type: 'return', value: (n.label && n.label !== 'End') ? n.label : undefined }]
-        if (n.type === 'process' || n.type === 'call') return [{ type: 'action', statement: n.label }, ...walk(outs[0]?.to, stop)]
+        if (n.type === 'process' || n.type === 'call') {
+            // return ラベルのノードは関数終端 — 後続を walk しない
+            if (n.label.startsWith('return')) return [{ type: 'return', value: n.label.replace(/^return\s*/, '') || undefined }]
+            return [{ type: 'action', statement: n.label }, ...walk(outs[0]?.to, stop)]
+        }
         if (n.type === 'decision') { const te = outs.find(e => String(e.condition).toLowerCase() === 'true'), fe = outs.find(e => String(e.condition).toLowerCase() === 'false'), m = mp(te?.to, fe?.to); const res: any[] = [{ type: 'if', condition: n.label, then: walk(te?.to, m), else: walk(fe?.to, m) || undefined }]; if (m && m !== stop) res.push(...walk(m, stop)); return res }
         if (n.type === 'loop') { const te = outs.find(e => String(e.condition).toLowerCase() === 'true'), fe = outs.find(e => String(e.condition).toLowerCase() === 'false'); const res: any[] = [{ type: 'while', condition: n.label, body: walk(te?.to, id) }]; if (fe?.to && fe.to !== stop) res.push(...walk(fe.to, stop)); return res }
         if (n.type === 'foreach') { const be = outs.find(e => String(e.condition ?? '').toLowerCase() === 'body'), ne = outs.find(e => String(e.condition ?? '').toLowerCase() !== 'body') ?? outs[0]; const m = n.label.match(/^for\s+(\S+)\s+in\s+(.+)$/i); const res: any[] = [{ type: 'forEach', variable: m?.[1] ?? n.label, collection: m?.[2] ?? '', body: walk(be?.to, id) }]; if (ne?.to && ne.to !== stop) res.push(...walk(ne.to, stop)); return res }
         if (n.type === 'forrange') { const be = outs.find(e => String(e.condition ?? '').toLowerCase() === 'body'), ne = outs.find(e => String(e.condition ?? '').toLowerCase() !== 'body') ?? outs[0]; const m = n.label.match(/^for\s+(\S+)\s+from\s+(\S+)\s+to\s+(\S+)$/i); const res: any[] = [{ type: 'forRange', variable: m?.[1] ?? n.label, from: m?.[2] ?? '0', to: m?.[3] ?? '0', body: walk(be?.to, id) }]; if (ne?.to && ne.to !== stop) res.push(...walk(ne.to, stop)); return res }
         if (n.type === 'switch') { const ce = outs.filter(e => String(e.condition ?? '').toLowerCase() !== 'default' && e.condition != null), de = outs.find(e => String(e.condition ?? '').toLowerCase() === 'default'), m = outs.map(e => e.to).filter(Boolean).reduce<string | null>((a, id) => mp(a ?? undefined, id), null); const res: any[] = [{ type: 'switch', expression: n.label, cases: ce.map(e => ({ value: String(e.condition), body: walk(e.to, m ?? undefined) })), default: de ? walk(de.to, m ?? undefined) : undefined }]; if (m && m !== stop) res.push(...walk(m, stop)); return res }
-        if (n.type === 'break') return [{ type: 'break' }]; if (n.type === 'continue') return [{ type: 'continue' }]
+        if (n.type === 'break') return [{ type: 'break' }]   // 後続を walk しない
+        if (n.type === 'continue') return [{ type: 'continue' }]   // 後続を walk しない
         if (outs.length > 0) return walk(outs[0].to, stop); return []
     }
     return { variables, body: walk(outEdges.get(startNode.id)?.[0]?.to) }
