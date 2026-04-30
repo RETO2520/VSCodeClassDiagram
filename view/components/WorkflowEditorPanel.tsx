@@ -695,7 +695,7 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
         if (edgeDrag.current && e.pointerId === edgeDrag.current.ptId) { edgeDrag.current.x = p.x; edgeDrag.current.y = p.y; const f = edgeDrag.current.from; setTempLine({ x1: f.x, y1: f.y, x2: p.x, y2: p.y }); return }
         if (midDrag.current && e.pointerId === midDrag.current.ptId) { const { key, ox, oy } = midDrag.current; dispatch({ type: 'SET_EDGE_MID', edgeKey: key, mid: { x: p.x - ox, y: p.y - oy } }); return }
         if (canvasDrag.current && e.pointerId === canvasDrag.current.ptId) { setPan({ x: canvasDrag.current.px + (e.clientX - canvasDrag.current.sx), y: canvasDrag.current.py + (e.clientY - canvasDrag.current.sy) }) }
-    }, [svgPt])
+    }, [svgPt, dispatch])
     const onSvgPU = useCallback((e: React.PointerEvent) => {
         if (edgeDrag.current && e.pointerId === edgeDrag.current.ptId) {
             const p = svgPt(e.clientX, e.clientY); const from = edgeDrag.current.from
@@ -706,7 +706,7 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
         if (nodeDrag.current && e.pointerId === nodeDrag.current.ptId) nodeDrag.current = null
         if (midDrag.current && e.pointerId === midDrag.current.ptId) midDrag.current = null
         if (canvasDrag.current && e.pointerId === canvasDrag.current.ptId) canvasDrag.current = null
-    }, [svgPt, wf.nodes, wf.edges])
+    }, [svgPt, wf.nodes, wf.edges, dispatch])
 
     const addNode = useCallback((type: NodeType, cx?: number, cy?: number) => {
         const svg = svgRef.current; if (!svg) return
@@ -714,7 +714,7 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
         if (cx !== undefined && cy !== undefined) { p = svgPt(cx, cy) } else { const r = svg.getBoundingClientRect(); p = svgPt(r.left + r.width / 2 + (Math.random() - 0.5) * 120, r.top + r.height / 2 + (Math.random() - 0.5) * 80) }
         const lbl = type === 'foreach' ? 'for item in collection' : type === 'forrange' ? 'for i from 0 to n' : type === 'switch' ? 'this.status' : capitalize(type)
         dispatch({ type: 'ADD_NODE', node: { id: generateId(type), type, label: lbl, x: p.x, y: p.y } })
-    }, [svgPt])
+    }, [svgPt, dispatch])
 
     const onNodeCtx = useCallback((e: React.MouseEvent, node: WFNode) => {
         e.preventDefault(); e.stopPropagation()
@@ -735,11 +735,11 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
                 { label: 'Delete node', col: '#f87171', fn: () => dispatch({ type: 'DEL_NODE', id: node.id }) },
             ]
         })
-    }, [wf.edges])
+    }, [wf.edges, dispatch])
     const onEdgeCtx = useCallback((e: React.MouseEvent, edge: WFEdge) => {
         e.preventDefault(); e.stopPropagation(); const k = edgeKey(edge)
         setCtxMenu({ x: e.clientX, y: e.clientY, items: [{ label: 'Delete edge', col: '#f87171', fn: () => { dispatch({ type: 'DEL_EDGE', edgeKey: k }); setSelEdge(null) } }] })
-    }, [])
+    }, [dispatch])
     const onSvgCtx = useCallback((e: React.MouseEvent) => {
         e.preventDefault()
         setCtxMenu({
@@ -771,6 +771,14 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
             loadedAstRef.current = JSON.parse(lastAstJson.current); setFlowDirty(false)
         } catch (e) { console.error('[WorkflowEditorPanel] applyUpdateOperationWorkflow failed', e) }
     }, [opRef, gherkinWf, flowWf, flowDirty, service])
+
+    useEffect(() => {
+        if (!opRef) return
+        const t = setTimeout(() => {
+            save()
+        }, 350)
+        return () => clearTimeout(t)
+    }, [opRef, gherkinWf, flowWf, flowDirty, save])
 
     const reset = useCallback(() => { dispatch({ type: 'SET_WF', wf: createEmptyWorkflow() }); if (activeLayer === 'flow') setFlowDirty(true) }, [dispatch, activeLayer])
 
