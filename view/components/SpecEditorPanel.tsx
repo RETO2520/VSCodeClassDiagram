@@ -849,12 +849,14 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext, co
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const parserRef = useRef(new SpecDslParser())
+    const isApplyingDslRef = useRef(false)
     /** CodeLens に渡す最新のCLI提案。applyDsl が更新する。 */
     const cliSuggestionsRef = useRef<CliSuggestion[]>([])
     /** 元DSLのコメント・alias行を保持。toDSL()生成後に先頭へ差し込む。 */
     const headerBlockRef = useRef<string>('')
     /** パーサが収集したaliasマップ。toDSL()に渡してalias宣言を再生成する。 */
     const aliasMapRef = useRef<Map<string, string>>(new Map())
+    const lastSyncedDslRef = useRef<string>('')
 
     const [status, setStatus] = useState<ParseStatus>({ state: 'idle', errors: [], warnings: [], dslWarnings: [], classCount: 0, lastApplied: null, cliSuggestions: [] })
     const [outline, setOutline] = useState<OutlineItem[]>([])
@@ -943,6 +945,8 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext, co
 
     // ── DSL → クラス図 適用 ──────────────────────────────────
     const applyDsl = useCallback((dsl: string) => {
+        if (isApplyingDslRef.current) return
+        isApplyingDslRef.current = true
         try {
             // 1. ワークフローデータを className → opName でキャッシュ
             const wfCache = new Map<string, Map<string, {
@@ -1057,6 +1061,8 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext, co
 
             setStatus({ state: 'error', errors: [msg], warnings: [], dslWarnings: [], classCount: 0, lastApplied: null, cliSuggestions: [] })
             setLocalDslClassNames([])
+        } finally {
+            isApplyingDslRef.current = false
         }
     }, [classes, service, monaco])
 
@@ -1065,6 +1071,29 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext, co
     useEffect(() => {
         depsRef.current = { applyDsl };
     }, [applyDsl]);
+
+    const buildDslFromModel = useCallback((): string => {
+        const rawDsl = service.getModel().toDSL(aliasMapRef.current)
+        const header = headerBlockRef.current
+        return header ? `${header}\n\n${rawDsl}` : rawDsl
+    }, [service])
+
+    const syncEditorFromModel = useCallback(() => {
+        if (isApplyingDslRef.current) return
+        const editor = editorRef.current
+        if (!editor) return
+        const nextDsl = buildDslFromModel()
+        const currentDsl = editor.getValue()
+        if (nextDsl === currentDsl || nextDsl === lastSyncedDslRef.current) return
+        editor.setValue(nextDsl)
+        lastSyncedDslRef.current = nextDsl
+    }, [buildDslFromModel])
+
+    useEffect(() => {
+        const onChanged = () => syncEditorFromModel()
+        service.onModelChanged(onChanged)
+        return () => service.offModelChanged(onChanged)
+    }, [service, syncEditorFromModel])
 
     useEffect(() => {
         postMessage({ command: 'requestDiagramFiles' });
@@ -1080,6 +1109,7 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext, co
                 setActiveFilePath(relativePath);
                 if (editorRef.current) {
                     editorRef.current.setValue(dsl);
+                    lastSyncedDslRef.current = dsl;
                     // setValue は onChange イベントを発火しないため、手動で applyDsl を呼ぶ
                     // setTimeout で次フレーム実行（Monaco が編集を確定させてから実行するように遅延）
                     setTimeout(() => {
