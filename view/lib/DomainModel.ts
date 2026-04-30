@@ -336,6 +336,9 @@ export class DomainModel {
             if (op.workflow && op.workflow.nodes.length > 0) {
                 lines.push(...this.renderWorkflowDsl(op.workflow));
             }
+            if (op.workflowAst && this.hasWorkflowAstContent(op.workflowAst)) {
+                lines.push(...this.renderFlowAstDsl(op.workflowAst));
+            }
         }
 
         lines.push("");
@@ -464,6 +467,91 @@ export class DomainModel {
             }
         }
 
+        return lines;
+    }
+
+    private hasWorkflowAstContent(ast: ClassOperation['workflowAst'] | undefined): boolean {
+        if (!ast) return false;
+        return (ast.variables?.length ?? 0) > 0 || (ast.body?.length ?? 0) > 0;
+    }
+
+    private renderFlowAstDsl(ast: NonNullable<ClassOperation['workflowAst']>): string[] {
+        const lines: string[] = [];
+        lines.push('    Flow:');
+        for (const v of ast.variables ?? []) {
+            const init = v.initialValue != null && String(v.initialValue).trim() !== '' ? ` = ${v.initialValue}` : '';
+            lines.push(`      var ${v.name}: ${v.type}${init}`);
+        }
+        lines.push(...this.renderFlowAstBody(ast.body ?? [], 3));
+        return lines;
+    }
+
+    private renderFlowAstBody(nodes: any[], depth: number): string[] {
+        const lines: string[] = [];
+        const pad = '  '.repeat(depth);
+        for (const node of nodes ?? []) {
+            if (!node || typeof node !== 'object') continue;
+            const t = String(node.type ?? '');
+            if (t === 'if') {
+                lines.push(`${pad}if ${node.condition ?? ''}`.trimEnd());
+                lines.push(...this.renderFlowAstBody(Array.isArray(node.then) ? node.then : [], depth + 1));
+                if (Array.isArray(node.else) && node.else.length > 0) {
+                    lines.push(`${pad}else`);
+                    lines.push(...this.renderFlowAstBody(node.else, depth + 1));
+                }
+                lines.push(`${pad}end`);
+                continue;
+            }
+            if (t === 'while') {
+                lines.push(`${pad}while ${node.condition ?? ''}`.trimEnd());
+                lines.push(...this.renderFlowAstBody(Array.isArray(node.body) ? node.body : [], depth + 1));
+                lines.push(`${pad}end`);
+                continue;
+            }
+            if (t === 'forEach') {
+                lines.push(`${pad}for ${node.variable ?? 'item'} in ${node.collection ?? 'collection'}`);
+                lines.push(...this.renderFlowAstBody(Array.isArray(node.body) ? node.body : [], depth + 1));
+                lines.push(`${pad}end`);
+                continue;
+            }
+            if (t === 'forRange') {
+                lines.push(`${pad}for ${node.variable ?? 'i'} from ${node.from ?? '0'} to ${node.to ?? '0'}`);
+                lines.push(...this.renderFlowAstBody(Array.isArray(node.body) ? node.body : [], depth + 1));
+                lines.push(`${pad}end`);
+                continue;
+            }
+            if (t === 'switch') {
+                lines.push(`${pad}switch ${node.expression ?? ''}`.trimEnd());
+                const cases = Array.isArray(node.cases) ? node.cases : [];
+                for (const c of cases) {
+                    lines.push(`${pad}  case ${c?.value ?? ''}:`.trimEnd());
+                    lines.push(...this.renderFlowAstBody(Array.isArray(c?.body) ? c.body : [], depth + 2));
+                }
+                if (Array.isArray(node.default) && node.default.length > 0) {
+                    lines.push(`${pad}  default:`);
+                    lines.push(...this.renderFlowAstBody(node.default, depth + 2));
+                }
+                lines.push(`${pad}end`);
+                continue;
+            }
+            if (t === 'break') { lines.push(`${pad}break`); continue; }
+            if (t === 'continue') { lines.push(`${pad}continue`); continue; }
+            if (t === 'return') {
+                const value = node.value != null && String(node.value).trim() !== '' ? ` ${node.value}` : '';
+                lines.push(`${pad}return${value}`);
+                continue;
+            }
+            if (t === 'action') {
+                const kind = String(node.kind ?? 'instruction');
+                const stmt = String(node.statement ?? '').trim();
+                if (kind === 'code') lines.push(`${pad}do ${stmt}`);
+                else lines.push(`${pad}${stmt}`);
+                continue;
+            }
+            if (typeof node.statement === 'string') {
+                lines.push(`${pad}${node.statement}`);
+            }
+        }
         return lines;
     }
 
