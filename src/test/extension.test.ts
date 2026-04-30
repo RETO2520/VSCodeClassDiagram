@@ -168,6 +168,53 @@ suite('コード生成のテストケース', () => {
         assert.ok(thingText.includes('export class Thing') || thingText.includes('export interface Thing'));
     });
 
+    test('TypeScriptBuilder generates Flow AST control structures', async () => {
+        const flowClass: IClassModel = {
+            id: 'f', name: 'FlowSample', x: 0, y: 0, width: 0, height: 0,
+            baseClass: '', baseClassId: null as any, interfaces: [], isAbstract: false, isInterface: false,
+            attributes: [],
+            operations: [{
+                name: 'run',
+                returnType: 'void',
+                visibility: 'public',
+                modifier: 'None',
+                parameters: [],
+                workflowAst: {
+                    variables: [{ name: 'count', type: 'int', initialValue: '0' }],
+                    body: [
+                        { type: 'action', statement: 'this.start()' } as any,
+                        { type: 'if', condition: 'count > 0', then: [{ type: 'action', statement: 'this.ok()' }], else: [{ type: 'action', statement: 'this.ng()' }] } as any,
+                        { type: 'while', condition: 'count < 10', body: [{ type: 'action', statement: 'count++' }] } as any,
+                        { type: 'forEach', variable: 'item', collection: 'this.items', body: [{ type: 'continue' }] } as any,
+                        { type: 'forRange', variable: 'i', from: '0', to: '3', body: [{ type: 'break' }] } as any,
+                        { type: 'switch', expression: 'count', cases: [{ type: 'case', value: '1', body: [{ type: 'action', statement: 'this.one()' }] }], default: [{ type: 'return' }] } as any,
+                    ],
+                },
+            } as any]
+        } as any;
+
+        const model: IObjectModel = { classes: [flowClass] };
+        const tmpBase = path.join(os.tmpdir(), `vscctest_flow_${Date.now()}`);
+        const outUri = vscode.Uri.file(tmpBase);
+        await vscode.workspace.fs.createDirectory(outUri);
+        const b = new TypeScriptBuilder(model, new TypeModel());
+        await b.Build(outUri);
+
+        const fileUri = vscode.Uri.joinPath(outUri, 'FlowSample.ts');
+        const text = Buffer.from(await vscode.workspace.fs.readFile(fileUri)).toString('utf8');
+        assert.ok(text.includes('let count: number = 0;'));
+        assert.ok(text.includes('if (count > 0) {'));
+        assert.ok(text.includes('while (count < 10) {'));
+        assert.ok(text.includes('for (const item of this.items) {'));
+        assert.ok(text.includes('for (let i = 0; i <= 3; i++) {'));
+        assert.ok(text.includes('switch (count) {'));
+        assert.ok(text.includes('case 1:'));
+        assert.ok(text.includes('default:'));
+        assert.ok(text.includes('break;'));
+        assert.ok(text.includes('continue;'));
+        assert.ok(text.includes('return;'));
+    });
+
 });
 
 suite('モデルのテストケース', () => {

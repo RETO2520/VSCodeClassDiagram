@@ -124,6 +124,11 @@ export type WfAstNode =
     | IIfNode
     | IWhileNode
     | IReturnNode
+    | IForEachNode
+    | IForRangeNode
+    | ISwitchNode
+    | IBreakNode
+    | IContinueNode
     | ISequenceNode;
 
 export interface IActionNode {
@@ -149,6 +154,42 @@ export interface IWhileNode {
 export interface IReturnNode {
     type: 'return';
     value?: string;
+}
+
+export interface IForEachNode {
+    type: 'forEach';
+    variable: string;
+    collection: string;
+    body: WfAstNode[];
+}
+
+export interface IForRangeNode {
+    type: 'forRange';
+    variable: string;
+    from: string;
+    to: string;
+    body: WfAstNode[];
+}
+
+export interface ISwitchCaseNode {
+    type: 'case';
+    value: string;
+    body: WfAstNode[];
+}
+
+export interface ISwitchNode {
+    type: 'switch';
+    expression: string;
+    cases: ISwitchCaseNode[];
+    default?: WfAstNode[];
+}
+
+export interface IBreakNode {
+    type: 'break';
+}
+
+export interface IContinueNode {
+    type: 'continue';
 }
 
 export interface ISequenceNode {
@@ -890,6 +931,16 @@ export abstract class CodeBuilder implements IGeneratorBuilder {
                 return this.generateWhile(node, indent);
             case 'return':
                 return this.generateReturn(node, indent);
+            case 'forEach':
+                return this.generateForEach(node, indent);
+            case 'forRange':
+                return this.generateForRange(node, indent);
+            case 'switch':
+                return this.generateSwitch(node, indent);
+            case 'break':
+                return this.generateBreak(node, indent);
+            case 'continue':
+                return this.generateContinue(node, indent);
             case 'sequence':
                 return this.buildWfNodes(node.nodes, indent);
             default:
@@ -901,6 +952,28 @@ export abstract class CodeBuilder implements IGeneratorBuilder {
     protected abstract generateIf(node: IIfNode, indent: number): string[];
     protected abstract generateWhile(node: IWhileNode, indent: number): string[];
     protected abstract generateReturn(node: IReturnNode, indent: number): string[];
+    protected generateForEach(node: IForEachNode, indent: number): string[] {
+        return this.buildWfNodes(node.body, indent);
+    }
+    protected generateForRange(node: IForRangeNode, indent: number): string[] {
+        return this.buildWfNodes(node.body, indent);
+    }
+    protected generateSwitch(node: ISwitchNode, indent: number): string[] {
+        let lines: string[] = [];
+        for (const c of node.cases || []) {
+            lines = lines.concat(this.buildWfNodes(c.body, indent));
+        }
+        if (node.default && node.default.length > 0) {
+            lines = lines.concat(this.buildWfNodes(node.default, indent));
+        }
+        return lines;
+    }
+    protected generateBreak(_node: IBreakNode, indent: number): string[] {
+        return [`${this.getIndent(indent)}break;`];
+    }
+    protected generateContinue(_node: IContinueNode, indent: number): string[] {
+        return [`${this.getIndent(indent)}continue;`];
+    }
 
     protected getIndent(level: number): string {
         return '    '.repeat(level);
