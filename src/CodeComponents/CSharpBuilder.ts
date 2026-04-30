@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { CodeBuilder, IObjectModel, IAttributeModel, IOperationModel, safeIdentifier, typeName, pascalCase, collectInheritedMembers, buildClassMaps, opSignatureKey, IParameterModel, IClassModel, camelCase, WorkflowAst, IActionNode, IIfNode, IWhileNode, IReturnNode, workflowToAst } from './CodeGenerator';
+import { CodeBuilder, IObjectModel, IAttributeModel, IOperationModel, safeIdentifier, typeName, pascalCase, collectInheritedMembers, buildClassMaps, opSignatureKey, IParameterModel, IClassModel, camelCase, WorkflowAst, IActionNode, IIfNode, IWhileNode, IReturnNode, workflowToAst, IForEachNode, IForRangeNode, ISwitchNode, IBreakNode, IContinueNode } from './CodeGenerator';
 import console = require('node:console');
 
 
@@ -252,6 +252,9 @@ export class CSharpBuilder extends CodeBuilder {
     }
 
     protected generateAction(node: IActionNode, indent: number): string[] {
+        if ((node.statement || '').trim().startsWith('//') || node.kind === 'comment') {
+            return [`${this.getIndent(indent)}${node.statement}`];
+        }
         return [`${this.getIndent(indent)}${node.statement};`];
     }
 
@@ -282,5 +285,45 @@ export class CSharpBuilder extends CodeBuilder {
     protected generateReturn(node: IReturnNode, indent: number): string[] {
         const val = node.value ? ` ${node.value}` : '';
         return [`${this.getIndent(indent)}return${val};`];
+    }
+    protected generateForEach(node: IForEachNode, indent: number): string[] {
+        const lines: string[] = [];
+        lines.push(`${this.getIndent(indent)}foreach (var ${safeIdentifier(node.variable)} in ${node.collection})`);
+        lines.push(`${this.getIndent(indent)}{`);
+        lines.push(...this.buildWfNodes(node.body, indent + 1));
+        lines.push(`${this.getIndent(indent)}}`);
+        return lines;
+    }
+    protected generateForRange(node: IForRangeNode, indent: number): string[] {
+        const v = safeIdentifier(node.variable);
+        const lines: string[] = [];
+        lines.push(`${this.getIndent(indent)}for (var ${v} = ${node.from}; ${v} <= ${node.to}; ${v}++)`);
+        lines.push(`${this.getIndent(indent)}{`);
+        lines.push(...this.buildWfNodes(node.body, indent + 1));
+        lines.push(`${this.getIndent(indent)}}`);
+        return lines;
+    }
+    protected generateSwitch(node: ISwitchNode, indent: number): string[] {
+        const lines: string[] = [];
+        lines.push(`${this.getIndent(indent)}switch (${node.expression})`);
+        lines.push(`${this.getIndent(indent)}{`);
+        for (const c of node.cases || []) {
+            lines.push(`${this.getIndent(indent + 1)}case ${c.value}:`);
+            lines.push(...this.buildWfNodes(c.body, indent + 2));
+            lines.push(`${this.getIndent(indent + 2)}break;`);
+        }
+        if (node.default && node.default.length > 0) {
+            lines.push(`${this.getIndent(indent + 1)}default:`);
+            lines.push(...this.buildWfNodes(node.default, indent + 2));
+            lines.push(`${this.getIndent(indent + 2)}break;`);
+        }
+        lines.push(`${this.getIndent(indent)}}`);
+        return lines;
+    }
+    protected generateBreak(_node: IBreakNode, indent: number): string[] {
+        return [`${this.getIndent(indent)}break;`];
+    }
+    protected generateContinue(_node: IContinueNode, indent: number): string[] {
+        return [`${this.getIndent(indent)}continue;`];
     }
 }
