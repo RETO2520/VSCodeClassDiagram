@@ -395,13 +395,17 @@ export class ClassDiagramHandler {
         const markdown = payload.markdown || '';
         const validationContent = payload.validationContent || '';
         const fileName = payload.fileName || 'spec.md';
+        const flowDocuments = Array.isArray(payload.flowDocuments) ? payload.flowDocuments : [];
 
         if (!markdown) {
             vscode.window.showErrorMessage('No markdown content to export.');
             return;
         }
 
-        const result = await this.fileService.saveMarkdown(markdown, validationContent, { defaultFileName: fileName });
+        const result = await this.fileService.saveMarkdown(markdown, validationContent, {
+            defaultFileName: fileName,
+            flowDocuments,
+        });
         if (result) {
             vscode.window.showInformationMessage(`Exported specification to ${path.basename(result.filePath)}`);
         }

@@ -240,6 +240,7 @@ export class FileService {
             defaultUri?: vscode.Uri;
             saveLabel?: string;
             defaultFileName?: string;
+            flowDocuments?: Array<{ fileName: string; content: string }>;
         }
     ): Promise<SaveResult | null> {
 
@@ -263,6 +264,11 @@ export class FileService {
         const encoder = new TextEncoder();
         await vscode.workspace.fs.writeFile(defaultUri, encoder.encode(content));
         await vscode.workspace.fs.writeFile(validationUri, encoder.encode(validationContent));
+        for (const doc of options?.flowDocuments ?? []) {
+            if (!doc?.fileName) continue;
+            const flowUri = vscode.Uri.file(path.join(path.dirname(defaultUri.fsPath), doc.fileName));
+            await vscode.workspace.fs.writeFile(flowUri, encoder.encode(doc.content ?? ''));
+        }
 
         return {
             uri: defaultUri,

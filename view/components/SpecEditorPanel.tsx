@@ -26,7 +26,7 @@ loader.config({ monaco });
 import type { ClassDiagramService } from '@/lib/application/ClassDiagramService'
 import { SpecDslParser } from '@/lib/SpecDslParser'
 import type { CliSuggestion, ParsedDsl } from '@/lib/SpecDslParser'
-import { generateMarkdownFromClasses } from '@/lib/MarkdownGenerator'
+import { generateSpecMarkdownBundle } from '@/lib/SpecMarkdownBundle'
 import { lintWorkflow } from '@/lib/WorkflowLinter'
 import type { LintWarning } from '@/lib/WorkflowLinter'
 import { lintDsl } from '@/lib/DslLinter'
@@ -1038,7 +1038,8 @@ export function SpecEditorPanel({ service, classes, visible, onCursorContext, co
             // 8. Markdownプレビュー更新（showPreview が true のときのみ生成してコストを抑える）
             const mdClasses = service.getModel().getClasses()
             const mdRelationships = service.getModel().detectRelationships()
-            setMarkdownText(generateMarkdownFromClasses({ classes: mdClasses, relationships: mdRelationships }))
+            const mdBundle = generateSpecMarkdownBundle({ classes: mdClasses, relationships: mdRelationships })
+            setMarkdownText(mdBundle.markdown)
 
             // [DEBUG] DSL 適用後の class 数をログ
             console.debug('[SpecEditorPanel] applyDsl completed:', {

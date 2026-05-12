@@ -12,7 +12,7 @@ import {
     visibilitySymbol,
 } from "../class-diagram-types";
 import { postMessage } from "../../../frontend/src/bridge/vscode-bridge";
-import { generateMarkdownFromClasses } from '../MarkdownGenerator'
+import { generateSpecMarkdownBundle } from '../SpecMarkdownBundle'
 import { generateValidationReport } from '../ValidationReport'
 /**
  * ExportSpecCommand
@@ -71,8 +71,9 @@ export class ExportSpecCommand extends Command {
         postMessage({ command: 'log', level: 'info', text: 'currentClasses: ' + currentClasses.length });
         postMessage({ command: 'log', level: 'info', text: 'currentRelation: ' + currentRelation.length });
         //const markdown = generateMarkdown(currentModel);
-        const m = generateMarkdownFromClasses({ classes: currentClasses, relationships: currentRelation })
-        postMessage({ command: 'log', level: 'info', text: 'markdown: generateMarkdownFromClasses is done' });
+        const bundle = generateSpecMarkdownBundle({ classes: currentClasses, relationships: currentRelation });
+        const flowDocuments = bundle.flowDocuments.map(doc => ({ fileName: doc.fileName, content: doc.markdown }));
+        postMessage({ command: 'log', level: 'info', text: 'markdown: generateSpecMarkdownBundle is done' });
         const v = generateValidationReport({ classes: currentClasses, relationships: currentRelation });
         postMessage({ command: 'log', level: 'info', text: 'validation: generateValidationReport is done' });
         let validationContent = "";
@@ -82,13 +83,14 @@ export class ExportSpecCommand extends Command {
             postMessage({
                 command: 'exportMarkdown',
                 payload: {
-                    markdown: m,
+                    markdown: bundle.markdown,
                     validationContent: v,
-                    fileName: this.outputPath
+                    fileName: this.outputPath,
+                    flowDocuments
                 }
             });
         } else {
-            postMessage({ command: 'log', level: 'info', text: m });
+            postMessage({ command: 'log', level: 'info', text: bundle.markdown });
         }
 
         const ev = { type: 'EXPORT_SPEC' };
