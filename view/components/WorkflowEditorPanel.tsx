@@ -35,6 +35,11 @@ export interface WorkflowEditorPanelProps {
     service: import('@/lib/application/ClassDiagramService').ClassDiagramService
 }
 
+function hasFlowAstContent(ast?: FlowAst): boolean {
+    if (!ast) return false
+    return (ast.variables?.length ?? 0) > 0 || (ast.body?.length ?? 0) > 0
+}
+
 function generateId(p: string) { return `${p}_${Date.now().toString(36)}_${Math.floor(Math.random() * 1000)}` }
 function capitalize(s: string) { return s.charAt(0).toUpperCase() + s.slice(1) }
 function createEmptyWorkflow(x = 220): WFWorkflow {
@@ -403,7 +408,9 @@ export function convertToAst(wf: WFWorkflow) {
     function mp(a?: string, b?: string): string | null { if (!a || !b) return a || b || null; const ra = Array.from(reach(a)), rb = reach(b); for (const id of ra) if (rb.has(id)) return id; return null }
     function walk(id: string | undefined, stop: string | null = null): any[] {
         if (!id || id === stop) return []; const n = nodeMap.get(id); if (!n) return []; const outs = outEdges.get(id) || []
-        if (n.type === 'end') return [{ type: 'return', value: (n.label && n.label !== 'End') ? n.label : undefined }]
+        // 終端ノードは制御フロー上の終わりを表すだけなので、Flow AST へは変換しない。
+        // （明示的な return は return ノードで表現される）
+        if (n.type === 'end') return []
         if (n.type === 'process' || n.type === 'call') return [{ type: 'action', statement: n.label }, ...walk(outs[0]?.to, stop)]
         if (n.type === 'decision') { const te = outs.find(e => String(e.condition).toLowerCase() === 'true'), fe = outs.find(e => String(e.condition).toLowerCase() === 'false'), m = mp(te?.to, fe?.to); const res: any[] = [{ type: 'if', condition: n.label, then: walk(te?.to, m), else: walk(fe?.to, m) || undefined }]; if (m && m !== stop) res.push(...walk(m, stop)); return res }
         if (n.type === 'loop') { const te = outs.find(e => String(e.condition).toLowerCase() === 'true'), fe = outs.find(e => String(e.condition).toLowerCase() === 'false'); const res: any[] = [{ type: 'while', condition: n.label, body: walk(te?.to, id) }]; if (fe?.to && fe.to !== stop) res.push(...walk(fe.to, stop)); return res }
@@ -614,12 +621,26 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
     useEffect(() => { opRefRef.current = opRef }, [opRef])
     useEffect(() => { serviceRef.current = service }, [service])
 
-    const loadFromService = useCallback(() => {
-        const cur = opRefRef.current; if (!cur) return
+    const resolveOpFromModel = useCallback((cur: WFOpRef | null) => {
+        if (!cur) return null
         const model = serviceRef.current.getModel()
-        let cls = model.findClassById(cur.classId); let op = cls?.operations.find(o => o.id === cur.operationId)
-        if (!op) { const m = cur.label.match(/^(.+?)\.(.+?)\(/); if (m) { cls = model.findClassByName(m[1]) ?? undefined; op = cls?.operations.find(o => o.name === m[2]) } }
-        if (!op || !cls) return
+        let cls = model.findClassById(cur.classId)
+        let op = cls?.operations.find(o => o.id === cur.operationId)
+        if (!op) {
+            const m = cur.label.match(/^(.+?)\.(.+?)\(/)
+            if (m) {
+                cls = model.findClassByName(m[1]) ?? undefined
+                op = cls?.operations.find(o => o.name === m[2])
+            }
+        }
+        if (!cls || !op) return null
+        return { cls, op }
+    }, [])
+
+    const loadFromService = useCallback(() => {
+        const resolved = resolveOpFromModel(opRefRef.current)
+        if (!resolved) return
+        const { op } = resolved
         const inWf = op.workflow?.nodes?.length ? op.workflow : null; const inWfJ = JSON.stringify(inWf)
         const inAst = (op.workflowAst ?? { variables: [], body: [] }) as FlowAst; const inAstJ = JSON.stringify(inAst)
         if (inWfJ === lastWfJson.current && inAstJ === lastAstJson.current) return
@@ -627,14 +648,22 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
         loadedAstRef.current = JSON.parse(inAstJ); setFlowDirty(false)
         dispatchGherkin({ type: 'SET_WF', wf: inWf ? JSON.parse(inWfJ) : createEmptyWorkflow() })
         dispatchFlow({ type: 'SET_WF', wf: convertAstToWorkflow(JSON.parse(inAstJ)) })
-    }, [])
+    }, [resolveOpFromModel])
 
     useEffect(() => {
         if (!opRef) return
         const key = `${opRef.classId}:${opRef.operationId}`
-        if (currentOpKey.current !== key) { currentOpKey.current = key; lastWfJson.current = ''; lastAstJson.current = ''; setViewMode('both'); setBothEditLayer('gherkin') }
+        if (currentOpKey.current !== key) {
+            currentOpKey.current = key
+            lastWfJson.current = ''
+            lastAstJson.current = ''
+            setViewMode('both')
+            const resolved = resolveOpFromModel(opRef)
+            const ast = (resolved?.op.workflowAst ?? { variables: [], body: [] }) as FlowAst
+            setBothEditLayer(hasFlowAstContent(ast) ? 'flow' : 'gherkin')
+        }
         loadFromService()
-    }, [opRef, loadFromService])
+    }, [opRef, loadFromService, resolveOpFromModel])
 
     useEffect(() => { service.onModelChanged(loadFromService); return () => service.offModelChanged(loadFromService) }, [service, loadFromService])
 
@@ -760,17 +789,22 @@ export function WorkflowEditorPanel({ opRef, diagram, service }: WorkflowEditorP
     useEffect(() => { if (!ctxMenu) return; const h = () => setCtxMenu(null); window.addEventListener('pointerdown', h); return () => window.removeEventListener('pointerdown', h) }, [ctxMenu])
 
     const save = useCallback(() => {
-        if (!opRef) return
-        if (!opRef.classId || !opRef.operationId) { console.error('[WorkflowEditorPanel] save: missing ids', opRef); return }
+        const resolved = resolveOpFromModel(opRef)
+        if (!resolved) { console.error('[WorkflowEditorPanel] save: operation not found', opRef); return }
+        const { cls, op } = resolved
         let ast: FlowAst | ReturnType<typeof convertToAst> | undefined = loadedAstRef.current
         if (flowDirty || !ast) { try { ast = convertToAst(flowWf) } catch (e) { console.error('[WorkflowEditorPanel] AST conversion failed', e) } }
         const wfCopy = JSON.parse(JSON.stringify(gherkinWf))
+        const nextWfJson = JSON.stringify(wfCopy)
+        const nextAstJson = JSON.stringify(ast ?? { variables: [], body: [] })
+        // 変更がなければサービス更新を行わず、下流の再同期/再解析を抑止する
+        if (nextWfJson === lastWfJson.current && nextAstJson === lastAstJson.current) return
         try {
-            service.applyUpdateOperationWorkflow({ classId: opRef.classId, operationId: opRef.operationId, workflow: wfCopy, workflowAst: ast })
-            lastWfJson.current = JSON.stringify(wfCopy); lastAstJson.current = JSON.stringify(ast ?? { variables: [], body: [] })
+            service.applyUpdateOperationWorkflow({ classId: cls.id, operationId: op.id, workflow: wfCopy, workflowAst: ast })
+            lastWfJson.current = nextWfJson; lastAstJson.current = nextAstJson
             loadedAstRef.current = JSON.parse(lastAstJson.current); setFlowDirty(false)
         } catch (e) { console.error('[WorkflowEditorPanel] applyUpdateOperationWorkflow failed', e) }
-    }, [opRef, gherkinWf, flowWf, flowDirty, service])
+    }, [opRef, resolveOpFromModel, gherkinWf, flowWf, flowDirty, service])
 
     useEffect(() => {
         if (!opRef) return
